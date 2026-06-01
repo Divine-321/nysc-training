@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 
 const courses = [
   {
@@ -12,7 +13,8 @@ const courses = [
     completed: 70,
     total: 100,
     duration: "1 Month",
-    description: "Teaches the legal framework, mobilization rules, and anti-fraud administrative protocols.",
+    description:
+      "Teaches the legal framework, mobilization rules, and anti-fraud administrative protocols.",
     image: "/images/course-thumb.png",
   },
   {
@@ -23,7 +25,8 @@ const courses = [
     completed: 50,
     total: 100,
     duration: "3 Weeks",
-    description: "Covers 21-day orientation logistics, kitting, feeding, and military-police security coordination.",
+    description:
+      "Covers 21-day orientation logistics, kitting, feeding, and military-police security coordination.",
     image: "/images/course-thumb.png",
   },
   {
@@ -34,15 +37,20 @@ const courses = [
     completed: 30,
     total: 100,
     duration: "3 Month",
-    description: "Trains staff in corps member mediation, SAED tracking, and project monitoring.",
+    description:
+      "Trains staff in corps member mediation, SAED tracking, and project monitoring.",
     image: "/images/course-thumb.png",
   },
 ];
 
 export default function StaffTraining() {
   const [mainTab, setMainTab] = useState<"overview" | "induction">("overview");
-  const [overviewTab, setOverviewTab] = useState<"all" | "inprogress" | "past">("all");
-  const [inductionTab, setInductionTab] = useState<"induction" | "outstanding">("induction");
+  const [overviewTab, setOverviewTab] = useState<"all" | "inprogress" | "past">(
+    "all",
+  );
+  const [inductionTab, setInductionTab] = useState<"induction" | "outstanding">(
+    "induction",
+  );
 
   return (
     <div>
@@ -73,7 +81,9 @@ export default function StaffTraining() {
       {/* COURSE OVERVIEW VIEW */}
       {mainTab === "overview" && (
         <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-[#1a6b3c] mb-4">Course overview</h2>
+          <h2 className="text-xl font-semibold text-[#1a6b3c] mb-4">
+            Course overview
+          </h2>
 
           {/* Tabs */}
           <div className="flex gap-6 mb-4">
@@ -87,7 +97,9 @@ export default function StaffTraining() {
                     : "border-transparent text-gray-400"
                 }`}
               >
-                {tab === "inprogress" ? "In progress" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === "inprogress"
+                  ? "In progress"
+                  : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
           </div>
@@ -107,7 +119,10 @@ export default function StaffTraining() {
           {/* Course Cards */}
           <div className="grid grid-cols-3 gap-6">
             {courses.map((course) => (
-              <div key={course.id} className="rounded-2xl overflow-hidden shadow-sm">
+              <div
+                key={course.id}
+                className="rounded-2xl overflow-hidden shadow-sm"
+              >
                 <div className="relative">
                   <Image
                     src={course.image}
@@ -116,14 +131,19 @@ export default function StaffTraining() {
                     height={200}
                     className="w-full h-40 object-cover"
                   />
-                  <span className={`absolute bottom-2 left-2 ${course.categoryColor} text-white text-xs px-2 py-0.5 rounded`}>
+                  <span
+                    className={`absolute bottom-2 left-2 ${course.categoryColor} text-white text-xs px-2 py-0.5 rounded`}
+                  >
                     {course.category}
                   </span>
                 </div>
                 <div className="p-4">
-                  <h3 className="font-semibold text-sm text-gray-800 mb-3">{course.title}</h3>
+                  <h3 className="font-semibold text-sm text-gray-800 mb-3">
+                    {course.title}
+                  </h3>
                   <p className="text-xs text-gray-400 mb-1">
-                    {course.completed} out of {course.total} activities completed
+                    {course.completed} out of {course.total} activities
+                    completed
                   </p>
                   <div className="w-full bg-gray-200 rounded-full h-1.5 mb-1">
                     <div
@@ -131,10 +151,15 @@ export default function StaffTraining() {
                       style={{ width: `${course.completed}%` }}
                     />
                   </div>
-                  <p className="text-xs text-gray-400 mb-4">{course.completed}% Courses Completed</p>
-                  <button className="w-full text-[#1a6b3c] text-sm rounded-lg py-1.5 hover:bg-[#e8f5ee] transition">
+                  <p className="text-xs text-gray-400 mb-4">
+                    {course.completed}% Courses Completed
+                  </p>
+                  <Link
+                    href={`/staff/course/${course.id}`}
+                    className="block w-full border border-[#1a6b3c] text-[#1a6b3c] text-sm rounded-lg py-1.5 hover:bg-[#e8f5ee] transition text-center"
+                  >
                     View Course
-                  </button>
+                  </Link>
                 </div>
               </div>
             ))}
@@ -171,7 +196,10 @@ export default function StaffTraining() {
           {/* Cards */}
           <div className="grid grid-cols-3 gap-6">
             {courses.map((course) => (
-              <div key={course.id} className="rounded-2xl overflow-hidden shadow-sm p-4">
+              <div
+                key={course.id}
+                className="rounded-2xl overflow-hidden shadow-sm p-4"
+              >
                 <Image
                   src={course.image}
                   alt={course.title}
@@ -182,7 +210,9 @@ export default function StaffTraining() {
                 <p className="text-xs text-gray-400 flex items-center gap-1 mb-1">
                   🕐 {course.duration}
                 </p>
-                <h3 className="font-semibold text-sm text-[#1a6b3c] mb-2">{course.title}</h3>
+                <h3 className="font-semibold text-sm text-[#1a6b3c] mb-2">
+                  {course.title}
+                </h3>
                 <p className="text-xs text-gray-500">{course.description}</p>
               </div>
             ))}

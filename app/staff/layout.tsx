@@ -15,6 +15,11 @@ const navItems = [
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
+  const isInsideCourse = pathname.includes("/staff/course/");
+if (isInsideCourse) {
+  return <>{children}</>;
+}
+
   return (
     <div className="min-h-screen flex flex-col">
 
