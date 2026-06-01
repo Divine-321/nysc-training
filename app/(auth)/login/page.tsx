@@ -102,9 +102,9 @@ export default function LoginPage() {
             </div>
 
             {/* Login Button */}
-            <button className="w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition">
+            <Link href="/staff/dashboard" className="flex items-center justify-center w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition">
               Login
-            </button>
+            </Link>
 
             {/* Sign up link */}
             <p className="text-center text-sm text-gray-500">
