@@ -75,8 +75,8 @@ export default function CourseLayout({
       <div className="flex pt-16 min-h-screen">
 
         {/* COURSE SIDEBAR */}
-        <aside className="w-48 bg-white border-r fixed top-16 left-0 bottom-0 overflow-y-auto">
-          <div className="px-4 py-3 border-b bg-white sticky top-0">
+        <aside className="w-48 bg-white fixed top-16 left-0 bottom-0 overflow-y-auto">
+          <div className="px-4 py-3 bg-white sticky top-0">
             <p className="text-sm font-bold text-gray-800">Course Menu</p>
           </div>
           <nav>
