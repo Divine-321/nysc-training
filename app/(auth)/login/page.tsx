@@ -10,7 +10,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-white flex items-center justify-center px-4">
       <div className="w-full max-w-7xl flex items-center justify-between gap-12">
-
         {/* Left — Illustration */}
         <div className="hidden md:flex flex-1 items-center justify-center">
           <Image
@@ -24,7 +23,6 @@ export default function LoginPage() {
 
         {/* Right — Form */}
         <div className="flex-1 flex flex-col items-center">
-
           {/* Logo */}
           <Image
             src="/images/nysc-logo.png"
@@ -40,10 +38,10 @@ export default function LoginPage() {
               Login
             </button>
             <Link
-              href="/register"
+              href="/admin-login"
               className="flex-1 text-center text-[#1a6b3c] rounded-full py-2 text-sm font-semibold"
             >
-              Register
+              Admin Login
             </Link>
           </div>
 
@@ -53,7 +51,6 @@ export default function LoginPage() {
 
           {/* Form */}
           <div className="w-full max-w-sm space-y-4">
-
             {/* Username */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -102,18 +99,19 @@ export default function LoginPage() {
             </div>
 
             {/* Login Button */}
-            <Link href="/staff/dashboard" className="flex items-center justify-center w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition">
+            <Link
+              href="/staff/dashboard"
+              className="flex items-center justify-center w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition"
+            >
               Login
             </Link>
 
-            {/* Sign up link */}
             <p className="text-center text-sm text-gray-500">
-              Don&apos;t have an account yet?{" "}
-              <Link href="/register" className="text-[#1a6b3c] font-semibold">
-                Sign up
+              Are you an admin?{" "}
+              <Link href="/admin-login" className="text-[#1a6b3c] font-semibold">
+                Login here
               </Link>
             </p>
-
           </div>
         </div>
       </div>

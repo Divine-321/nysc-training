@@ -4,28 +4,23 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
-export default function RegisterPage() {
+export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center px-4">
       <div className="w-full max-w-5xl flex items-center justify-between gap-12">
-
-        {/* Left — Illustration */}
         <div className="hidden md:flex flex-1 items-center justify-center">
           <Image
             src="/images/register-illustration.png"
-            alt="Register Illustration"
+            alt="Admin Login Illustration"
             width={480}
             height={400}
             priority
           />
         </div>
 
-        {/* Right — Form */}
         <div className="flex-1 flex flex-col items-center">
-
-          {/* Logo */}
           <Image
             src="/images/nysc-logo.png"
             alt="NYSC Logo"
@@ -34,61 +29,47 @@ export default function RegisterPage() {
             className="mb-6"
           />
 
-          {/* Login / Register Toggle */}
-          <div className="flex bg-[#e8f5ee] rounded-full p-1 mb-6 w-64">
+          <div className="flex bg-[#e8f5ee] rounded-full p-1 mb-6 w-72">
             <Link
               href="/login"
               className="flex-1 text-center text-[#1a6b3c] rounded-full py-2 text-sm font-semibold"
             >
-              Login
+              Staff Login
             </Link>
+
             <button className="flex-1 bg-[#1a6b3c] text-white rounded-full py-2 text-sm font-semibold">
-              Register
+              Admin Login
             </button>
           </div>
 
           <p className="text-gray-500 text-sm mb-6 text-center max-w-xs">
-            Create your account to access the training portal
+            Sign in as an administrator to manage courses, staff, cohorts, and assignments.
           </p>
 
-          {/* Form */}
           <div className="w-full max-w-sm space-y-4">
-
-            {/* Email */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email Address
+                Admin Email
               </label>
               <input
                 type="email"
-                placeholder="Enter your Email Address"
+                placeholder="Enter admin email"
                 className="w-full border border-[#1a6b3c] rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
               />
             </div>
 
-            {/* Username */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                User name
-              </label>
-              <input
-                type="text"
-                placeholder="Enter your User name"
-                className="w-full border border-[#1a6b3c] rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-              />
-            </div>
-
-            {/* Password */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Password
               </label>
+
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
-                  placeholder="Enter your Password"
+                  placeholder="Enter admin password"
                   className="w-full border border-[#1a6b3c] rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] pr-12"
                 />
+
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -99,19 +80,19 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {/* Register Button */}
-            <button className="w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition">
-              Register
-            </button>
+            <Link
+              href="/admin/dashboard"
+              className="flex items-center justify-center w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition"
+            >
+              Login as Admin
+            </Link>
 
-            {/* Login link */}
             <p className="text-center text-sm text-gray-500">
-              Already have an account?{" "}
+              Are you a staff member?{" "}
               <Link href="/login" className="text-[#1a6b3c] font-semibold">
-                Sign in
+                Go to staff login
               </Link>
             </p>
-
           </div>
         </div>
       </div>

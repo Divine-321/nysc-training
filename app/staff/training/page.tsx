@@ -3,58 +3,19 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-
-const courses = [
-  {
-    id: 1,
-    title: "NYSC Mandates & Public Administration",
-    category: "Legal Compliance",
-    categoryColor: "bg-red-500",
-    completed: 70,
-    total: 100,
-    duration: "1 Month",
-    description:
-      "Teaches the legal framework, mobilization rules, and anti-fraud administrative protocols.",
-    image: "/images/course-thumb.png",
-  },
-  {
-    id: 2,
-    title: "Camp Operations & Field Logistics",
-    category: "Logistics Management",
-    categoryColor: "bg-blue-500",
-    completed: 50,
-    total: 100,
-    duration: "3 Weeks",
-    description:
-      "Covers 21-day orientation logistics, kitting, feeding, and military-police security coordination.",
-    image: "/images/course-thumb.png",
-  },
-  {
-    id: 3,
-    title: "Youth Mentorship & Program Supervision",
-    category: "Field Oversight",
-    categoryColor: "bg-red-400",
-    completed: 30,
-    total: 100,
-    duration: "3 Month",
-    description:
-      "Trains staff in corps member mediation, SAED tracking, and project monitoring.",
-    image: "/images/course-thumb.png",
-  },
-];
+import { courses } from "@/app/data/courses";
 
 export default function StaffTraining() {
   const [mainTab, setMainTab] = useState<"overview" | "induction">("overview");
   const [overviewTab, setOverviewTab] = useState<"all" | "inprogress" | "past">(
-    "all",
+    "all"
   );
   const [inductionTab, setInductionTab] = useState<"induction" | "outstanding">(
-    "induction",
+    "induction"
   );
 
   return (
     <div>
-      {/* Top Tab Switch */}
       <div className="flex gap-4 mb-6">
         <button
           onClick={() => setMainTab("overview")}
@@ -66,6 +27,7 @@ export default function StaffTraining() {
         >
           Course Overview
         </button>
+
         <button
           onClick={() => setMainTab("induction")}
           className={`px-4 py-2 rounded-full text-sm font-medium transition ${
@@ -78,14 +40,12 @@ export default function StaffTraining() {
         </button>
       </div>
 
-      {/* COURSE OVERVIEW VIEW */}
       {mainTab === "overview" && (
         <div className="bg-white rounded-2xl p-6 shadow-sm">
           <h2 className="text-xl font-semibold text-[#1a6b3c] mb-4">
             Course overview
           </h2>
 
-          {/* Tabs */}
           <div className="flex gap-6 mb-4">
             {(["all", "inprogress", "past"] as const).map((tab) => (
               <button
@@ -93,8 +53,8 @@ export default function StaffTraining() {
                 onClick={() => setOverviewTab(tab)}
                 className={`pb-2 text-sm font-medium capitalize transition ${
                   overviewTab === tab
-                    ? "border-[#1a6b3c] text-[#1a6b3c]"
-                    : "border-transparent text-gray-400"
+                    ? "text-[#1a6b3c]"
+                    : "text-gray-400"
                 }`}
               >
                 {tab === "inprogress"
@@ -104,11 +64,11 @@ export default function StaffTraining() {
             ))}
           </div>
 
-          {/* Filter Row */}
           <div className="flex gap-3 mb-6">
             <select className="border rounded-full px-4 py-2 text-sm text-gray-600 outline-none">
               <option>Sort by course name</option>
             </select>
+
             <input
               type="text"
               placeholder="Type here..."
@@ -116,7 +76,6 @@ export default function StaffTraining() {
             />
           </div>
 
-          {/* Course Cards */}
           <div className="grid grid-cols-3 gap-6">
             {courses.map((course) => (
               <div
@@ -131,29 +90,35 @@ export default function StaffTraining() {
                     height={200}
                     className="w-full h-40 object-cover"
                   />
+
                   <span
                     className={`absolute bottom-2 left-2 ${course.categoryColor} text-white text-xs px-2 py-0.5 rounded`}
                   >
                     {course.category}
                   </span>
                 </div>
+
                 <div className="p-4">
                   <h3 className="font-semibold text-sm text-gray-800 mb-3">
                     {course.title}
                   </h3>
+
                   <p className="text-xs text-gray-400 mb-1">
-                    {course.completed} out of {course.total} activities
-                    completed
+                    {course.completedActivities} out of {course.totalActivities}{" "}
+                    activities completed
                   </p>
+
                   <div className="w-full bg-gray-200 rounded-full h-1.5 mb-1">
                     <div
                       className="bg-[#1a6b3c] h-1.5 rounded-full"
-                      style={{ width: `${course.completed}%` }}
+                      style={{ width: `${course.progress}%` }}
                     />
                   </div>
+
                   <p className="text-xs text-gray-400 mb-4">
-                    {course.completed}% Courses Completed
+                    {course.progress}% Courses Completed
                   </p>
+
                   <Link
                     href={`/staff/course/${course.id}`}
                     className="block w-full border border-[#1a6b3c] text-[#1a6b3c] text-sm rounded-lg py-1.5 hover:bg-[#e8f5ee] transition text-center"
@@ -167,10 +132,8 @@ export default function StaffTraining() {
         </div>
       )}
 
-      {/* INDUCTION VIEW */}
       {mainTab === "induction" && (
         <div className="bg-white rounded-2xl p-6 shadow-sm">
-          {/* Tabs */}
           <div className="flex gap-2 mb-6">
             {(["induction", "outstanding"] as const).map((tab) => (
               <button
@@ -178,8 +141,8 @@ export default function StaffTraining() {
                 onClick={() => setInductionTab(tab)}
                 className={`px-5 py-2 rounded-full text-sm font-medium transition ${
                   inductionTab === tab
-                    ? "bg-white text-[#1a6b3c] font-semibold"
-                    : "border-gray-300 text-gray-400"
+                    ? "bg-[#e8f5ee] text-[#1a6b3c] font-semibold"
+                    : "border text-gray-400"
                 }`}
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -193,7 +156,6 @@ export default function StaffTraining() {
             </button>
           </div>
 
-          {/* Cards */}
           <div className="grid grid-cols-3 gap-6">
             {courses.map((course) => (
               <div
@@ -207,13 +169,25 @@ export default function StaffTraining() {
                   height={160}
                   className="w-full h-36 object-cover rounded-xl mb-3"
                 />
+
                 <p className="text-xs text-gray-400 flex items-center gap-1 mb-1">
                   🕐 {course.duration}
                 </p>
+
                 <h3 className="font-semibold text-sm text-[#1a6b3c] mb-2">
                   {course.title}
                 </h3>
-                <p className="text-xs text-gray-500">{course.description}</p>
+
+                <p className="text-xs text-gray-500 mb-3">
+                  {course.description}
+                </p>
+
+                <Link
+                  href={`/staff/course/${course.id}`}
+                  className="block w-full border border-[#1a6b3c] text-[#1a6b3c] text-sm rounded-lg py-1.5 hover:bg-[#e8f5ee] transition text-center"
+                >
+                  View Course
+                </Link>
               </div>
             ))}
           </div>

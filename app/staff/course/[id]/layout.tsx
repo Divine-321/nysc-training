@@ -1,23 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useParams, usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Bell } from "lucide-react";
-
-const menuItems = [
-  { label: "Introduction", id: "introduction" },
-  { label: "Pre-Course Test", id: "pretest" },
-  { label: "Course Material", id: "material" },
-  { label: "Week 1: Digital Transformation", id: "week1" },
-  { label: "Week 2: Navigating Cloud Tools", id: "week2" },
-  { label: "Week 3: Mastering Spreadsheets", id: "week3" },
-  { label: "Week 4: Data Cleaning", id: "week4" },
-  { label: "Week 5: Intermediate Skills", id: "week5" },
-  { label: "Revision Work: Full Course", id: "revision" },
-  { label: "Post-Course Test", id: "posttest" },
-  { label: "End-of-Course Evaluation", id: "evaluation" },
-];
+import { courses } from "@/app/data/courses";
 
 export default function CourseLayout({
   children,
@@ -25,16 +12,43 @@ export default function CourseLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [activeItem, setActiveItem] = useState("introduction");
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const pathname = usePathname();
+  const params = useParams();
+  const courseId = params.id;
+
+  const currentCourse = courses.find(
+  (course) => String(course.id) === String(courseId)
+);
+
+if (!currentCourse) {
+  return <div className="p-6">Course not found</div>;
+}
+
+  const menuItems = [
+    { label: "Course Overview", href: `/staff/course/${courseId}` },
+
+    ...(currentCourse.hasPreTest
+      ? [{ label: "Pre-Course Test", href: `/staff/course/${courseId}/assessment/pre-test` }]
+      : []),
+
+    ...currentCourse.modules.map((module) => ({
+      label: module.title,
+      href: `/staff/course/${courseId}/module/${module.id}`,
+    })),
+
+    ...(currentCourse.hasPostTest
+      ? [{ label: "Post-Course Test", href: `/staff/course/${courseId}/assessment/post-test` }]
+      : []),
+
+    ...(currentCourse.hasEvaluation
+      ? [{ label: "Evaluation", href: `/staff/course/${courseId}/evaluation` }]
+      : []),
+  ];
 
   return (
     <div className="min-h-screen flex flex-col">
-
-      {/* GREEN HEADER */}
       <header className="h-16 bg-[#1a6b3c] flex items-center justify-between px-6 fixed top-0 left-0 right-0 z-50">
         <div className="flex items-center gap-4">
-          {/* Back Button */}
           <button
             onClick={() => router.push("/staff/training")}
             className="flex items-center gap-2 text-white hover:text-green-200 transition"
@@ -45,7 +59,6 @@ export default function CourseLayout({
 
           <div className="w-px h-6 bg-green-500" />
 
-          {/* Logo */}
           <div className="flex items-center gap-2">
             <Image src="/images/nysc-logo.png" alt="NYSC" width={36} height={36} />
             <div>
@@ -56,10 +69,8 @@ export default function CourseLayout({
         </div>
 
         <div className="flex items-center gap-4">
-          <button className="text-white">
-            <Bell size={20} />
-          </button>
-          <div className="flex items-center gap-2 cursor-pointer">
+          <Bell size={20} className="text-white" />
+          <div className="flex items-center gap-2">
             <Image
               src="/images/user-avatar.png"
               alt="User"
@@ -73,41 +84,35 @@ export default function CourseLayout({
       </header>
 
       <div className="flex pt-16 min-h-screen">
-
-        {/* COURSE SIDEBAR */}
-        <aside className="w-48 bg-white fixed top-16 left-0 bottom-0 overflow-y-auto">
-          <div className="px-4 py-3 bg-white sticky top-0">
+        <aside className="w-56 bg-white fixed top-16 left-0 bottom-0 overflow-y-auto">
+          <div className="px-4 py-3 sticky top-0 bg-white border-b">
             <p className="text-sm font-bold text-gray-800">Course Menu</p>
           </div>
+
           <nav>
-            {menuItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveItem(item.id);
-                  setExpanded(expanded === item.id ? null : item.id);
-                }}
-                className={`w-full flex items-center justify-between px-4 py-3 text-xs font-medium text-left border-b border-gray-100 transition ${
-                  activeItem === item.id
-                    ? "bg-[#1a6b3c] text-white"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                <span className="leading-snug">{item.label}</span>
-                <span className="ml-1 shrink-0">▾</span>
-              </button>
-            ))}
+            {menuItems.map((item) => {
+              const active = pathname === item.href;
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`block px-4 py-3 text-xs font-medium border-b border-gray-100 transition ${
+                    active
+                      ? "bg-[#1a6b3c] text-white"
+                      : "text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
           </nav>
         </aside>
 
-        {/* MAIN CONTENT — passes activeItem down via context or search params */}
-        <main className="ml-48 flex-1 bg-gray-50 min-h-screen">
-          {/* Pass activeItem to children via a workaround */}
-          <div data-active={activeItem} className="h-full">
-            {children}
-          </div>
+        <main className="ml-56 flex-1 bg-gray-50 min-h-screen">
+          {children}
         </main>
-
       </div>
     </div>
   );

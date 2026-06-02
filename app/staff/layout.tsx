@@ -80,10 +80,13 @@ if (isInsideCourse) {
                 );
               })}
 
-              <button className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-500 hover:bg-red-50 w-full mt-4">
+              <Link
+                href="/login"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-500 hover:bg-red-50 w-full mt-4"
+              >
                 <LogOut size={18} />
                 Sign out
-              </button>
+              </Link>
             </nav>
           </div>
 
