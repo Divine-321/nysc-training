@@ -24,11 +24,8 @@ if (isInsideCourse) {
     <div className="min-h-screen flex flex-col">
 
       {/* Top Header */}
-      <header className="h-16 bg-white flex items-center justify-between px-6 fixed top-0 left-0 right-0 z-50">
-        <div className="flex items-center gap-3">
-          <Image src="/images/nysc-logo.png" alt="NYSC" width={48} height={48} />
-        </div>
-        <h1 className="text-2xl font-bold text-[#1a6b3c]">Welcome, User</h1>
+      <header className="h-16 bg-white flex items-center justify-between px-8 fixed top-0 left-60 right-0 z-40 border-b border-gray-100">
+        <h1 className="text-xl font-bold text-gray-800">Welcome, User</h1>
         <div className="flex items-center gap-4">
           <button className="text-gray-500 hover:text-[#1a6b3c]">
             🔔
@@ -49,16 +46,17 @@ if (isInsideCourse) {
       <div className="flex pt-16 min-h-screen">
 
         {/* Sidebar */}
-        <aside className="w-60 bg-white fixed top-16 left-0 bottom-0 flex flex-col justify-between py-6 px-4">
+        <aside className="w-60 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col justify-between py-6 px-4 z-50 shadow-xl">
           <div>
             {/* Brand */}
-            <div className="mb-6 px-2">
-              <p className="text-[#1a6b3c] font-bold text-sm leading-tight">
+            <div className="mb-6 px-2 flex flex-col items-center text-center gap-4">
+              <Image src="/images/nysc-logo.png" alt="NYSC" width={56} height={56} />
+              <p className="text-white font-bold text-sm leading-tight">
                 NATIONAL YOUTH SERVICE CORPS<br />STAFF E-TRAINING
               </p>
             </div>
 
-            <div className="w-full h-px bg-gray-200 mb-4" />
+            <div className="w-full h-px bg-white/20 mb-4" />
 
             {/* Nav Links */}
             <nav className="space-y-1">
@@ -70,11 +68,11 @@ if (isInsideCourse) {
                     href={href}
                     className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
                       isActive
-                        ? "bg-[#e8f5ee] text-[#1a6b3c] font-semibold"
-                        : "text-gray-600 hover:bg-gray-100"
+                        ? "bg-white text-[#1a6b3c] font-semibold"
+                        : "text-green-50 hover:bg-white/10 hover:text-white"
                     }`}
                   >
-                    <Icon size={18} className={isActive ? "text-[#1a6b3c]" : "text-gray-400"} />
+                    <Icon size={18} className={isActive ? "text-[#1a6b3c]" : "text-green-200"} />
                     {label}
                   </Link>
                 );
@@ -82,7 +80,7 @@ if (isInsideCourse) {
 
               <Link
                 href="/login"
-                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-500 hover:bg-red-50 w-full mt-4"
+                className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-200 hover:bg-white/10 hover:text-red-100 w-full mt-4"
               >
                 <LogOut size={18} />
                 Sign out
@@ -91,7 +89,7 @@ if (isInsideCourse) {
           </div>
 
           {/* Help Card */}
-          <div className="bg-[#1a6b3c] rounded-2xl p-4 text-white text-sm">
+          <div className="bg-black/20 rounded-2xl p-4 text-white text-sm">
             <div className="w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center mb-2 text-[#1a6b3c] font-bold">?</div>
             <p className="font-semibold mb-1">Need help?</p>
             <p className="text-xs text-green-200 mb-3">Please contact us for more questions</p>
