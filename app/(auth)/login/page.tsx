@@ -8,29 +8,27 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center px-4">
-      <div className="w-full max-w-7xl flex items-center justify-between gap-12">
-        {/* Left — Illustration */}
-        <div className="hidden md:flex flex-1 items-center justify-center">
-          <Image
-            src="/images/login-illustration.png"
-            alt="Login Illustration"
-            width={480}
-            height={400}
-            priority
-          />
-        </div>
-
-        {/* Right — Form */}
-        <div className="flex-1 flex flex-col items-center">
-          {/* Logo */}
+    <div className="min-h-screen bg-white flex">
+        {/* Left — Branding */}
+        <div className="hidden md:flex flex-1 flex-col items-center justify-center bg-[#1a6b3c] p-12 text-white">
           <Image
             src="/images/nysc-logo.png"
             alt="NYSC Logo"
-            width={80}
-            height={80}
-            className="mb-6"
+            width={180}
+            height={180}
+            priority
+            className="mb-8"
           />
+          <h1 className="text-4xl md:text-5xl font-extrabold text-center tracking-tight leading-tight mb-4">
+            NYSC Staff <br /> E-Training Portal
+          </h1>
+          <p className="text-green-100 text-center text-lg max-w-md mt-2 font-medium">
+            Log in to access your dashboard, resume courses, and track your training progress.
+          </p>
+        </div>
+
+        {/* Right — Form */}
+        <div className="flex-1 flex flex-col items-center justify-center p-8 sm:p-12">
 
           {/* Login / Register Toggle */}
           <div className="flex bg-[#e8f5ee] rounded-full p-1 mb-6 w-64">
@@ -114,7 +112,6 @@ export default function LoginPage() {
             </p>
           </div>
         </div>
-      </div>
     </div>
   );
 }

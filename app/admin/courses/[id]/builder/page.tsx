@@ -2,6 +2,8 @@
 
 import { useParams } from "next/navigation";
 import { useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, Plus, Save, FileText, CheckCircle2 } from "lucide-react";
 import { courses } from "@/app/data/courses";
 
 export default function CourseBuilderPage() {
@@ -17,99 +19,147 @@ export default function CourseBuilderPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-6xl space-y-6">
       <div>
-        <h2 className="text-2xl font-bold">Course Builder</h2>
-        <p className="text-sm text-gray-500">{course.title}</p>
+        <Link href="/admin/courses" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#1a6b3c] mb-2 transition">
+          <ArrowLeft size={16} /> Back to Courses
+        </Link>
+        <h2 className="text-2xl font-bold text-gray-800">Course Builder</h2>
+        <p className="text-sm text-gray-500 mt-1">{course.title}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
-          <h3 className="font-bold text-[#1a6b3c]">Add Module</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-2xl p-6 shadow-sm space-y-5 border border-gray-100">
+          <h3 className="font-bold text-[#1a6b3c] text-lg mb-2">Add Module</h3>
 
-          <input className="w-full border rounded-lg px-4 py-3" placeholder="Module title" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Module Title</label>
+            <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="Enter module title" />
+          </div>
 
-          <textarea
-            className="w-full border rounded-lg px-4 py-3 h-24"
-            placeholder="Module description"
-          />
-
-          <select
-            value={contentType}
-            onChange={(e) => setContentType(e.target.value)}
-            className="w-full border rounded-lg px-4 py-3"
-          >
-            <option>Text</option>
-            <option>PDF</option>
-            <option>Video</option>
-            <option>Audio</option>
-            <option>External Link</option>
-          </select>
-
-          {contentType === "Text" && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Module Description</label>
             <textarea
-              className="w-full border rounded-lg px-4 py-3 h-32"
-              placeholder="Type lesson content..."
+              className="w-full border border-gray-300 rounded-lg px-4 py-3 h-24 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] resize-none"
+              placeholder="Briefly describe what this module covers"
             />
-          )}
+          </div>
 
-          {["PDF", "Video", "Audio"].includes(contentType) && (
-            <input type="file" className="w-full border rounded-lg px-4 py-3" />
-          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Content Type</label>
+            <select
+              value={contentType}
+              onChange={(e) => setContentType(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+            >
+              <option>Text</option>
+              <option>PDF</option>
+              <option>Video</option>
+              <option>Audio</option>
+              <option>External Link</option>
+            </select>
+          </div>
 
-          {contentType === "External Link" && (
-            <input className="w-full border rounded-lg px-4 py-3" placeholder="https://..." />
-          )}
+          <div>
+            {contentType === "Text" && (
+              <textarea
+                className="w-full border border-gray-300 rounded-lg px-4 py-3 h-32 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] resize-none"
+                placeholder="Type lesson content here..."
+              />
+            )}
 
-          <button className="bg-[#1a6b3c] text-white px-5 py-2 rounded-lg">
-            Add Module
+            {["PDF", "Video", "Audio"].includes(contentType) && (
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:bg-gray-50 transition cursor-pointer">
+                <input type="file" className="hidden" id="file-upload" />
+                <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
+                  <FileText size={24} className="text-gray-400 mb-2" />
+                  <span className="text-sm font-medium text-[#1a6b3c]">Click to upload {contentType}</span>
+                  <span className="text-xs text-gray-500 mt-1">Max file size: 50MB</span>
+                </label>
+              </div>
+            )}
+
+            {contentType === "External Link" && (
+              <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="https://..." />
+            )}
+          </div>
+
+          <button className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 w-full transition">
+            <Plus size={18} />
+            Add Module to Course
           </button>
         </div>
 
-        <div className="bg-white rounded-2xl p-6 shadow-sm">
-          <h3 className="font-bold text-[#1a6b3c] mb-4">Existing Modules</h3>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col">
+          <h3 className="font-bold text-[#1a6b3c] text-lg mb-4">Existing Modules</h3>
 
-          <div className="space-y-3">
+          <div className="space-y-3 flex-1 overflow-y-auto pr-2" style={{ maxHeight: "600px" }}>
             {course.modules.map((module) => (
-              <div key={module.id} className="border rounded-lg p-4">
-                <h4 className="font-semibold">{module.title}</h4>
-                <p className="text-sm text-gray-500">{module.description}</p>
-                <p className="text-xs text-gray-400 mt-2">
-                  Content: {module.contentType}
-                </p>
+              <div key={module.id} className="border border-gray-200 rounded-xl p-4 hover:border-[#1a6b3c] transition group cursor-pointer relative">
+                <h4 className="font-semibold text-gray-800">{module.title}</h4>
+                <p className="text-sm text-gray-500 mt-1">{module.description}</p>
+                <div className="flex items-center gap-2 mt-3">
+                  <span className="bg-gray-100 text-gray-600 text-xs px-2.5 py-1 rounded-md font-medium">
+                    {module.contentType}
+                  </span>
+                </div>
+                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition">
+                  <button className="text-sm text-[#1a6b3c] font-semibold hover:underline">Edit</button>
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-4">
-        <h3 className="font-bold text-[#1a6b3c]">Assessment Builder</h3>
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
+        <h3 className="font-bold text-[#1a6b3c] text-lg">Assessment Builder</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Assessment Type</label>
+              <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
+                <option>Pre-Course Test</option>
+                <option>Post-Course Test</option>
+              </select>
+            </div>
 
-        <select className="w-full border rounded-lg px-4 py-3">
-          <option>Pre-Course Test</option>
-          <option>Post-Course Test</option>
-        </select>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Question</label>
+              <textarea className="w-full border border-gray-300 rounded-lg px-4 py-3 h-24 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] resize-none" placeholder="Type your question here..." />
+            </div>
+          </div>
 
-        <input className="w-full border rounded-lg px-4 py-3" placeholder="Question" />
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Options</label>
+              <div className="grid grid-cols-2 gap-3">
+                <input className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="A." />
+                <input className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="B." />
+                <input className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="C." />
+                <input className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="D." />
+              </div>
+            </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <input className="border rounded-lg px-4 py-3" placeholder="Option A" />
-          <input className="border rounded-lg px-4 py-3" placeholder="Option B" />
-          <input className="border rounded-lg px-4 py-3" placeholder="Option C" />
-          <input className="border rounded-lg px-4 py-3" placeholder="Option D" />
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Correct Answer</label>
+              <select className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
+                <option>Option A</option>
+                <option>Option B</option>
+                <option>Option C</option>
+                <option>Option D</option>
+              </select>
+            </div>
+          </div>
         </div>
 
-        <select className="w-full border rounded-lg px-4 py-3">
-          <option>Correct Answer: A</option>
-          <option>Correct Answer: B</option>
-          <option>Correct Answer: C</option>
-          <option>Correct Answer: D</option>
-        </select>
-
-        <button className="bg-[#1a6b3c] text-white px-5 py-2 rounded-lg">
-          Add Question
-        </button>
+        <div className="pt-2 border-t border-gray-100 flex justify-end">
+          <button className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition">
+            <CheckCircle2 size={18} />
+            Save Question
+          </button>
+        </div>
       </div>
     </div>
   );

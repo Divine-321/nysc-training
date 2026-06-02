@@ -3,6 +3,9 @@ import { courses, deadlines, stats } from "@/app/data/courses";
 
 export default function StaffDashboard() {
   const activeCourses = courses.slice(0, 2);
+  const overallProgress = Math.round(
+    courses.reduce((acc, course) => acc + course.progress, 0) / (courses.length || 1)
+  );
 
   return (
     <div className="space-y-6">
@@ -90,14 +93,14 @@ export default function StaffDashboard() {
                     fill="none"
                     stroke="#1a6b3c"
                     strokeWidth="3"
-                    strokeDasharray="45 55"
+                    strokeDasharray={`${overallProgress} ${100 - overallProgress}`}
                     strokeLinecap="round"
                   />
                 </svg>
 
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="text-lg font-bold text-[#1a6b3c]">
-                    45%
+                    {overallProgress}%
                   </span>
                 </div>
               </div>
