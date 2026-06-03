@@ -3,11 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BarChart2, Monitor, Award, LogOut } from "lucide-react";
+import { LayoutDashboard, BarChart2, Monitor, Award, LogOut, Library, FileQuestion } from "lucide-react";
 
 const navItems = [
   { label: "Dashboard", href: "/staff/dashboard", icon: LayoutDashboard },
+  { label: "NYSC Books", href: "/staff/books", icon: Library },
   { label: "Training", href: "/staff/training", icon: BarChart2 },
+  { label: "CBT Exams", href: "/staff/cbt", icon: FileQuestion },
   { label: "Result", href: "/staff/result", icon: Monitor },
   { label: "Certifications", href: "/staff/certifications", icon: Award },
 ];
@@ -15,10 +17,11 @@ const navItems = [
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
-  const isInsideCourse = pathname.includes("/staff/course/");
-if (isInsideCourse) {
-  return <>{children}</>;
-}
+  const isFullScreenView = pathname.includes("/staff/course/") || (pathname.includes("/staff/cbt/") && pathname !== "/staff/cbt");
+  
+  if (isFullScreenView) {
+    return <>{children}</>;
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -46,7 +49,7 @@ if (isInsideCourse) {
       <div className="flex pt-16 min-h-screen">
 
         {/* Sidebar */}
-        <aside className="w-60 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col justify-between py-6 px-4 z-50 shadow-xl">
+        <aside className="w-60 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col justify-between py-6 px-4 z-50 shadow-xl overflow-y-auto">
           <div>
             {/* Brand */}
             <div className="mb-6 px-2 flex flex-col items-center text-center gap-4">
