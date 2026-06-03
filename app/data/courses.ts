@@ -1,3 +1,18 @@
+export interface LiveSession {
+  id: string;
+  title: string;
+  scheduledDate: string; // e.g., "Jun 10, 2026"
+  time: string; // e.g., "09:00 AM - 10:30 AM"
+  duration: string; // e.g., "90 mins"
+  zoomLink: string; // A placeholder link
+  meetingId?: string; // Optional
+  passcode?: string; // Optional
+  status: "upcoming" | "live" | "completed";
+}
+
+// Extend the existing Course interface if it's defined elsewhere,
+// or assume this structure is used for the courses array directly.
+// For a frontend prototype, this inline definition is fine.
 export const courses = [
   {
     id: "1",
@@ -56,6 +71,28 @@ export const courses = [
         completed: false,
       },
     ],
+    liveSessions: [
+      {
+        id: "LS-001-A",
+        title: "NYSC Mandates: Legal Framework Overview",
+        scheduledDate: "Jun 10, 2026",
+        time: "09:00 AM - 10:30 AM",
+        duration: "90 mins",
+        zoomLink: "https://zoom.us/j/example1A",
+        meetingId: "123-456-7890",
+        passcode: "NYSC123",
+        status: "upcoming",
+      },
+      {
+        id: "LS-001-B",
+        title: "Public Administration Q&A",
+        scheduledDate: "May 28, 2026", // Past date
+        time: "02:00 PM - 03:00 PM",
+        duration: "60 mins",
+        zoomLink: "https://zoom.us/j/example1B",
+        status: "completed",
+      },
+    ],
   },
   {
     id: "2",
@@ -103,6 +140,28 @@ export const courses = [
           "Learn the basics of coordinating with security agencies during camp operations.",
         contentType: "Text / Video",
         completed: false,
+      },
+    ],
+    liveSessions: [
+      {
+        id: "LS-002-A",
+        title: "Camp Logistics Briefing",
+        scheduledDate: "Jun 15, 2026",
+        time: "11:00 AM - 12:00 PM",
+        duration: "60 mins",
+        zoomLink: "https://zoom.us/j/example2A",
+        meetingId: "987-654-3210",
+        passcode: "CAMP456",
+        status: "upcoming",
+      },
+      {
+        id: "LS-002-B",
+        title: "Security Protocols Review",
+        scheduledDate: "Jun 01, 2026", // Past date
+        time: "01:00 PM - 02:30 PM",
+        duration: "90 mins",
+        zoomLink: "https://zoom.us/j/example2B",
+        status: "completed",
       },
     ],
   },

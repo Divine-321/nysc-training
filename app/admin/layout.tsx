@@ -11,6 +11,7 @@ import {
   Building2,
   Layers,
   BarChart3,
+  History,
   LogOut,
 } from "lucide-react";
 
@@ -22,6 +23,7 @@ const navItems = [
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
   { label: "Assignments", href: "/admin/assignments", icon: UserRound },
   { label: "Reports", href: "/admin/reports", icon: BarChart3 },
+  { label: "Audit Logs", href: "/admin/audit", icon: History },
 ];
 
 export default function AdminLayout({

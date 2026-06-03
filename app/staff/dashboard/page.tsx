@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { courses, deadlines, stats } from "@/app/data/courses";
+import { BookOpen, PlayCircle, CheckCircle2, Calendar, Target, ArrowRight } from "lucide-react";
 
 export default function StaffDashboard() {
   const activeCourses = courses.slice(0, 2);
@@ -7,112 +8,132 @@ export default function StaffDashboard() {
     courses.reduce((acc, course) => acc + course.progress, 0) / (courses.length || 1)
   );
 
+  const getStatIcon = (label: string) => {
+    if (label.includes("Assigned")) return <BookOpen size={24} />;
+    if (label.includes("Progress")) return <PlayCircle size={24} />;
+    return <CheckCircle2 size={24} />;
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-4">
+    <div className="space-y-8 max-w-6xl mx-auto">
+      <div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-1">Dashboard Overview</h2>
+        <p className="text-sm text-gray-500">Track your learning progress and upcoming deadlines.</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className={`${stat.color} rounded-2xl p-5 flex items-center justify-between`}
+            className={`${stat.color} rounded-2xl p-6 flex flex-col justify-between border border-white/50 shadow-sm relative overflow-hidden`}
           >
-            <p className="text-sm font-medium text-gray-600">{stat.label}</p>
-            <p className={`text-3xl font-bold ${stat.text}`}>{stat.value}</p>
+            <div className="flex justify-between items-start mb-4">
+              <div className={`p-3 rounded-xl bg-white/60 ${stat.text} shadow-sm`}>
+                {getStatIcon(stat.label)}
+              </div>
+              <p className={`text-3xl font-extrabold ${stat.text}`}>{stat.value}</p>
+            </div>
+            <p className="text-sm font-bold text-gray-700">{stat.label}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 bg-white rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-800">My Active Courses</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-lg font-bold text-gray-800">My Active Courses</h3>
             <Link
               href="/staff/training"
-              className="text-xs text-[#1a6b3c] font-medium hover:underline"
+              className="text-sm text-[#1a6b3c] font-semibold hover:underline flex items-center gap-1"
             >
-              View All
+              View All <ArrowRight size={16} />
             </Link>
           </div>
 
           <div className="space-y-4">
             {activeCourses.map((course) => (
-              <div key={course.id} className="border rounded-xl p-4">
-                <div className="flex items-start justify-between mb-2">
+              <div key={course.id} className="border border-gray-100 rounded-xl p-5 hover:border-green-200 hover:bg-green-50/30 transition group">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-4 gap-4">
                   <div>
-                    <p className="text-sm font-semibold text-gray-800">
+                    <h4 className="text-base font-bold text-gray-800 group-hover:text-[#1a6b3c] transition">
                       {course.title}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    </h4>
+                    <p className="text-xs font-semibold text-gray-400 mt-1 uppercase tracking-wider">
                       {course.category}
                     </p>
                   </div>
 
                   <Link
                     href={`/staff/course/${course.id}`}
-                    className="text-xs border border-[#1a6b3c] text-[#1a6b3c] px-3 py-1 rounded-full hover:bg-[#e8f5ee] transition shrink-0 ml-4"
+                    className="text-sm bg-white border border-gray-200 text-gray-700 px-5 py-2.5 rounded-full hover:border-[#1a6b3c] hover:text-[#1a6b3c] transition shrink-0 shadow-sm font-medium flex items-center justify-center gap-2"
                   >
-                    Continue
+                    <PlayCircle size={16} /> Continue
                   </Link>
                 </div>
 
-                <div className="w-full bg-gray-100 rounded-full h-1.5 mt-3">
-                  <div
-                    className="bg-[#1a6b3c] h-1.5 rounded-full"
-                    style={{ width: `${course.progress}%` }}
-                  />
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-medium text-gray-500">Progress</p>
+                    <p className="text-xs font-bold text-[#1a6b3c]">{course.progress}%</p>
+                  </div>
+                  <div className="w-full bg-gray-100 rounded-full h-2">
+                    <div
+                      className="bg-[#1a6b3c] h-2 rounded-full transition-all duration-500"
+                      style={{ width: `${course.progress}%` }}
+                    />
+                  </div>
                 </div>
-
-                <p className="text-xs text-gray-400 mt-1">
-                  {course.progress}% completed
-                </p>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="space-y-4">
-          <div className="bg-white rounded-2xl p-5 shadow-sm">
-            <h3 className="font-semibold text-gray-800 mb-3">
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100 flex flex-col items-center relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-4 opacity-5">
+              <Target size={100} />
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 mb-6 w-full text-left z-10">
               Overall Progress
             </h3>
 
-            <div className="flex items-center justify-center">
-              <div className="relative w-24 h-24">
-                <svg viewBox="0 0 36 36" className="w-24 h-24 -rotate-90">
-                  <circle
-                    cx="18"
-                    cy="18"
-                    r="15.9"
-                    fill="none"
-                    stroke="#e8f5ee"
-                    strokeWidth="3"
-                  />
-                  <circle
-                    cx="18"
-                    cy="18"
-                    r="15.9"
-                    fill="none"
-                    stroke="#1a6b3c"
-                    strokeWidth="3"
-                    strokeDasharray={`${overallProgress} ${100 - overallProgress}`}
-                    strokeLinecap="round"
-                  />
-                </svg>
+            <div className="relative w-32 h-32 z-10 mb-4">
+              <svg viewBox="0 0 36 36" className="w-32 h-32 -rotate-90">
+                <circle
+                  cx="18"
+                  cy="18"
+                  r="15.9"
+                  fill="none"
+                  stroke="#f3f4f6"
+                  strokeWidth="3.5"
+                />
+                <circle
+                  cx="18"
+                  cy="18"
+                  r="15.9"
+                  fill="none"
+                  stroke="#1a6b3c"
+                  strokeWidth="3.5"
+                  strokeDasharray={`${overallProgress} ${100 - overallProgress}`}
+                  strokeLinecap="round"
+                  className="transition-all duration-1000 ease-out"
+                />
+              </svg>
 
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-lg font-bold text-[#1a6b3c]">
-                    {overallProgress}%
-                  </span>
-                </div>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-3xl font-black text-gray-800">
+                  {overallProgress}<span className="text-lg text-gray-400">%</span>
+                </span>
               </div>
             </div>
 
-            <p className="text-xs text-gray-400 text-center mt-2">
-              Overall completion rate
+            <p className="text-sm font-medium text-gray-500 text-center z-10">
+              Total completion rate across all assigned courses
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-5 shadow-sm">
-            <h3 className="font-semibold text-gray-800 mb-3">
+          <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
+            <h3 className="text-lg font-bold text-gray-800 mb-5">
               Upcoming Deadlines
             </h3>
 
@@ -120,14 +141,19 @@ export default function StaffDashboard() {
               {deadlines.map((deadline) => (
                 <li
                   key={deadline.title}
-                  className="flex items-start justify-between"
+                  className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50 hover:bg-gray-100/50 transition"
                 >
-                  <p className="text-xs text-gray-700 font-medium">
-                    {deadline.title}
-                  </p>
-                  <p className="text-xs text-red-400 shrink-0 ml-2">
+                  <div className="flex items-center gap-3 overflow-hidden pr-2">
+                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                      <Calendar size={14} />
+                    </div>
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      {deadline.title}
+                    </p>
+                  </div>
+                  <span className="text-xs font-bold text-red-700 bg-red-100 px-2.5 py-1 rounded-md shrink-0 whitespace-nowrap">
                     {deadline.due}
-                  </p>
+                  </span>
                 </li>
               ))}
             </ul>
