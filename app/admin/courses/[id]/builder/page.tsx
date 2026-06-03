@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Save, FileText, CheckCircle2, Video } from "lucide-react";
+import { ArrowLeft, Plus, Save, FileText, CheckCircle2, Video, UploadCloud } from "lucide-react";
 import { courses } from "@/app/data/courses";
 
 export default function CourseBuilderPage() {
@@ -158,6 +158,64 @@ export default function CourseBuilderPage() {
           <button className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition">
             <CheckCircle2 size={18} />
             Save Question
+          </button>
+        </div>
+      </div>
+
+      {/* Course Materials & Resources Upload */}
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
+        <div className="flex items-center gap-2 mb-2">
+          <UploadCloud className="text-[#1a6b3c]" size={24} />
+          <h3 className="font-bold text-[#1a6b3c] text-lg">Upload Course Materials</h3>
+        </div>
+        
+        <p className="text-sm text-gray-500 -mt-3 mb-4">
+          Add supplementary videos, audios, and PDFs for this course. These will be available for staff to download or view.
+        </p>
+
+        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-gray-50 transition cursor-pointer">
+          <input type="file" className="hidden" id="global-file-upload" multiple accept="video/*,audio/*,application/pdf" />
+          <label htmlFor="global-file-upload" className="cursor-pointer flex flex-col items-center">
+            <div className="w-14 h-14 bg-[#f0f7f3] text-[#1a6b3c] rounded-full flex items-center justify-center mb-3 shadow-sm">
+              <UploadCloud size={28} />
+            </div>
+            <span className="text-base font-bold text-gray-800">Click to upload files</span>
+            <span className="text-sm text-gray-500 mt-1">MP4, MP3, or PDF (Max 100MB)</span>
+          </label>
+        </div>
+
+        <div className="space-y-3">
+          <h4 className="font-semibold text-gray-800 text-sm mt-4">Recently Uploaded</h4>
+          <div className="flex items-center justify-between p-4 border border-gray-100 rounded-xl bg-gray-50 hover:border-gray-200 transition">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 text-red-600 rounded-lg shrink-0">
+                <FileText size={20} />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-800 text-sm">Orientation_Guide.pdf</p>
+                <p className="text-xs text-gray-500">4.2 MB • Uploaded just now</p>
+              </div>
+            </div>
+            <button className="text-sm text-red-600 font-semibold hover:underline">Remove</button>
+          </div>
+          <div className="flex items-center justify-between p-4 border border-gray-100 rounded-xl bg-gray-50 hover:border-gray-200 transition">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 text-blue-600 rounded-lg shrink-0">
+                <Video size={20} />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-800 text-sm">Welcome_Address.mp4</p>
+                <p className="text-xs text-gray-500">24.5 MB • Uploaded yesterday</p>
+              </div>
+            </div>
+            <button className="text-sm text-red-600 font-semibold hover:underline">Remove</button>
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-gray-100 flex justify-end">
+          <button className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition">
+            <Save size={18} />
+            Save Materials
           </button>
         </div>
       </div>
