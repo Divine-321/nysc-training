@@ -15,6 +15,9 @@ export default function CourseLayout({
   const pathname = usePathname();
   const params = useParams();
   const courseId = params.id;
+  const isLiveSession = Boolean(params.sessionId);
+  const isAssessment = pathname.includes("/assessment/");
+  const hideSidebar = isLiveSession || isAssessment;
 
   const currentCourse = courses.find(
   (course) => String(course.id) === String(courseId)
@@ -35,6 +38,10 @@ if (!currentCourse) {
       label: module.title,
       href: `/staff/course/${courseId}/module/${module.id}`,
     })),
+
+    ...(currentCourse.liveSessions && currentCourse.liveSessions.length > 0
+      ? [{ label: "Live Sessions", href: `/staff/course/${courseId}/live` }]
+      : []),
 
     ...(currentCourse.hasPostTest
       ? [{ label: "Post-Course Test", href: `/staff/course/${courseId}/assessment/post-test` }]
@@ -84,33 +91,35 @@ if (!currentCourse) {
       </header>
 
       <div className="flex pt-16 min-h-screen">
-        <aside className="w-56 bg-white fixed top-16 left-0 bottom-0 overflow-y-auto">
-          <div className="px-4 py-3 sticky top-0 bg-white border-b">
-            <p className="text-sm font-bold text-gray-800">Course Menu</p>
-          </div>
+        {!hideSidebar && (
+          <aside className="w-56 bg-white fixed top-16 left-0 bottom-0 overflow-y-auto">
+            <div className="px-4 py-3 sticky top-0 bg-white border-b">
+              <p className="text-sm font-bold text-gray-800">Course Menu</p>
+            </div>
 
-          <nav>
-            {menuItems.map((item) => {
-              const active = pathname === item.href;
+            <nav>
+              {menuItems.map((item) => {
+                const active = pathname === item.href;
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`block px-4 py-3 text-xs font-medium border-b border-gray-100 transition ${
-                    active
-                      ? "bg-[#1a6b3c] text-white"
-                      : "text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </aside>
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`block px-4 py-3 text-xs font-medium border-b border-gray-100 transition ${
+                      active
+                        ? "bg-[#1a6b3c] text-white"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          </aside>
+        )}
 
-        <main className="ml-56 flex-1 bg-gray-50 min-h-screen">
+        <main className={`${hideSidebar ? "" : "ml-56"} flex-1 bg-gray-50 min-h-screen`}>
           {children}
         </main>
       </div>
