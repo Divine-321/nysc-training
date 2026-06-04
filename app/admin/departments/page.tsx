@@ -12,7 +12,7 @@ const mockCohorts = [
 
 export default function DepartmentsPage() {
   const [showForm, setShowForm] = useState(false);
-  const [activeTab, setActiveTab] = useState<"departments" | "cohorts">("departments");
+  const [activeTab, setActiveTab] = useState<"departments" | "cohorts">("cohorts");
 
   const isDept = activeTab === "departments";
   const dataList = isDept ? departments : mockCohorts;
@@ -21,7 +21,7 @@ export default function DepartmentsPage() {
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Organization Units</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Cohorts</h2>
           <p className="text-sm text-gray-500 mt-1">Manage staff departments and training cohorts.</p>
         </div>
 
@@ -37,16 +37,16 @@ export default function DepartmentsPage() {
       {/* Tab Switcher */}
       <div className="flex space-x-1 bg-white p-1 rounded-xl w-fit border border-gray-200 shadow-sm">
         <button
-          onClick={() => { setActiveTab("departments"); setShowForm(false); }}
-          className={`px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition ${isDept ? "bg-[#f0f7f3] text-[#1a6b3c]" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}
-        >
-          <Building2 size={16} /> Departments
-        </button>
-        <button
           onClick={() => { setActiveTab("cohorts"); setShowForm(false); }}
           className={`px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition ${!isDept ? "bg-[#f0f7f3] text-[#1a6b3c]" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}
         >
           <Layers size={16} /> Cohorts
+        </button>
+        <button
+          onClick={() => { setActiveTab("departments"); setShowForm(false); }}
+          className={`px-5 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition ${isDept ? "bg-[#f0f7f3] text-[#1a6b3c]" : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}
+        >
+          <Building2 size={16} /> Departments
         </button>
       </div>
 
