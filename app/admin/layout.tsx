@@ -18,7 +18,7 @@ import {
 const navItems = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { label: "Staff", href: "/admin/users", icon: Users },
-  { label: "Organization", href: "/admin/departments", icon: Building2 },
+  { label: "Cohorts", href: "/admin/departments", icon: Layers },
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
   { label: "Assignments", href: "/admin/assignments", icon: UserRound },
   { label: "Audit Logs", href: "/admin/audit", icon: History },
