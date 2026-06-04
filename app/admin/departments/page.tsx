@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import { Search, Filter, Plus, MoreHorizontal, Building2, Layers } from "lucide-react";
-import { departments } from "@/app/data/adminData";
+
+const mockDepartments = [
+  { id: "DEP-001", name: "Human Resource Management", staffCount: 120, status: "Active" },
+  { id: "DEP-002", name: "Information and Communications Technology (ICT)", staffCount: 45, status: "Active" },
+  { id: "DEP-003", name: "Planning, Research & Statistics (PRS)", staffCount: 60, status: "Active" },
+  { id: "DEP-004", name: "Procurement", staffCount: 30, status: "Active" },
+  { id: "DEP-005", name: "Internal Audit", staffCount: 25, status: "Active" },
+];
 
 const mockCohorts = [
   { id: "COH-001", name: "Induction", staffCount: 450, status: "Active", startDate: "Jan 2026", endDate: "Feb 2026" },
@@ -16,7 +23,7 @@ export default function DepartmentsPage() {
   const [activeTab, setActiveTab] = useState<"departments" | "cohorts">("cohorts");
 
   const isDept = activeTab === "departments";
-  const dataList = isDept ? departments : mockCohorts;
+  const dataList = isDept ? mockDepartments : mockCohorts;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
