@@ -5,9 +5,10 @@ import { Search, Filter, Plus, MoreHorizontal, Building2, Layers } from "lucide-
 import { departments } from "@/app/data/adminData";
 
 const mockCohorts = [
-  { id: "COH-001", name: "Batch 2026-A", staffCount: 450, status: "Active", startDate: "Jan 2026" },
-  { id: "COH-002", name: "Batch 2026-B", staffCount: 320, status: "Upcoming", startDate: "Jun 2026" },
-  { id: "COH-003", name: "Batch 2025-C", staffCount: 510, status: "Completed", startDate: "Sep 2025" },
+  { id: "COH-001", name: "Induction", staffCount: 450, status: "Active", startDate: "Jan 2026", endDate: "Feb 2026" },
+  { id: "COH-002", name: "Junior staff", staffCount: 320, status: "Upcoming", startDate: "Jun 2026", endDate: "Aug 2026" },
+  { id: "COH-003", name: "Middle level staff", staffCount: 510, status: "Completed", startDate: "Sep 2025", endDate: "Nov 2025" },
+  { id: "COH-004", name: "Senior staff", staffCount: 150, status: "Active", startDate: "Mar 2026", endDate: "May 2026" },
 ];
 
 export default function DepartmentsPage() {
@@ -62,12 +63,21 @@ export default function DepartmentsPage() {
               />
             </div>
             {!isDept && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                <input
-                  type="month"
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                  <input
+                    type="month"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                  <input
+                    type="month"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -105,6 +115,7 @@ export default function DepartmentsPage() {
               <tr>
                 <th className="px-6 py-4 font-medium">{isDept ? "Department Name" : "Cohort Name"}</th>
                 {!isDept && <th className="px-6 py-4 font-medium">Start Date</th>}
+                {!isDept && <th className="px-6 py-4 font-medium">End Date</th>}
                 <th className="px-6 py-4 font-medium">Staff Count</th>
                 <th className="px-6 py-4 font-medium">Status</th>
                 <th className="px-6 py-4 font-medium text-right">Actions</th>
@@ -115,6 +126,7 @@ export default function DepartmentsPage() {
                 <tr key={item.id} className="hover:bg-gray-50 transition">
                   <td className="px-6 py-4 font-semibold text-gray-800">{item.name}</td>
                   {!isDept && <td className="px-6 py-4 text-gray-600 font-medium">{item.startDate}</td>}
+                  {!isDept && <td className="px-6 py-4 text-gray-600 font-medium">{item.endDate}</td>}
                   <td className="px-6 py-4 text-gray-600">{item.staffCount} members</td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${
