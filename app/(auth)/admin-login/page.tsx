@@ -1,11 +1,32 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { AlertCircle, X } from "lucide-react";
 
 export default function AdminLoginPage() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleLogin = () => {
+    setError("");
+    setIsLoading(true);
+
+    setTimeout(() => {
+      if (email === "admin@nysc.com.ng" && password === "admin123") {
+        router.push("/admin/dashboard");
+      } else {
+        setError("Invalid admin credentials. Access denied.");
+        setIsLoading(false);
+      }
+    }, 600);
+  };
 
   return (
     <div className="min-h-screen bg-white flex">
@@ -46,6 +67,19 @@ export default function AdminLoginPage() {
             Enter your login details to sign in
           </p>
 
+          {/* Toast Notification */}
+          {error && (
+            <div className="fixed top-6 right-6 z-50 bg-white border-l-4 border-red-500 p-4 rounded-xl shadow-2xl flex items-center gap-3 w-80 transform transition-all duration-300">
+              <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <AlertCircle className="text-red-500" size={18} />
+              </div>
+              <p className="text-sm text-gray-700 font-medium flex-1">{error}</p>
+              <button onClick={() => setError("")} className="text-gray-400 hover:text-gray-600 p-1">
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
           <div className="w-full max-w-sm space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -53,7 +87,9 @@ export default function AdminLoginPage() {
               </label>
               <input
                 type="email"
-                placeholder="Enter admin email"
+                placeholder="admin@nysc.com.ng"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full border border-[#1a6b3c] rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
               />
             </div>
@@ -67,6 +103,8 @@ export default function AdminLoginPage() {
                 <input
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter admin password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full border border-[#1a6b3c] rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] pr-12"
                 />
 
@@ -80,12 +118,13 @@ export default function AdminLoginPage() {
               </div>
             </div>
 
-            <Link
-              href="/admin/dashboard"
-              className="flex items-center justify-center w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition"
+            <button
+              onClick={handleLogin}
+              disabled={isLoading}
+              className="flex items-center justify-center w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              Login as Admin
-            </Link>
+              {isLoading ? "Authenticating..." : "Login as Admin"}
+            </button>
 
             <p className="text-center text-sm text-gray-500">
               Are you a staff member?{" "}

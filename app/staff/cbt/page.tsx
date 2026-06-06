@@ -4,8 +4,8 @@ import Link from "next/link";
 const upcomingExams = [
   {
     id: "EXM-101",
-    title: "Post-Camp Operational Assessment",
-    course: "Camp Operations & Field Logistics",
+    title: "Historical Background & Objectives",
+    course: "Historical Background of the NYSC",
     duration: "45 Mins",
     questions: 50,
     dueDate: "Jun 15, 2026",
@@ -16,8 +16,8 @@ const upcomingExams = [
   },
   {
     id: "EXM-102",
-    title: "Public Administration Final Exam",
-    course: "NYSC Mandates & Public Admin",
+    title: "NYSC Cardinal Programmes Final Exam",
+    course: "NYSC cardinal programmes",
     duration: "60 Mins",
     questions: 75,
     dueDate: "Jun 20, 2026",
@@ -31,8 +31,8 @@ const upcomingExams = [
 const completedExams = [
   {
     id: "EXM-099",
-    title: "NYSC Bye-Laws Quiz",
-    course: "Rules & Regulations",
+    title: "Conditions of Service Quiz",
+    course: "NYSC Conditions of Service",
     dateTaken: "May 25, 2026",
     score: 92,
     total: 100,
@@ -40,8 +40,8 @@ const completedExams = [
   },
   {
     id: "EXM-098",
-    title: "Work Ethics & Conduct Test",
-    course: "Work Ethics",
+    title: "Work Ethics & Code of Conduct Test",
+    course: "Work Ethics and Code of Conduct",
     dateTaken: "May 10, 2026",
     score: 85,
     total: 100,

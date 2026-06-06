@@ -21,6 +21,7 @@ const mockCohorts = [
 export default function DepartmentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [activeTab, setActiveTab] = useState<"departments" | "cohorts">("cohorts");
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
   const isDept = activeTab === "departments";
   const dataList = isDept ? mockDepartments : mockCohorts;
@@ -146,10 +147,16 @@ export default function DepartmentsPage() {
                       {item.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <button className="text-gray-400 hover:text-[#1a6b3c] transition p-1">
+                  <td className="px-6 py-4 text-right relative">
+                    <button onClick={() => setOpenDropdownId(openDropdownId === item.id ? null : item.id)} className="text-gray-400 hover:text-[#1a6b3c] transition p-1 rounded-full hover:bg-gray-100">
                       <MoreHorizontal size={18} />
                     </button>
+                    {openDropdownId === item.id && (
+                      <div className="absolute right-8 mt-2 w-32 bg-white rounded-lg shadow-lg z-10 border border-gray-100 py-1">
+                        <button className="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition">Edit</button>
+                        <button className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition">Delete</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
             ))}

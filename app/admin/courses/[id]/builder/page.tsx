@@ -6,6 +6,27 @@ import Link from "next/link";
 import { ArrowLeft, Plus, Save, FileText, CheckCircle2, Video, UploadCloud } from "lucide-react";
 import { courses } from "@/app/data/courses";
 
+const suggestedModules = [
+  "Historical Background of the NYSC",
+  "Mission/ Vision statements",
+  "Objectives of the NYSC",
+  "NYSC cardinal programmes",
+  "NYSC organizational structure",
+  "NYSC Conditions of Service",
+  "Public Service Rules",
+  "The qualities and duties of the Inspector",
+  "The role of support staff",
+  "Work Ethics and Code of Conduct",
+  "Teamwork and Interpersonal Relationships",
+  "Managing Corps Members",
+  "Introduction to Report Writing and Documentation",
+  "Orientation camp and camp committees",
+  "Office Procedures",
+  "Security protocols in NYSC",
+  "Conflict Management",
+  "Time Management"
+];
+
 export default function CourseBuilderPage() {
   const params = useParams();
   const courseId = String(params.id);
@@ -34,7 +55,16 @@ export default function CourseBuilderPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Module Title</label>
-            <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="Enter module title" />
+            <input 
+              list="suggested-modules"
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" 
+              placeholder="Enter module title or choose a suggestion..." 
+            />
+            <datalist id="suggested-modules">
+              {suggestedModules.map((mod, idx) => (
+                <option key={idx} value={mod} />
+              ))}
+            </datalist>
           </div>
 
           <div>
