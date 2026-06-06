@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BarChart2, Monitor, Award, LogOut, Library, FileQuestion } from "lucide-react";
+import { LayoutDashboard, BarChart2, Monitor, Award, LogOut, Library, FileQuestion, User } from "lucide-react";
 
 const navItems = [
   { label: "Dashboard", href: "/staff/dashboard", icon: LayoutDashboard },
@@ -16,6 +17,7 @@ const navItems = [
 
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const isFullScreenView = pathname.includes("/staff/course/") || (pathname.includes("/staff/cbt/") && pathname !== "/staff/cbt");
   
@@ -33,15 +35,35 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
           <button className="text-gray-500 hover:text-[#1a6b3c]">
             🔔
           </button>
-          <div className="flex items-center gap-2 cursor-pointer">
-            <Image
-              src="/images/user-avatar.png"
-              alt="User"
-              width={36}
-              height={36}
-              className="rounded-full object-cover"
-            />
-            <span className="text-sm font-medium text-gray-700">User ▾</span>
+          <div className="relative">
+            <div 
+              className="flex items-center gap-2 cursor-pointer"
+              onClick={() => setIsProfileOpen(!isProfileOpen)}
+            >
+              <Image
+                src="/1-blank-profile.png"
+                alt="User"
+                width={36}
+                height={36}
+                className="rounded-full object-cover"
+              />
+              <span className="text-sm font-medium text-gray-700">User ▾</span>
+            </div>
+            
+            {isProfileOpen && (
+              <div className="absolute right-0 mt-3 w-48 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden py-1 z-50">
+                <Link href="/staff/profile" onClick={() => setIsProfileOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition">
+                  Profile
+                </Link>
+                <Link href="/staff/settings" onClick={() => setIsProfileOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition">
+                  Settings
+                </Link>
+                <div className="h-px bg-gray-100 my-1"></div>
+                <Link href="/login" onClick={() => setIsProfileOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition">
+                  Sign out
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </header>

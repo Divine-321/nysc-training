@@ -1,11 +1,32 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { AlertCircle, X } from "lucide-react";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleLogin = () => {
+    setError("");
+    setIsLoading(true);
+
+    setTimeout(() => {
+      if (username === "favour@nysc.com.ng" && password === "favour123") {
+        router.push("/staff/dashboard");
+      } else {
+        setError("Invalid user name or password. Please try again.");
+        setIsLoading(false);
+      }
+    }, 600);
+  };
 
   return (
     <div className="min-h-screen bg-white flex">
@@ -47,6 +68,19 @@ export default function LoginPage() {
             Enter your login details to sign in
           </p>
 
+          {/* Toast Notification */}
+          {error && (
+            <div className="fixed top-6 right-6 z-50 bg-white border-l-4 border-red-500 p-4 rounded-xl shadow-2xl flex items-center gap-3 w-80 transform transition-all duration-300">
+              <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center shrink-0">
+                <AlertCircle className="text-red-500" size={18} />
+              </div>
+              <p className="text-sm text-gray-700 font-medium flex-1">{error}</p>
+              <button onClick={() => setError("")} className="text-gray-400 hover:text-gray-600 p-1">
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
           {/* Form */}
           <div className="w-full max-w-sm space-y-4">
             {/* Username */}
@@ -56,7 +90,9 @@ export default function LoginPage() {
               </label>
               <input
                 type="text"
-                placeholder="Enter your User name"
+                placeholder="favour@nysc.com.ng"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 className="w-full border border-[#1a6b3c] rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
               />
             </div>
@@ -70,6 +106,8 @@ export default function LoginPage() {
                 <input
                   type={showPassword ? "text" : "password"}
                   placeholder="Enter your Password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
                   className="w-full border border-[#1a6b3c] rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] pr-12"
                 />
                 <button
@@ -97,12 +135,13 @@ export default function LoginPage() {
             </div>
 
             {/* Login Button */}
-            <Link
-              href="/staff/dashboard"
-              className="flex items-center justify-center w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition"
+            <button
+              onClick={handleLogin}
+              disabled={isLoading}
+              className="flex items-center justify-center w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              Login
-            </Link>
+              {isLoading ? "Authenticating..." : "Login"}
+            </button>
 
             <p className="text-center text-sm text-gray-500">
               Are you an admin?{" "}

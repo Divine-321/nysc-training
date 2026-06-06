@@ -88,7 +88,7 @@ export default function ExamSessionPage() {
             CBT
           </div>
           <div>
-            <h1 className="font-bold text-gray-800 leading-tight">Public Administration Final Exam</h1>
+            <h1 className="font-bold text-gray-800 leading-tight">Induction Module Assessment</h1>
             <p className="text-xs text-gray-500 font-medium">Exam ID: {examId}</p>
           </div>
         </div>

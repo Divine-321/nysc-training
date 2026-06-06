@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
@@ -12,6 +13,8 @@ import {
   Layers,
   BarChart3,
   History,
+  Library,
+  User,
   LogOut,
 } from "lucide-react";
 
@@ -20,6 +23,7 @@ const navItems = [
   { label: "Staff", href: "/admin/users", icon: Users },
   { label: "Cohorts", href: "/admin/departments", icon: Layers },
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
+  { label: "NYSC Books", href: "/admin/books", icon: Library },
   { label: "Assignments", href: "/admin/assignments", icon: UserRound },
   { label: "Audit Logs", href: "/admin/audit", icon: History },
 ];
@@ -30,11 +34,13 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // Mock signed-in admin (Replace with real auth data later)
   const adminName = "Abba Admin";
   const adminRole = "Super Admin";
   const adminInitial = adminName.charAt(0);
+  const adminPhoto = "/1-blank-profile.png"; // Assuming you have an admin avatar
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -44,12 +50,28 @@ export default function AdminLayout({
         <h1 className="text-xl font-bold text-gray-800">Admin Portal</h1>
 
         <div className="flex items-center gap-4">
-          <div className="flex flex-col items-end">
-            <span className="text-sm text-gray-800 font-bold">{adminName}</span>
-            <span className="text-xs text-gray-500 font-medium">{adminRole}</span>
-          </div>
-          <div className="w-9 h-9 rounded-full bg-[#1a6b3c] text-white flex items-center justify-center text-sm font-bold shadow-sm cursor-pointer hover:bg-[#145530] transition">
-            {adminInitial}
+          <div className="relative">
+            <div
+              className="flex items-center gap-2 cursor-pointer"
+              onClick={() => setIsProfileOpen(!isProfileOpen)}
+            >
+              <Image
+                src={adminPhoto}
+                alt="Admin User"
+                width={36}
+                height={36}
+                className="rounded-full object-cover"
+              />
+              <span className="text-sm font-medium text-gray-700">{adminName} ▾</span>
+            </div>
+            {isProfileOpen && (
+              <div className="absolute right-0 mt-3 w-48 bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden py-1 z-50">
+                <Link href="/admin/profile" onClick={() => setIsProfileOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition">Profile</Link>
+                <Link href="/admin/settings" onClick={() => setIsProfileOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition">Settings</Link>
+                <div className="h-px bg-gray-100 my-1"></div>
+                <Link href="/login" onClick={() => setIsProfileOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition">Sign out</Link>
+              </div>
+            )}
           </div>
         </div>
       </header>
