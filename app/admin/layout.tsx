@@ -20,11 +20,10 @@ import {
 
 const navItems = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
-  { label: "Staff", href: "/admin/users", icon: Users },
-  { label: "Cohorts", href: "/admin/departments", icon: Layers },
   { label: "Courses", href: "/admin/courses", icon: BookOpen },
+  { label: "Cohorts", href: "/admin/cohorts", icon: Layers },
+  { label: "Staff", href: "/admin/users", icon: Users },
   { label: "NYSC Books", href: "/admin/books", icon: Library },
-  { label: "Assignments", href: "/admin/assignments", icon: UserRound },
   { label: "Audit Logs", href: "/admin/audit", icon: History },
 ];
 

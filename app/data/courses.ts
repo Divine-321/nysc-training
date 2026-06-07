@@ -33,7 +33,7 @@ export const courses = [
     hasPostTest: true,
     hasEvaluation: true,
     instructors: [
-      { name: "Sulaiman", initial: "S", color: "bg-[#1a6b3c]" },
+      { name: "Abdul Sulaiman", initial: "A", color: "bg-[#1a6b3c]" },
     ],
     modules: [
       {
@@ -79,7 +79,7 @@ export const courses = [
     hasPostTest: true,
     hasEvaluation: true,
     instructors: [
-      { name: "Nasir", initial: "N", color: "bg-blue-600" },
+      { name: "A.W Ikakah", initial: "A", color: "bg-blue-600" },
     ],
     modules: [
       {
@@ -128,7 +128,7 @@ export const courses = [
     hasPostTest: true,
     hasEvaluation: true,
     instructors: [
-      { name: "Favour", initial: "F", color: "bg-orange-500" },
+      { name: "Prince Momoh", initial: "P", color: "bg-orange-500" },
     ],
     modules: [
       {
@@ -185,7 +185,7 @@ export const courses = [
     hasPostTest: true,
     hasEvaluation: true,
     instructors: [
-      { name: "Abba Admin", initial: "A", color: "bg-gray-900" },
+      { name: "Aremu", initial: "A", color: "bg-gray-900" },
     ],
     modules: [
       {

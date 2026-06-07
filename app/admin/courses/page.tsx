@@ -25,7 +25,7 @@ export default function AdminCoursesPage() {
           <thead className="bg-[#f0f7f3]">
             <tr>
               <th className="text-left px-4 py-3">Course</th>
-              <th className="text-left px-4 py-3">Category</th>
+              <th className="text-left px-4 py-3">Trainers</th>
               <th className="text-left px-4 py-3">Modules</th>
               <th className="text-left px-4 py-3">Progress</th>
               <th className="text-left px-4 py-3">Action</th>
@@ -35,7 +35,7 @@ export default function AdminCoursesPage() {
               {courses.map((course) => (
               <tr key={course.id} className="border-b hover:bg-gray-50 transition">
                 <td className="px-4 py-4 font-medium">{course.title}</td>
-                <td className="px-4 py-4">{course.category}</td>
+                <td className="px-4 py-4 text-gray-600">{course.instructors.map(i => i.name).join(", ")}</td>
                 <td className="px-4 py-4">{course.modules.length}</td>
                 <td className="px-4 py-4">{course.progress}%</td>
                 <td className="px-4 py-4">
@@ -43,7 +43,7 @@ export default function AdminCoursesPage() {
                     href={`/admin/courses/${course.id}/builder`}
                     className="text-[#1a6b3c] font-semibold hover:underline flex items-center gap-1 w-fit"
                   >
-                    Open Builder
+                    Build Course
                     <ArrowRight size={16} />
                   </Link>
                 </td>
