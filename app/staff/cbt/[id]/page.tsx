@@ -5,11 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { Clock, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 
 const mockQuestions = [
-  { id: 1, text: "What is the primary mandate of the National Youth Service Corps (NYSC)?", options: ["Military Training", "National Unity and Integration", "Political Campaigning", "Tax Collection"] },
-  { id: 2, text: "How long is the mandatory NYSC service year?", options: ["6 months", "12 months", "18 months", "24 months"] },
-  { id: 3, text: "During the orientation camp, which of the following is strictly prohibited?", options: ["Morning drills", "Wearing the NYSC uniform", "Unauthroized exits from the camp", "Attending SAED lectures"] },
-  { id: 4, text: "Who is the Chief Executive Officer of the NYSC at the National level?", options: ["The President", "The State Governor", "The Director-General", "The Local Government Inspector"] },
-  { id: 5, text: "Which department is responsible for issuing clearance certificates to corps members?", options: ["Skill Acquisition", "Corps Certification", "Camp Court", "Community Development Service (CDS)"] },
+  { id: 1, text: "In what year was the National Youth Service Corps (NYSC) scheme established?", options: ["1960", "1966", "1973", "1999"] },
+  { id: 2, text: "Which decree formally established the National Youth Service Corps?", options: ["Decree No. 1 of 1966", "Decree No. 24 of 1973", "Decree No. 34 of 1999", "Decree No. 10 of 1985"] },
+  { id: 3, text: "Who was the Head of State when the NYSC was created?", options: ["Gen. Murtala Mohammed", "Gen. Olusegun Obasanjo", "Gen. Yakubu Gowon", "Alhaji Shehu Shagari"] },
+  { id: 4, text: "What was the primary reason for establishing the NYSC scheme?", options: ["To provide cheap labor for the government", "To train youths for military service", "To reduce youth unemployment", "To foster national unity and integration after the Civil War"] },
+  { id: 5, text: "Which of the following is NOT one of the four cardinal programs of the NYSC?", options: ["Orientation Course", "Political Campaigning", "Primary Assignment", "Community Development Service (CDS)"] },
 ];
 
 export default function ExamSessionPage() {
