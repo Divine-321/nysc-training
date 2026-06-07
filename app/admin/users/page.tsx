@@ -1,10 +1,73 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Filter, Plus, MoreHorizontal, X, Mail, Phone, MapPin, Briefcase, BookOpen } from "lucide-react";
-import { staffUsers } from "@/app/data/adminData";
+import Image from "next/image";
+import { Search, Filter, Plus, MoreHorizontal, X, MapPin, Briefcase, BookOpen, ShieldCheck, Hash } from "lucide-react";
 
-type StaffUser = typeof staffUsers[0];
+const mockStaff = [
+  {
+    id: "STF-001",
+    photo: "/1-blank-profile.png",
+    fileNo: "NYSC/STF/2026/045",
+    surname: "ABBA",
+    otherNames: "Sulaiman Nasir",
+    rank: "Senior Inspector",
+    gradeLevel: "GL 09",
+    location: "National Directorate Headquarters, Abuja",
+    coursesAttended: 4,
+    status: "Active",
+  },
+  {
+    id: "STF-002",
+    photo: "/1-blank-profile.png",
+    fileNo: "NYSC/STF/2025/112",
+    surname: "NWACHUKWU",
+    otherNames: "Favour",
+    rank: "Principal Inspector",
+    gradeLevel: "GL 12",
+    location: "Lagos State Secretariat",
+    coursesAttended: 7,
+    status: "Active",
+  },
+  {
+    id: "STF-003",
+    photo: "/1-blank-profile.png",
+    fileNo: "NYSC/STF/2020/088",
+    surname: "ADEBAYO",
+    otherNames: "Chukwudi",
+    rank: "Chief Inspector",
+    gradeLevel: "GL 14",
+    location: "Oyo State Secretariat",
+    coursesAttended: 12,
+    status: "Retired",
+  },
+  {
+    id: "STF-004",
+    photo: "/1-blank-profile.png",
+    fileNo: "NYSC/STF/2023/201",
+    surname: "MOHAMMED",
+    otherNames: "Aisha",
+    rank: "Inspector II",
+    gradeLevel: "GL 08",
+    location: "Kano State Secretariat",
+    coursesAttended: 2,
+    status: "Active",
+  },
+  {
+    id: "STF-005",
+    photo: "/1-blank-profile.png",
+    fileNo: "NYSC/STF/2018/015",
+    surname: "OKONKWO",
+    otherNames: "Ngozi",
+    rank: "Assistant Director",
+    gradeLevel: "GL 15",
+    location: "Enugu State Secretariat",
+    coursesAttended: 15,
+    status: "Active",
+  },
+];
+
+type StaffUser = typeof mockStaff[0];
 
 export default function AdminUsersPage() {
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
@@ -16,7 +79,7 @@ export default function AdminUsersPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Manage Staff</h2>
-          <p className="text-sm text-gray-500 mt-1">View staff directory and their training groups.</p>
+          <p className="text-sm text-gray-500 mt-1">View staff directory and personnel details.</p>
         </div>
         <button 
           onClick={() => setShowAddModal(true)}
@@ -34,7 +97,7 @@ export default function AdminUsersPage() {
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
-              placeholder="Search staff by name or email..."
+              placeholder="Search staff by name or file no..."
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
             />
           </div>
@@ -51,28 +114,40 @@ export default function AdminUsersPage() {
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-500">
               <tr>
-                <th className="px-6 py-4 font-medium">Name</th>
-                <th className="px-6 py-4 font-medium">Department</th>
-                <th className="px-6 py-4 font-medium">Cohort</th>
+                <th className="px-6 py-4 font-medium">Staff Member</th>
+                <th className="px-6 py-4 font-medium">File No</th>
+                <th className="px-6 py-4 font-medium">Rank & GL</th>
+                <th className="px-6 py-4 font-medium">Location</th>
+                <th className="px-6 py-4 font-medium">Courses</th>
                 <th className="px-6 py-4 font-medium">Status</th>
                 <th className="px-6 py-4 font-medium text-right">Actions</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-gray-100">
-              {staffUsers.map((staff) => (
+              {mockStaff.map((staff) => (
                 <tr key={staff.id} className="hover:bg-gray-50 transition group">
                   <td className="px-6 py-4">
-                    <p className="font-semibold text-gray-800">{staff.name}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">{staff.email}</p>
+                    <div className="flex items-center gap-3">
+                      <Image src={staff.photo} alt={staff.surname} width={36} height={36} className="rounded-full bg-gray-100 object-cover" />
+                      <div>
+                        <p className="font-semibold text-gray-800 uppercase tracking-tight">{staff.surname}</p>
+                        <p className="text-xs text-gray-500 font-medium mt-0.5">{staff.otherNames}</p>
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-6 py-4 text-gray-600">{staff.department}</td>
-                  <td className="px-6 py-4 text-gray-600">{staff.cohort}</td>
+                  <td className="px-6 py-4 text-gray-600 font-medium">{staff.fileNo}</td>
+                  <td className="px-6 py-4">
+                    <p className="font-medium text-gray-800">{staff.rank}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">{staff.gradeLevel}</p>
+                  </td>
+                  <td className="px-6 py-4 text-gray-600 truncate max-w-[12rem]">{staff.location}</td>
+                  <td className="px-6 py-4 text-gray-600 font-medium">{staff.coursesAttended}</td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                       staff.status === 'Active' 
                         ? 'bg-green-100 text-green-700' 
-                        : 'bg-yellow-100 text-yellow-700'
+                        : 'bg-gray-100 text-gray-600'
                     }`}>
                       {staff.status}
                     </span>
@@ -100,7 +175,7 @@ export default function AdminUsersPage() {
         
         {/* Pagination Placeholder */}
         <div className="p-5 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
-          <p>Showing 1 to {staffUsers.length} of {staffUsers.length} entries</p>
+          <p>Showing 1 to {mockStaff.length} of {mockStaff.length} entries</p>
           <div className="flex gap-1">
             <button className="px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-50">Prev</button>
             <button className="px-3 py-1 bg-[#1a6b3c] text-white rounded">1</button>
@@ -116,12 +191,16 @@ export default function AdminUsersPage() {
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-[#f0f7f3] text-[#1a6b3c] flex items-center justify-center font-bold text-lg shadow-sm border border-green-100">
-                  {selectedStaff.name.charAt(0)}
-                </div>
+                <Image 
+                  src={selectedStaff.photo} 
+                  alt={selectedStaff.surname} 
+                  width={48} 
+                  height={48} 
+                  className="rounded-full shadow-sm border border-gray-200" 
+                />
                 <div>
-                  <h3 className="font-bold text-lg text-gray-800 leading-tight">{selectedStaff.name}</h3>
-                  <p className="text-xs font-medium text-gray-500 mt-0.5">NYSC/STF/{selectedStaff.id.slice(-4) || '0000'}</p>
+                  <h3 className="font-bold text-lg text-gray-800 leading-tight uppercase">{selectedStaff.surname} <span className="font-medium text-gray-600 capitalize">{selectedStaff.otherNames}</span></h3>
+                  <p className="text-xs font-medium text-gray-500 mt-0.5">{selectedStaff.fileNo}</p>
                 </div>
               </div>
               <button onClick={() => setSelectedStaff(null)} className="text-gray-400 hover:text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 rounded-full p-2 transition shadow-sm">
@@ -133,32 +212,28 @@ export default function AdminUsersPage() {
             <div className="p-6 space-y-6">
               <div className="grid grid-cols-2 gap-y-6 gap-x-4">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Department</p>
-                  <p className="font-semibold text-gray-800 flex items-center gap-1.5"><Briefcase size={14} className="text-gray-400"/> {selectedStaff.department}</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Rank</p>
+                  <p className="font-semibold text-gray-800 flex items-center gap-1.5"><Briefcase size={14} className="text-[#1a6b3c]"/> {selectedStaff.rank}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Cohort</p>
-                  <p className="font-semibold text-gray-800">{selectedStaff.cohort}</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Grade Level</p>
+                  <p className="font-semibold text-gray-800 flex items-center gap-1.5"><Hash size={14} className="text-[#1a6b3c]"/> {selectedStaff.gradeLevel}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Location</p>
+                  <p className="font-semibold text-gray-800 flex items-center gap-1.5"><MapPin size={14} className="text-[#1a6b3c]"/> {selectedStaff.location}</p>
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Status</p>
                   <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                    selectedStaff.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                    selectedStaff.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
                   }`}>
                     {selectedStaff.status}
                   </span>
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Email Address</p>
-                  <p className="font-semibold text-gray-800 text-sm truncate flex items-center gap-1.5" title={selectedStaff.email}><Mail size={14} className="text-gray-400 shrink-0"/> {selectedStaff.email}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Active Courses</p>
-                  <p className="font-semibold text-gray-800 flex items-center gap-1.5"><BookOpen size={14} className="text-gray-400"/> 3 Enrolled</p>
-                </div>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Last Login</p>
-                  <p className="font-medium text-gray-600 text-sm">2 hours ago</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Courses Attended</p>
+                  <p className="font-semibold text-gray-800 flex items-center gap-1.5"><BookOpen size={14} className="text-[#1a6b3c]"/> {selectedStaff.coursesAttended}</p>
                 </div>
               </div>
 
@@ -192,33 +267,50 @@ export default function AdminUsersPage() {
             {/* Modal Body (Form) */}
             <div className="p-6 space-y-5">
               <div className="grid grid-cols-2 gap-5">
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                  <input type="text" placeholder="e.g. John Doe" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" />
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Surname</label>
+                  <input type="text" placeholder="e.g. ABBA" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] uppercase" />
                 </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                  <input type="email" placeholder="e.g. john.doe@nysc.gov.ng" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" />
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Other Names</label>
+                  <input type="text" placeholder="e.g. Sulaiman Nasir" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] capitalize" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">File No</label>
+                  <input type="text" placeholder="e.g. NYSC/STF/..." className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Rank</label>
+                  <input type="text" placeholder="e.g. Senior Inspector" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Grade Level</label>
                   <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
-                    <option value="">Select Department...</option>
-                    <option value="HR">Human Resource Management</option>
-                    <option value="ICT">Information and Communications Technology (ICT)</option>
-                    <option value="PRS">Planning, Research & Statistics (PRS)</option>
-                    <option value="Procurement">Procurement</option>
-                    <option value="Audit">Internal Audit</option>
+                    <option value="">Select GL...</option>
+                    <option value="GL 07">GL 07</option>
+                    <option value="GL 08">GL 08</option>
+                    <option value="GL 09">GL 09</option>
+                    <option value="GL 10">GL 10</option>
+                    <option value="GL 12">GL 12</option>
+                    <option value="GL 13">GL 13</option>
+                    <option value="GL 14">GL 14</option>
+                    <option value="GL 15">GL 15</option>
+                    <option value="GL 16">GL 16</option>
+                    <option value="GL 17">GL 17</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Cohort</label>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                   <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
-                    <option value="">Select Cohort...</option>
-                    <option value="Junior">Junior staff</option>
-                    <option value="Middle">Middle level staff</option>
-                    <option value="Senior">Senior staff</option>
+                    <option value="Active">Active</option>
+                    <option value="On Leave">On Leave</option>
+                    <option value="Suspended">Suspended</option>
+                    <option value="Retired">Retired</option>
                   </select>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                  <input type="text" placeholder="e.g. NDHQ, Abuja" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" />
                 </div>
               </div>
               <div className="pt-4 border-t border-gray-100 flex gap-3 justify-end">
