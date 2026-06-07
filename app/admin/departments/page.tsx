@@ -12,7 +12,6 @@ const mockDepartments = [
 ];
 
 const mockCohorts = [
-  { id: "COH-001", name: "Induction", staffCount: 450, status: "Active", startDate: "Jan 2026", endDate: "Feb 2026" },
   { id: "COH-002", name: "Junior staff", staffCount: 320, status: "Upcoming", startDate: "Jun 2026", endDate: "Aug 2026" },
   { id: "COH-003", name: "Middle level staff", staffCount: 510, status: "Completed", startDate: "Sep 2025", endDate: "Nov 2025" },
   { id: "COH-004", name: "Senior staff", staffCount: 150, status: "Active", startDate: "Mar 2026", endDate: "May 2026" },

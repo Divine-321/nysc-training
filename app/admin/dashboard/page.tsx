@@ -79,9 +79,9 @@ export default function AdminDashboardPage() {
           <h3 className="text-lg font-bold text-gray-800 mb-6">Course Progress Overview</h3>
           <div className="space-y-6">
             {[
-              { label: "NYSC Mandates & Public Admin", progress: 75, color: "bg-[#1a6b3c]" },
-              { label: "Camp Operations & Field Logistics", progress: 45, color: "bg-yellow-500" },
-              { label: "Youth Mentorship", progress: 20, color: "bg-red-600" },
+            { label: "Historical Background of the NYSC", progress: 75, color: "bg-[#1a6b3c]" },
+            { label: "Mission/ Vision statements", progress: 45, color: "bg-yellow-500" },
+            { label: "Objectives of the NYSC", progress: 20, color: "bg-red-600" },
             ].map((course, i) => (
               <div key={i}>
                 <div className="flex justify-between text-sm mb-2">

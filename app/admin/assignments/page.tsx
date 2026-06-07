@@ -8,10 +8,10 @@ import { cohorts, departments, staffUsers } from "@/app/data/adminData";
 const mockAssignments = [
   {
     id: "ASN-001",
-    courseId: "4",
-    courseTitle: "Induction Training",
+    courseId: "1",
+    courseTitle: "Historical Background of the NYSC",
     targetType: "Cohort",
-    targetName: "Batch 2026-A",
+    targetName: "Junior staff",
     traineeCount: 450,
     assignedTrainers: ["Sulaiman", "Nasir"],
     deadline: "Jul 30, 2026",
@@ -20,8 +20,8 @@ const mockAssignments = [
   },
   {
     id: "ASN-002",
-    courseId: "1",
-    courseTitle: "NYSC Mandates & Public Administration",
+    courseId: "2",
+    courseTitle: "Mission/ Vision statements",
     targetType: "Department",
     targetName: "Information and Communications Technology (ICT)",
     traineeCount: 45,
@@ -32,8 +32,8 @@ const mockAssignments = [
   },
   {
     id: "ASN-003",
-    courseId: "2",
-    courseTitle: "Camp Operations & Field Logistics",
+    courseId: "4",
+    courseTitle: "NYSC cardinal programmes",
     targetType: "Staff Range",
     targetName: "NYSC/1000 - NYSC/1500",
     traineeCount: 500,

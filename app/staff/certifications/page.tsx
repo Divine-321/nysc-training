@@ -7,7 +7,7 @@ import { Download, Award, Printer } from "lucide-react";
 const completedCourses = [
   {
     id: "CERT-001",
-    courseTitle: "NYSC Mandates & Public Administration",
+    courseTitle: "Mission/ Vision statements",
     date: "June 05, 2026",
     instructor: "Sulaiman Nasir"
   },
@@ -79,8 +79,8 @@ export default function CertificationsPage() {
           </div>
 
           {/* The Certificate Landscape Canvas */}
-          <div className="w-full bg-gray-100 p-8 rounded-b-2xl border border-gray-200 flex justify-center overflow-x-auto print:p-0 print:border-none print:bg-white">
-            <div className="w-[800px] h-[565px] bg-white shadow-2xl relative shrink-0 print:shadow-none print:w-[100%] print:h-screen" id="certificate-canvas">
+          <div className="w-full bg-gray-100 p-8 rounded-b-2xl border border-gray-200 flex justify-center overflow-x-auto print:p-0 print:border-none print:bg-white [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
+            <div className="w-[800px] h-[565px] bg-white shadow-2xl relative shrink-0 print:shadow-none print:w-full print:h-screen" id="certificate-canvas">
               {/* Decorative Borders */}
               <div className="absolute inset-5 border-[3px] border-[#1a6b3c] p-2">
                 <div className="absolute inset-0 border border-[#1a6b3c]/30 m-1"></div>
