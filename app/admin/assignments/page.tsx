@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Search, Filter, Plus, MoreHorizontal, X, BookOpen, Users, Calendar, Target, UserCheck, AlertCircle } from "lucide-react";
 import { courses } from "@/app/data/courses";
-import { cohorts, departments, staffUsers } from "@/app/data/adminData";
+import { departments, staffUsers } from "@/app/data/adminData";
 
 const mockAssignments = [
   {
@@ -51,7 +51,7 @@ export default function AssignmentsPage() {
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
 
   const [selectedCourse, setSelectedCourse] = useState(courses[0]?.id || "");
-  const [assignmentType, setAssignmentType] = useState<"staff" | "department" | "cohort" | "file-range">("staff");
+  const [assignmentType, setAssignmentType] = useState<"staff" | "department" | "upload" | "file-range">("staff");
   const [selectedTrainers, setSelectedTrainers] = useState<string[]>([]);
   const [selectedTrainees, setSelectedTrainees] = useState<string[]>([]);
 
@@ -113,7 +113,7 @@ export default function AssignmentsPage() {
                     className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
                   />
                   <span className="text-sm text-gray-700">
-                    {staff.name} <span className="text-gray-400">({staff.department})</span>
+                    {staff.name} <span className="text-gray-400"></span>
                   </span>
                 </label>
               ))}
@@ -122,18 +122,18 @@ export default function AssignmentsPage() {
 
           <div>
             <label htmlFor="assignment-type" className="block text-sm font-medium text-gray-700 mb-2">
-              Assign Trainees By
+              Assign Staff By
             </label>
             <select
               id="assignment-type"
               className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] focus:border-transparent"
               value={assignmentType}
-              onChange={(e) => setAssignmentType(e.target.value as "staff" | "department" | "cohort" | "file-range")}
+              onChange={(e) => setAssignmentType(e.target.value as "staff" | "department" | "upload" | "file-range")}
             >
               <option value="staff">Individual Staff</option>
               <option value="file-range">File Number Range</option>
               <option value="department">Department</option>
-              <option value="cohort">Cohort</option>
+              <option value="upload">Upload List</option>
             </select>
           </div>
 
@@ -178,26 +178,38 @@ export default function AssignmentsPage() {
               </div>
             )}
 
-            {(assignmentType === "department" || assignmentType === "cohort") && (
+            {assignmentType === "department" && (
               <select
                 id="target-select"
                 className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] focus:border-transparent"
               >
-                {assignmentType === "department" && (
-                  <optgroup label="Departments">
-                    {departments.map((dept) => (
-                      <option key={dept.id}>{dept.name}</option>
-                    ))}
-                  </optgroup>
-                )}
-                {assignmentType === "cohort" && (
-                  <optgroup label="Cohorts">
-                    {cohorts.map((cohort) => (
-                      <option key={cohort.id}>{cohort.name}</option>
-                    ))}
-                  </optgroup>
-                )}
+                <optgroup label="Departments">
+                  {departments.map((dept) => (
+                    <option key={dept.id}>{dept.name}</option>
+                  ))}
+                </optgroup>
               </select>
+            )}
+
+            {assignmentType === "upload" && (
+              <div className="border border-gray-300 border-dashed rounded-lg p-6 flex flex-col items-center justify-center bg-gray-50">
+                <p className="text-sm font-semibold text-gray-800 mb-1">Upload Trainees File</p>
+                <p className="text-xs text-gray-500 mb-4">Supported formats: .csv, .xlsx</p>
+                <input
+                  type="file"
+                  accept=".csv, .xlsx"
+                  className="text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#e8f5ee] file:text-[#1a6b3c] hover:file:bg-[#d1ebd9] cursor-pointer mb-4"
+                />
+                <div className="w-full text-left bg-white p-3 rounded-md border border-gray-200">
+                  <p className="text-xs font-bold text-gray-700 mb-1">Expected file columns:</p>
+                  <ul className="text-xs text-gray-500 list-disc list-inside pl-4">
+                    <li>File No</li>
+                    <li>Surname</li>
+                    <li>Other Names</li>
+                    <li>Email Address</li>
+                  </ul>
+                </div>
+              </div>
             )}
           </div>
 

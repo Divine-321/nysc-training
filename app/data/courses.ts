@@ -58,7 +58,7 @@ export const courses = [
         completed: false,
       },
     ],
-    liveSessions: [],
+    liveSessions: [] as LiveSession[],
   },
   {
     id: "2",
@@ -107,7 +107,7 @@ export const courses = [
         completed: false,
       },
     ],
-    liveSessions: [],
+    liveSessions: [] as LiveSession[],
   },
   {
     id: "3",
@@ -164,7 +164,7 @@ export const courses = [
         completed: false,
       },
     ],
-    liveSessions: [],
+    liveSessions: [] as LiveSession[],
   },
   {
     id: "4",
@@ -221,19 +221,7 @@ export const courses = [
         completed: false,
       },
     ],
-    liveSessions: [
-      {
-        id: "LS-004-A",
-        title: "Cardinal Programmes Q&A",
-        scheduledDate: "Aug 10, 2026",
-        time: "10:00 AM - 11:30 AM",
-        duration: "90 mins",
-        zoomLink: "https://zoom.us/j/example4A",
-        meetingId: "456-789-1230",
-        passcode: "CARDINAL26",
-        status: "upcoming",
-      },
-    ],
+    liveSessions: [] as LiveSession[],
   },
 ];
 

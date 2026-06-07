@@ -1,16 +1,47 @@
 import Link from "next/link";
-import { PlusCircle, Users, UserCog, BookOpen, CheckCircle2, TrendingUp, ArrowRight, Calendar, Clock, Video, Filter, Download, BarChart3, Award } from "lucide-react";
-import { adminStats, staffUsers } from "@/app/data/adminData";
-import { courses, results } from "@/app/data/courses";
+import { PlusCircle, Users, UserCog, BookOpen, CheckCircle2, TrendingUp, Calendar, Clock, Video, Filter, Download, BarChart3, Award } from "lucide-react";
+import { adminStats } from "@/app/data/adminData";
+import { courses } from "@/app/data/courses";
 
 export default function AdminDashboardPage() {
-  const upcomingSessions = courses
-    .flatMap((c) =>
+  const additionalSessions = [
+    {
+      id: "LS-PROM-01",
+      title: "Objectives of the NYSC",
+      courseTitle: "Annual Assessment",
+      duration: "3h 00m",
+      scheduledDate: "Aug 10, 2026",
+      time: "09:00 AM",
+      status: "upcoming"
+    },
+    {
+      id: "LS-ADV-01",
+      title: "Historical Background of the NYSC",
+      courseTitle: "Leadership & Management",
+      duration: "1h 30m",
+      scheduledDate: "Jul 22, 2026",
+      time: "01:00 PM",
+      status: "upcoming"
+    },
+    {
+      id: "LS-IT-01",
+      title: "Cardinal Programmes",
+      courseTitle: "ICT Proficiency",
+      duration: "2h 00m",
+      scheduledDate: "Jul 28, 2026",
+      time: "11:00 AM",
+      status: "upcoming"
+    }
+  ];
+
+  const upcomingSessions = [
+    ...additionalSessions,
+    ...courses.flatMap((c) =>
       (c.liveSessions || [])
         .filter((s) => s.status === "upcoming")
         .map((s) => ({ ...s, courseTitle: c.title }))
     )
-    .slice(0, 3);
+  ].slice(0, 8);
 
   const getStatIcon = (label: string) => {
     const lowerLabel = label.toLowerCase();
@@ -45,34 +76,7 @@ export default function AdminDashboardPage() {
       </div>
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Bar Chart: Enrollment Overview */}
-        <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-bold text-gray-800 mb-6">Enrollment Overview</h3>
-          <div className="flex items-end gap-3 h-48 mt-4">
-            {[
-              { value: 40, day: "Mon", color: "bg-[#1a6b3c]" },
-              { value: 70, day: "Tue", color: "bg-yellow-500" },
-              { value: 45, day: "Wed", color: "bg-red-600" },
-              { value: 90, day: "Thu", color: "bg-[#1a6b3c]" },
-              { value: 65, day: "Fri", color: "bg-yellow-500" },
-              { value: 85, day: "Sat", color: "bg-red-600" },
-              { value: 120, day: "Sun", color: "bg-[#1a6b3c]" },
-            ].map((item, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center h-full">
-                <div className="flex-1 w-full flex items-end pb-2">
-                  <div
-                    className={`w-full ${item.color} rounded-t-md transition-all duration-500 hover:opacity-80 cursor-pointer`}
-                    style={{ height: `${(item.value / 120) * 100}%` }}
-                  ></div>
-                </div>
-                <span className="text-xs font-medium text-gray-400 shrink-0">
-                  {item.day}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-6">
 
         {/* Progress Chart: Course Completion */}
         <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100 flex flex-col justify-center">
@@ -125,58 +129,14 @@ export default function AdminDashboardPage() {
           className="group bg-red-600 text-white rounded-2xl p-6 lg:p-8 shadow-sm hover:bg-red-700 transition relative overflow-hidden"
         >
           <UserCog size={32} className="mb-4 text-red-200 group-hover:scale-110 transition-transform" />
-          <h3 className="text-lg font-bold mb-1">Manage Staff</h3>
+          <h3 className="text-lg font-bold mb-1">Staff</h3>
           <p className="text-sm text-red-100 mt-1">
             View staff and training status.
           </p>
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Staff Registrations */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-800">Recent Staff Enrollments</h3>
-            <Link href="/admin/users" className="text-sm text-[#1a6b3c] font-semibold hover:underline flex items-center gap-1">
-              View All <ArrowRight size={16} />
-            </Link>
-          </div>
-          
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-gray-50 text-gray-500">
-                <tr>
-                  <th className="px-6 py-4 font-medium">Name</th>
-                  <th className="px-6 py-4 font-medium">Department</th>
-                  <th className="px-6 py-4 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {staffUsers.slice(0, 3).map((staff) => (
-                  <tr key={staff.id} className="hover:bg-gray-50 transition">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#f0f7f3] text-[#1a6b3c] flex items-center justify-center font-bold text-sm shrink-0">
-                          {staff.name.charAt(0)}
-                        </div>
-                        <div>
-                          <p className="font-semibold text-gray-800">{staff.name}</p>
-                          <p className="text-xs text-gray-500">{staff.email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600 font-medium">{staff.department}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${staff.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
-                        {staff.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 gap-6">
 
         {/* Upcoming Live Classes */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
@@ -252,75 +212,6 @@ export default function AdminDashboardPage() {
               <p className="text-xs text-gray-400 font-medium mt-1">{stat.trend}</p>
             </div>
           ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Chart Placeholder */}
-          <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100 lg:col-span-1">
-            <h3 className="text-lg font-bold text-gray-800 mb-8">Completion by Department</h3>
-            <div className="flex items-end gap-4 h-64 mt-4">
-              {[
-                { dept: "Training", value: 85, color: "bg-[#1a6b3c]" },
-                { dept: "ICT", value: 65, color: "bg-yellow-500" },
-                { dept: "Compliance", value: 45, color: "bg-blue-600" },
-                { dept: "Logistics", value: 90, color: "bg-[#1a6b3c]" },
-                { dept: "Finance", value: 75, color: "bg-yellow-500" },
-              ].map((item, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center h-full group">
-                  <div className="flex-1 w-full flex items-end justify-center pb-3 relative">
-                    <div className="absolute bottom-full mb-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs font-bold text-gray-600 pointer-events-none">
-                      {item.value}%
-                    </div>
-                    <div
-                      className={`w-full max-w-[3rem] ${item.color} rounded-t-lg transition-all duration-500 hover:opacity-80 cursor-pointer shadow-sm`}
-                      style={{ height: `${item.value}%` }}
-                    ></div>
-                  </div>
-                  <span className="text-xs font-bold text-gray-500 truncate w-full text-center shrink-0">
-                    {item.dept}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Recent Results Table */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden lg:col-span-2 flex flex-col">
-            <div className="p-6 border-b border-gray-100">
-              <h3 className="text-lg font-bold text-gray-800">Recent Assessment Results</h3>
-            </div>
-            <div className="overflow-x-auto flex-1">
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-gray-50 text-gray-500">
-                  <tr>
-                    <th className="px-6 py-4 font-medium">Course Title</th>
-                    <th className="px-6 py-4 font-medium">Score</th>
-                    <th className="px-6 py-4 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {results.slice(0, 5).map((result) => (
-                    <tr key={result.id} className="hover:bg-gray-50 transition">
-                      <td className="px-6 py-4">
-                        <p className="font-semibold text-gray-800">{result.courseTitle}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{result.date}</p>
-                      </td>
-                      <td className="px-6 py-4 text-gray-800 font-extrabold">{result.score}%</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${
-                          result.status === 'Passed'
-                            ? 'bg-green-100 text-green-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}>
-                          {result.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </div>
     </div>

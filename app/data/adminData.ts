@@ -29,25 +29,24 @@ export const departments = [
 export const staffUsers = [
   {
     id: "1",
-    name: "Angela N.",
-    email: "angela.n@nysc.gov.ng",
-    department: "Training",
+    name: "A.F Omotade",
+    email: "omotade.n@nysc.gov.ng",
+
     cohort: "Batch 2026-A",
     status: "Active",
   },
   {
     id: "2",
-    name: "Mobolaji O.",
-    email: "mobolaji.o@nysc.gov.ng",
-    department: "Compliance",
+    name: "Prince Momoh",
+    email: "prince.o@nysc.gov.ng",
     cohort: "Batch 2026-A",
     status: "Pending",
   },
   {
     id: "3",
-    name: "Favour Edward",
-    email: "favour@nysc.gov.ng",
-    department: "ICT",
+    name: "Abdul Sulaiman",
+    email: "abdul@nysc.gov.ng",
+
     cohort: "Batch 2026-B",
     status: "Active",
   },
