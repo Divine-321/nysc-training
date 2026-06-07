@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Save, FileText, CheckCircle2, Video, UploadCloud } from "lucide-react";
+import { ArrowLeft, Plus, Save, FileText, CheckCircle2, Video, UploadCloud, UserCheck } from "lucide-react";
 import { courses } from "@/app/data/courses";
 
 const suggestedModules = [
@@ -27,6 +27,12 @@ const suggestedModules = [
   "Time Management"
 ];
 
+const trainersList = [
+  { id: "TRN-1", name: "A.F Omotade" },
+  { id: "TRN-2", name: "Prince Momoh" },
+  { id: "TRN-3", name: "Abdul Sulaiman" },
+];
+
 export default function CourseBuilderPage() {
   const params = useParams();
   const courseId = String(params.id);
@@ -34,6 +40,9 @@ export default function CourseBuilderPage() {
   const course = courses.find((course) => String(course.id) === courseId);
 
   const [contentType, setContentType] = useState("Text");
+  const [assignedTrainers, setAssignedTrainers] = useState<string[]>(
+    course?.instructors.map(i => i.name) || []
+  );
 
   if (!course) {
     return <div className="bg-white p-6 rounded-xl">Course not found</div>;
@@ -143,7 +152,59 @@ export default function CourseBuilderPage() {
       </div>
 
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
-        <h3 className="font-bold text-[#1a6b3c] text-lg">Assessment Builder</h3>
+        <div className="flex items-center gap-2 mb-2">
+            <UserCheck className="text-[#1a6b3c]" size={24} />
+            <h3 className="font-bold text-[#1a6b3c] text-lg">Assign Trainers</h3>
+        </div>
+        <p className="text-sm text-gray-500 -mt-3 mb-4">
+            Select the trainers who will be responsible for this course.
+        </p>
+        <div className="space-y-3">
+            {trainersList.map((trainer) => (
+                <label key={trainer.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        value={trainer.name}
+                        checked={assignedTrainers.includes(trainer.name)}
+                        onChange={(e) => {
+                            if (e.target.checked) {
+                                setAssignedTrainers([...assignedTrainers, trainer.name]);
+                            } else {
+                                setAssignedTrainers(assignedTrainers.filter((name) => name !== trainer.name));
+                            }
+                        }}
+                        className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
+                    />
+                    <span className="font-semibold text-gray-800">{trainer.name}</span>
+                </label>
+            ))}
+        </div>
+        <div className="pt-2 border-t border-gray-100 flex justify-end">
+            <button className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition">
+                <Save size={18} />
+                Save Trainers
+            </button>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
+        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-2">
+          <h3 className="font-bold text-[#1a6b3c] text-lg">Assessment Builder</h3>
+          <div className="flex items-center gap-3">
+            <input type="file" id="upload-questions" className="hidden" accept=".csv, .xlsx" />
+            <label htmlFor="upload-questions" className="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition cursor-pointer shadow-sm text-sm">
+              <UploadCloud size={16} />
+              Upload Questions
+            </label>
+            <button className="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition cursor-pointer shadow-sm text-sm">
+              Edit
+            </button>
+          </div>
+        </div>
+        
+        <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
+          <span className="font-bold text-gray-700">Upload Format (.csv, .xlsx):</span> Columns should include: <span className="font-medium">Question, Option A, Option B, Option C, Option D, and Correct Answer</span>.
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-4">

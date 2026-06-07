@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Search, Filter, Plus, MoreHorizontal, X, MapPin, Briefcase, BookOpen, ShieldCheck, Hash } from "lucide-react";
 import { courses } from "@/app/data/courses";
 import { departments } from "@/app/data/adminData";
+import { mockCohorts } from "@/app/admin/cohorts/page";
 
 const mockStaff = [
   {
@@ -81,12 +82,18 @@ export default function AdminUsersPage() {
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
-  const [selectedCourse, setSelectedCourse] = useState(courses[0]?.id || "");
-  const [assignmentType, setAssignmentType] = useState<"staff" | "department" | "upload" | "file-range">("staff");
-  const [selectedTrainers, setSelectedTrainers] = useState<string[]>([]);
-  const [selectedTrainees, setSelectedTrainees] = useState<string[]>([]);
+
+  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  const [selectedCohort, setSelectedCohort] = useState("");
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedStaffIds(mockStaff.map(s => s.id));
+    } else {
+      setSelectedStaffIds([]);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -101,7 +108,7 @@ export default function AdminUsersPage() {
             className="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm"
           >
             <BookOpen size={18} className="text-gray-500" />
-            New Assignment
+          Assign Cohort
           </button>
           <button 
             onClick={() => setShowAddModal(true)}
@@ -137,6 +144,14 @@ export default function AdminUsersPage() {
           <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-500">
               <tr>
+                <th className="px-6 py-4 font-medium w-12">
+                  <input 
+                    type="checkbox" 
+                    className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
+                    checked={selectedStaffIds.length === mockStaff.length && mockStaff.length > 0}
+                    onChange={handleSelectAll}
+                  />
+                </th>
                 <th className="px-6 py-4 font-medium">Staff Member</th>
                 <th className="px-6 py-4 font-medium">File No</th>
                 <th className="px-6 py-4 font-medium">Rank & GL</th>
@@ -150,6 +165,21 @@ export default function AdminUsersPage() {
             <tbody className="divide-y divide-gray-100">
               {mockStaff.map((staff) => (
                 <tr key={staff.id} className="hover:bg-gray-50 transition group">
+                  <td className="px-6 py-4">
+                    <input 
+                      type="checkbox" 
+                      className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
+                      checked={selectedStaffIds.includes(staff.id)}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        if (e.target.checked) {
+                          setSelectedStaffIds([...selectedStaffIds, staff.id]);
+                        } else {
+                          setSelectedStaffIds(selectedStaffIds.filter(id => id !== staff.id));
+                        }
+                      }}
+                    />
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <Image src={staff.photo} alt={staff.surname} width={36} height={36} className="rounded-full bg-gray-100 object-cover" />
@@ -345,13 +375,13 @@ export default function AdminUsersPage() {
         </div>
       )}
 
-      {/* New Assignment Modal */}
+      {/* Assign Cohort Modal */}
       {showAssignmentModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white rounded-3xl shadow-xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[90vh]">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50 shrink-0">
-              <h3 className="font-bold text-lg text-gray-800">New Assignment</h3>
+              <h3 className="font-bold text-lg text-gray-800">Assign Cohort</h3>
               <button onClick={() => setShowAssignmentModal(false)} className="text-gray-400 hover:text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 rounded-full p-2 transition shadow-sm">
                 <X size={20} />
               </button>
@@ -359,159 +389,80 @@ export default function AdminUsersPage() {
 
             {/* Modal Body (Form) */}
             <div className="p-6 space-y-6 overflow-y-auto flex-1">
-              <div>
-                <label htmlFor="course-select" className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Course
-                </label>
-                <select
-                  id="course-select"
-                  value={selectedCourse}
-                  onChange={(e) => setSelectedCourse(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] focus:border-transparent"
-                >
-                  {courses.map((course) => (
-                    <option key={course.id} value={course.id}>{course.title}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="trainer-select" className="block text-sm font-medium text-gray-700 mb-2">
-                  Assign Trainers
-                </label>
-                <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto p-2 bg-white">
-                {trainersList.map((trainer) => (
-                  <label key={`trainer-${trainer.id}`} className="flex items-center gap-3 px-2 py-2 hover:bg-gray-50 rounded cursor-pointer transition">
-                      <input
-                        type="checkbox"
-                      value={trainer.id}
-                      checked={selectedTrainers.includes(trainer.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                          setSelectedTrainers([...selectedTrainers, trainer.id]);
-                          } else {
-                          setSelectedTrainers(selectedTrainers.filter((id) => id !== trainer.id));
-                          }
-                        }}
-                        className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
-                      />
-                      <span className="text-sm text-gray-700 font-medium">
-                      {trainer.name}
-                      </span>
+              {selectedStaffIds.length > 0 ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Selected Staff ({selectedStaffIds.length})
                     </label>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="assignment-type" className="block text-sm font-medium text-gray-700 mb-2">
-                  Assign Staff By
-                </label>
-                <select
-                  id="assignment-type"
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] focus:border-transparent"
-                  value={assignmentType}
-                  onChange={(e) => setAssignmentType(e.target.value as "staff" | "department" | "upload" | "file-range")}
-                >
-                  <option value="staff">Individual Staff</option>
-                  <option value="file-range">File Number Range</option>
-                  <option value="department">Department</option>
-                  <option value="upload">Upload List</option>
-                </select>
-              </div>
-
-              <div>
-                <label htmlFor="target-select" className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Trainees
-                </label>
-                
-                {assignmentType === "staff" && (
-                  <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto p-2 bg-white">
-                    {mockStaff.map((staff) => (
-                      <label key={`trainee-${staff.id}`} className="flex items-center gap-3 px-2 py-2 hover:bg-gray-50 rounded cursor-pointer transition">
-                        <input
-                          type="checkbox"
-                          value={staff.id}
-                          checked={selectedTrainees.includes(staff.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedTrainees([...selectedTrainees, staff.id]);
-                            } else {
-                              setSelectedTrainees(selectedTrainees.filter((id) => id !== staff.id));
-                            }
-                          }}
-                          className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
-                        />
-                        <span className="text-sm text-gray-700 font-medium">
-                          {staff.surname} <span className="font-normal">{staff.otherNames}</span> <span className="text-gray-400">({staff.fileNo})</span>
-                        </span>
-                      </label>
-                    ))}
-                  </div>
-                )}
-
-                {assignmentType === "file-range" && (
-                  <div className="flex gap-4">
-                    <div className="flex-1">
-                      <input type="text" placeholder="Start File No. (e.g. 001)" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] focus:border-transparent" />
-                    </div>
-                    <div className="flex-1">
-                      <input type="text" placeholder="End File No. (e.g. 100)" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] focus:border-transparent" />
-                    </div>
-                  </div>
-                )}
-
-                {assignmentType === "department" && (
-                  <select
-                    id="target-select"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] focus:border-transparent"
-                  >
-                    <optgroup label="Departments">
-                      {departments.map((dept) => (
-                        <option key={dept.id}>{dept.name}</option>
+                    <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto p-2 bg-gray-50 space-y-1">
+                      {mockStaff.filter(s => selectedStaffIds.includes(s.id)).map(staff => (
+                        <div key={staff.id} className="flex items-center justify-between py-2 px-3 border border-gray-100 bg-white rounded-md shadow-sm">
+                          <span className="text-sm font-semibold text-gray-800">{staff.surname} <span className="font-normal text-gray-600">{staff.otherNames}</span></span>
+                          <span className="text-xs text-gray-500 font-medium">{staff.fileNo}</span>
+                        </div>
                       ))}
-                    </optgroup>
-                  </select>
-                )}
-
-                {assignmentType === "upload" && (
-                  <div className="border border-gray-300 border-dashed rounded-lg p-6 flex flex-col items-center justify-center bg-gray-50">
-                    <p className="text-sm font-semibold text-gray-800 mb-1">Upload Trainees File</p>
-                    <p className="text-xs text-gray-500 mb-4">Supported formats: .csv, .xlsx</p>
-                    <input
-                      type="file"
-                      accept=".csv, .xlsx"
-                      className="text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#e8f5ee] file:text-[#1a6b3c] hover:file:bg-[#d1ebd9] cursor-pointer mb-4"
-                    />
-                    <div className="w-full text-left bg-white p-3 rounded-md border border-gray-200">
-                      <p className="text-xs font-bold text-gray-700 mb-1">Expected file columns:</p>
-                      <ul className="text-xs text-gray-500 list-disc list-inside pl-4">
-                        <li>File No</li>
-                        <li>Surname</li>
-                        <li>Other Names</li>
-                        <li>Email Address</li>
-                      </ul>
                     </div>
                   </div>
-                )}
-              </div>
+                  
+                  <div>
+                    <label htmlFor="cohort-select" className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Cohort
+                    </label>
+                    <select
+                      id="cohort-select"
+                      value={selectedCohort}
+                      onChange={(e) => setSelectedCohort(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] focus:border-transparent"
+                    >
+                      <option value="">Select Cohort...</option>
+                      {mockCohorts.map((cohort) => (
+                        <option key={cohort.id} value={cohort.id}>{cohort.name} - {cohort.batch}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label htmlFor="cohort-select" className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Cohort
+                    </label>
+                    <select
+                      id="cohort-select"
+                      value={selectedCohort}
+                      onChange={(e) => setSelectedCohort(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] focus:border-transparent"
+                    >
+                      <option value="">Select Cohort...</option>
+                      {mockCohorts.map((cohort) => (
+                        <option key={cohort.id} value={cohort.id}>{cohort.name} - {cohort.batch}</option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div>
-                <label htmlFor="deadline-date" className="block text-sm font-medium text-gray-700 mb-2">
-                  Assignment Deadline
-                </label>
-                <input
-                  id="deadline-date"
-                  type="date"
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] focus:border-transparent"
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Upload List
+                    </label>
+                    <div className="border border-gray-300 border-dashed rounded-lg p-6 flex flex-col items-center justify-center bg-gray-50">
+                      <p className="text-sm font-semibold text-gray-800 mb-1">Upload Trainees File</p>
+                      <p className="text-xs text-gray-500 mb-4">Supported formats: .csv, .xlsx</p>
+                      <input
+                        type="file"
+                        accept=".csv, .xlsx"
+                        className="text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#e8f5ee] file:text-[#1a6b3c] hover:file:bg-[#d1ebd9] cursor-pointer mb-4"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             
             {/* Modal Footer */}
             <div className="p-6 border-t border-gray-100 flex gap-3 justify-end bg-gray-50/50 shrink-0">
               <button onClick={() => setShowAssignmentModal(false)} className="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition">Cancel</button>
-              <button onClick={() => setShowAssignmentModal(false)} className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#1a6b3c] hover:bg-[#145530] shadow-sm transition">Assign Course</button>
+              <button onClick={() => setShowAssignmentModal(false)} className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#1a6b3c] hover:bg-[#145530] shadow-sm transition">Assign to Cohort</button>
             </div>
           </div>
         </div>
