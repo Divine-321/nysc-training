@@ -4,8 +4,7 @@ import Link from "next/link";
 const upcomingExams = [
   {
     id: "EXM-101",
-    title: "Historical Background & Objectives",
-    course: "Historical Background of the NYSC",
+    title: "Promotion Examination",
     duration: "45 Mins",
     questions: 50,
     dueDate: "Jun 15, 2026",
