@@ -149,6 +149,12 @@ export default function LoginPage() {
                 Login here
               </Link>
             </p>
+            <p className="text-center text-sm text-gray-500">
+              Don't have an account?{" "}
+              <Link href="/register" className="text-[#1a6b3c] font-semibold">
+                Register here
+              </Link>
+            </p>
           </div>
         </div>
     </div>
