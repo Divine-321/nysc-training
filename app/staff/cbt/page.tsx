@@ -137,51 +137,6 @@ export default function CBTPage() {
           ))}
         </div>
       </div>
-
-      {/* Past Results Table */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mt-8">
-        <div className="p-6 border-b border-gray-100">
-          <h3 className="text-lg font-bold text-gray-800">Recent Exam Results</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
-            <thead className="bg-gray-50 text-gray-500">
-              <tr>
-                <th className="px-6 py-4 font-medium">Exam ID</th>
-                <th className="px-6 py-4 font-medium">Exam Title</th>
-                <th className="px-6 py-4 font-medium">Date Taken</th>
-                <th className="px-6 py-4 font-medium">Score</th>
-                <th className="px-6 py-4 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {completedExams.map((exam) => (
-                <tr key={exam.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4 text-xs font-mono text-gray-500">{exam.id}</td>
-                  <td className="px-6 py-4">
-                    <p className="font-semibold text-gray-800">{exam.title}</p>
-                    <p className="text-xs text-gray-500 mt-0.5 font-medium">{exam.course}</p>
-                  </td>
-                  <td className="px-6 py-4 text-gray-500 font-medium">{exam.dateTaken}</td>
-                  <td className="px-6 py-4">
-                    <span className="text-gray-800 font-extrabold">{exam.score}</span>
-                    <span className="text-gray-400 font-medium"> / {exam.total}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1.5 rounded-full text-xs font-bold shadow-sm ${
-                      exam.status === 'Passed'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-red-100 text-red-700'
-                    }`}>
-                      {exam.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 }
