@@ -189,7 +189,7 @@ export default function CourseBuilderPage() {
 
       <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
         <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-2">
-          <h3 className="font-bold text-[#1a6b3c] text-lg">Assessment Builder</h3>
+          <h3 className="font-bold text-[#1a6b3c] text-lg">Exams/Test Builder</h3>
           <div className="flex items-center gap-3">
             <input type="file" id="upload-questions" className="hidden" accept=".csv, .xlsx" />
             <label htmlFor="upload-questions" className="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition cursor-pointer shadow-sm text-sm">
