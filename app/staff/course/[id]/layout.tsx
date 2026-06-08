@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
@@ -16,7 +17,7 @@ export default function CourseLayout({
   const params = useParams();
   const courseId = params.id;
   const isLiveSession = Boolean(params.sessionId);
-  const isAssessment = pathname.includes("/assessment/");
+  const isAssessment = pathname?.includes("/assessment/") ?? false;
   const hideSidebar = isLiveSession || isAssessment;
 
   const currentCourse = courses.find(
@@ -105,11 +106,7 @@ if (!currentCourse) {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`block px-4 py-3 text-xs font-medium border-b border-gray-100 transition ${
-                      active
-                        ? "bg-[#1a6b3c] text-white"
-                        : "text-gray-700 hover:bg-gray-50"
-                    }`}
+                    className={`block px-4 py-3 text-xs font-medium border-b border-gray-100 transition ${active ? "bg-[#1a6b3c] text-white" : "text-gray-700 hover:bg-gray-50"}`}
                   >
                     {item.label}
                   </Link>

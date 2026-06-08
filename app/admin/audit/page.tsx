@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { Search, Filter, Download, X, Info } from "lucide-react";
 
 const auditLogs = [
@@ -129,9 +129,7 @@ export default function AuditTrailPage() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600 whitespace-nowrap">{log.target}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                      log.status === 'Success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
+                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${log.status === 'Success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                       {log.status}
                     </span>
                   </td>
@@ -200,9 +198,7 @@ export default function AuditTrailPage() {
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">Status</p>
-                  <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                    selectedLog.status === 'Success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                  }`}>
+                  <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${selectedLog.status === 'Success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                     {selectedLog.status}
                   </span>
                 </div>

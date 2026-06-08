@@ -58,7 +58,30 @@ export const courses = [
         completed: false,
       },
     ],
-    liveSessions: [] as LiveSession[],
+    liveSessions: [
+      {
+        id: "1-live-1",
+        title: "Course Introduction & Overview",
+        scheduledDate: "Jun 01, 2026",
+        time: "10:00 AM - 11:30 AM",
+        duration: "90 mins",
+        zoomLink: "https://zoom.us/j/1234567890",
+        meetingId: "123 456 7890",
+        passcode: "123456",
+        status: "completed",
+      },
+      {
+        id: "1-live-2",
+        title: "Q&A Session with Instructors",
+        scheduledDate: "Jun 15, 2026",
+        time: "02:00 PM - 03:00 PM",
+        duration: "60 mins",
+        zoomLink: "https://zoom.us/j/0987654321",
+        meetingId: "098 765 4321",
+        passcode: "NYSC26",
+        status: "upcoming",
+      },
+    ] as LiveSession[],
   },
   {
     id: "2",
@@ -107,7 +130,18 @@ export const courses = [
         completed: false,
       },
     ],
-    liveSessions: [] as LiveSession[],
+    liveSessions: [
+      {
+        id: "2-live-1",
+        title: "Deep Dive into Core Values",
+        scheduledDate: "Jun 08, 2026",
+        time: "09:00 AM - 11:00 AM",
+        duration: "120 mins",
+        zoomLink: "https://zoom.us/j/1112223333",
+        meetingId: "111 222 3333",
+        status: "live",
+      },
+    ] as LiveSession[],
   },
   {
     id: "3",
@@ -164,7 +198,19 @@ export const courses = [
         completed: false,
       },
     ],
-    liveSessions: [] as LiveSession[],
+    liveSessions: [
+      {
+        id: "3-live-1",
+        title: "Youth Discipline Discussion",
+        scheduledDate: "Jun 12, 2026",
+        time: "01:00 PM - 02:30 PM",
+        duration: "90 mins",
+        zoomLink: "https://zoom.us/j/4445556666",
+        meetingId: "444 555 6666",
+        passcode: "DISCIPLINE",
+        status: "upcoming",
+      },
+    ] as LiveSession[],
   },
   {
     id: "4",
@@ -221,7 +267,19 @@ export const courses = [
         completed: false,
       },
     ],
-    liveSessions: [] as LiveSession[],
+    liveSessions: [
+      {
+        id: "4-live-1",
+        title: "Orientation Camp Briefing",
+        scheduledDate: "May 28, 2026",
+        time: "10:00 AM - 12:00 PM",
+        duration: "120 mins",
+        zoomLink: "https://zoom.us/j/7778889999",
+        meetingId: "777 888 9999",
+        passcode: "CAMP2026",
+        status: "completed",
+      },
+    ] as LiveSession[],
   },
 ];
 

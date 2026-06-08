@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 import { Plus, ArrowRight } from "lucide-react";
 import { courses } from "@/app/data/courses";

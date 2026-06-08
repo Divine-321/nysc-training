@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -91,11 +91,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
                   <Link
                     key={href}
                     href={href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${
-                      isActive
-                        ? "bg-white text-[#1a6b3c] font-semibold"
-                        : "text-green-50 hover:bg-white/10 hover:text-white"
-                    }`}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition ${isActive ? "bg-white text-[#1a6b3c] font-semibold" : "text-green-50 hover:bg-white/10 hover:text-white"}`}
                   >
                     <Icon size={18} className={isActive ? "text-[#1a6b3c]" : "text-green-200"} />
                     {label}
