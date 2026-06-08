@@ -1,4 +1,5 @@
 import { Search, Filter, Download, ExternalLink, FileText, Shield, Bookmark, BookOpen } from "lucide-react";
+import React from "react";
 
 const resources = [
   {
