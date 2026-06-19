@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { courses } from "@/app/data/courses";
 import { Search, Clock, PlayCircle, BookOpen } from "lucide-react";
+import { readApiList, type Course } from "@/app/lib/portal-api";
+
+const fallbackCourses = courses;
 
 export default function StaffTraining() {
   const [mainTab, setMainTab] = useState<"overview" | "induction">("overview");
@@ -14,6 +17,41 @@ export default function StaffTraining() {
   const [inductionTab, setInductionTab] = useState<"induction" | "outstanding">(
     "induction"
   );
+  const [liveCourses, setLiveCourses] = useState<Course[]>([]);
+
+  useEffect(() => {
+    const loadCourses = async () => {
+      try {
+        const response = await fetch("/api/training/courses", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        setLiveCourses(readApiList<Course>(payload));
+      } catch {
+        setLiveCourses([]);
+      }
+    };
+
+    void loadCourses();
+  }, []);
+
+  const visibleCourses = useMemo(() => {
+    if (liveCourses.length > 0) {
+      return liveCourses.map((course) => ({
+        id: String(course.id),
+        title: course.title,
+        description: course.description,
+        duration: "Live API",
+        image: "/images/course-thumb.png",
+        category: course.category_name || "Training",
+        categoryColor: "bg-[#1a6b3c]",
+        progress: 0,
+        totalActivities: course.trainers.length || 1,
+        completedActivities: 0,
+      }));
+    }
+
+    return fallbackCourses;
+  }, [liveCourses]);
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -81,7 +119,7 @@ export default function StaffTraining() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {courses.map((course) => (
+            {visibleCourses.map((course) => (
               <div
                 key={course.id}
                 className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition group bg-white flex flex-col"
@@ -162,7 +200,7 @@ export default function StaffTraining() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {courses.map((course) => (
+            {visibleCourses.map((course) => (
               <div
                 key={course.id}
                 className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm p-5 hover:shadow-md transition flex flex-col bg-white group"
