@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, BarChart2, Monitor, Award, LogOut, Library, FileQuestion, User } from "lucide-react";
 
 const navItems = [
@@ -17,10 +17,17 @@ const navItems = [
 
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const isFullScreenView = pathname.includes("/staff/course/") || (pathname.includes("/staff/cbt/") && pathname !== "/staff/cbt");
-  
+
+  const handleSignOut = async () => {
+    setIsProfileOpen(false);
+    await fetch("/api/accounts/auth/logout", { method: "POST" });
+    router.push("/login");
+  };
+
   if (isFullScreenView) {
     return <>{children}</>;
   }
@@ -59,9 +66,9 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
                   Settings
                 </Link>
                 <div className="h-px bg-gray-100 my-1"></div>
-                <Link href="/login" onClick={() => setIsProfileOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition">
+                <button onClick={handleSignOut} className="block w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition">
                   Sign out
-                </Link>
+                </button>
               </div>
             )}
           </div>
@@ -99,13 +106,13 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
                 );
               })}
 
-              <Link
-                href="/login"
+              <button
+                onClick={handleSignOut}
                 className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-200 hover:bg-white/10 hover:text-red-100 w-full mt-4"
               >
                 <LogOut size={18} />
                 Sign out
-              </Link>
+              </button>
             </nav>
           </div>
 

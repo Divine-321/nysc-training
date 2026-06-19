@@ -1,11 +1,12 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, Bell } from "lucide-react";
 import { courses } from "@/app/data/courses";
+import { readApiItem, type Course } from "@/app/lib/portal-api";
 
 export default function CourseLayout({
   children,
@@ -16,39 +17,52 @@ export default function CourseLayout({
   const pathname = usePathname();
   const params = useParams();
   const courseId = params.id;
+  const [liveCourse, setLiveCourse] = useState<Course | null>(null);
   const isLiveSession = Boolean(params.sessionId);
   const isAssessment = pathname?.includes("/assessment/") ?? false;
   const hideSidebar = isLiveSession || isAssessment;
 
-  const currentCourse = courses.find(
-  (course) => String(course.id) === String(courseId)
-);
+  useEffect(() => {
+    const loadCourse = async () => {
+      const response = await fetch(`/api/training/courses/${courseId}`, { cache: "no-store" });
+      if (!response.ok) return;
+      setLiveCourse(readApiItem<Course>(await response.json()));
+    };
 
-if (!currentCourse) {
-  return <div className="p-6">Course not found</div>;
-}
+    if (!courses.some((course) => String(course.id) === String(courseId))) {
+      void loadCourse();
+    }
+  }, [courseId]);
+
+  const currentCourse = courses.find(
+    (course) => String(course.id) === String(courseId)
+  );
+
+  if (!currentCourse && !liveCourse) {
+    return <div className="p-6">Loading course...</div>;
+  }
 
   const menuItems = [
     { label: "Course Overview", href: `/staff/course/${courseId}` },
 
-    ...(currentCourse.hasPreTest
+    ...(currentCourse?.hasPreTest
       ? [{ label: "Pre-Course Test", href: `/staff/course/${courseId}/assessment/pre-test` }]
       : []),
 
-    ...currentCourse.modules.map((module) => ({
+    ...(currentCourse?.modules ?? []).map((module) => ({
       label: module.title,
       href: `/staff/course/${courseId}/module/${module.id}`,
     })),
 
-    ...(currentCourse.liveSessions && currentCourse.liveSessions.length > 0
+    ...(currentCourse?.liveSessions && currentCourse.liveSessions.length > 0
       ? [{ label: "Live Sessions", href: `/staff/course/${courseId}/live` }]
       : []),
 
-    ...(currentCourse.hasPostTest
+    ...(currentCourse?.hasPostTest
       ? [{ label: "Post-Course Test", href: `/staff/course/${courseId}/assessment/post-test` }]
       : []),
 
-    ...(currentCourse.hasEvaluation
+    ...(currentCourse?.hasEvaluation
       ? [{ label: "Evaluation", href: `/staff/course/${courseId}/evaluation` }]
       : []),
   ];

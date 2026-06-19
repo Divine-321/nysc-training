@@ -3,24 +3,77 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { courses } from "@/app/data/courses";
+import { readApiItem, type Course } from "@/app/lib/portal-api";
 
 export default function CourseOverviewPage() {
   const params = useParams();
   const courseId = String(params.id);
+  const [liveCourse, setLiveCourse] = useState<Course | null>(null);
 
   const currentCourse = courses.find(
     (course) => String(course.id) === courseId
   );
 
-  if (!currentCourse) {
+  useEffect(() => {
+    const loadCourse = async () => {
+      const response = await fetch(`/api/training/courses/${courseId}`, { cache: "no-store" });
+      if (!response.ok) return;
+      setLiveCourse(readApiItem<Course>(await response.json()));
+    };
+
+    if (!currentCourse) {
+      void loadCourse();
+    }
+  }, [courseId, currentCourse]);
+
+  if (!currentCourse && !liveCourse) {
     return (
       <div className="p-6">
         <div className="bg-white rounded-xl p-6">
-          <h2 className="text-xl font-bold text-red-600">Course not found</h2>
+          <h2 className="text-xl font-bold text-gray-800">Loading course...</h2>
         </div>
       </div>
     );
+  }
+
+  if (!currentCourse && liveCourse) {
+    return (
+      <div className="p-6">
+        <div className="relative rounded-xl overflow-hidden mb-6 bg-[#1a6b3c] min-h-72">
+          <div className="absolute inset-0 flex flex-col justify-end p-6">
+            <p className="text-green-100 text-sm font-medium">
+              {liveCourse.category_name || "Training"} | {liveCourse.status}
+            </p>
+            <h2 className="text-white text-xl font-bold mt-3">{liveCourse.title}</h2>
+          </div>
+        </div>
+
+        <div className="bg-[#f0f7f3] rounded-xl p-6 text-sm text-gray-700 leading-relaxed mb-6">
+          <p>{liveCourse.description}</p>
+        </div>
+
+        <div className="bg-white rounded-xl p-6 shadow-sm">
+          <h3 className="font-bold text-gray-800 mb-4">Trainers</h3>
+          {liveCourse.trainers.length > 0 ? (
+            <ul className="space-y-2">
+              {liveCourse.trainers.map((trainer) => (
+                <li key={trainer.id} className="text-sm text-gray-600">
+                  <span className="font-semibold text-gray-800">{trainer.full_name}</span> - {trainer.designation}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-gray-400">No trainers assigned yet.</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentCourse) {
+    return null;
   }
 
   const firstModule = currentCourse.modules[0];

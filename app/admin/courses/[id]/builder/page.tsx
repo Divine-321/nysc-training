@@ -1,10 +1,11 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Save, FileText, CheckCircle2, Video, UploadCloud, UserCheck } from "lucide-react";
 import { courses } from "@/app/data/courses";
+import { readApiItem, readApiList, extractErrorMessage, type Course, type CourseCategory, type Trainer } from "@/app/lib/portal-api";
 
 const suggestedModules = [
   "Historical Background of the NYSC",
@@ -27,26 +28,103 @@ const suggestedModules = [
   "Time Management"
 ];
 
-const trainersList = [
-  { id: "TRN-1", name: "A.F Omotade" },
-  { id: "TRN-2", name: "Prince Momoh" },
-  { id: "TRN-3", name: "Abdul Sulaiman" },
-];
-
 export default function CourseBuilderPage() {
   const params = useParams();
   const courseId = String(params.id);
 
-  const course = courses.find((course) => String(course.id) === courseId);
+  const mockCourse = courses.find((course) => String(course.id) === courseId);
 
   const [contentType, setContentType] = useState("Text");
-  const [assignedTrainers, setAssignedTrainers] = useState<string[]>(
-    course?.instructors.map(i => i.name) || []
-  );
+  const [liveCourse, setLiveCourse] = useState<Course | null>(null);
+  const [isLoadingCourse, setIsLoadingCourse] = useState(true);
+  const [categories, setCategories] = useState<CourseCategory[]>([]);
+  const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
+  const [status, setStatus] = useState<"DRAFT" | "PUBLISHED" | "ARCHIVED">("DRAFT");
+  const [trainerIds, setTrainerIds] = useState<number[]>([]);
+  const [saveError, setSaveError] = useState("");
+  const [saveSuccess, setSaveSuccess] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
-  if (!course) {
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [courseResponse, categoryResponse, trainerResponse] = await Promise.all([
+          fetch(`/api/training/courses/${courseId}`, { cache: "no-store" }),
+          fetch("/api/training/categories", { cache: "no-store" }),
+          fetch("/api/training/trainers", { cache: "no-store" }),
+        ]);
+
+        if (categoryResponse.ok) {
+          setCategories(readApiList<CourseCategory>(await categoryResponse.json()));
+        }
+
+        if (trainerResponse.ok) {
+          setTrainers(readApiList<Trainer>(await trainerResponse.json()));
+        }
+
+        if (courseResponse.ok) {
+          const course = readApiItem<Course>(await courseResponse.json());
+          if (course) {
+            setLiveCourse(course);
+            setTitle(course.title);
+            setDescription(course.description);
+            setCategory(course.category ? String(course.category) : "");
+            setStatus(course.status);
+            setTrainerIds(course.trainers.map((trainer) => trainer.id));
+          }
+        }
+      } finally {
+        setIsLoadingCourse(false);
+      }
+    };
+
+    void loadData();
+  }, [courseId]);
+
+  const handleSave = async () => {
+    setSaveError("");
+    setSaveSuccess("");
+    setIsSaving(true);
+
+    try {
+      const response = await fetch(`/api/training/courses/${courseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description,
+          status,
+          category: category ? Number(category) : null,
+          trainer_ids: trainerIds,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(extractErrorMessage(payload, "Course could not be updated."));
+      }
+
+      setLiveCourse(readApiItem<Course>(payload));
+      setSaveSuccess("Course updated successfully.");
+    } catch (updateError) {
+      setSaveError(updateError instanceof Error ? updateError.message : "Course could not be updated.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoadingCourse) {
+    return <div className="bg-white p-6 rounded-xl">Loading course...</div>;
+  }
+
+  if (!liveCourse && !mockCourse) {
     return <div className="bg-white p-6 rounded-xl">Course not found</div>;
   }
+
+  const course = mockCourse;
 
   return (
     <div className="max-w-6xl space-y-6">
@@ -55,7 +133,64 @@ export default function CourseBuilderPage() {
           <ArrowLeft size={16} /> Back to Courses
         </Link>
         <h2 className="text-2xl font-bold text-gray-800">Course Builder</h2>
-        <p className="text-sm text-gray-500 mt-1">{course.title}</p>
+        <p className="text-sm text-gray-500 mt-1">{liveCourse?.title ?? course?.title}</p>
+      </div>
+
+      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
+        <h3 className="font-bold text-[#1a6b3c] text-lg">Course Details</h3>
+
+        {saveError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+            {saveError}
+          </div>
+        )}
+        {saveSuccess && (
+          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
+            {saveSuccess}
+          </div>
+        )}
+
+        {!liveCourse && (
+          <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm font-medium text-yellow-700">
+            This is demo data. Changes here will not be saved.
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Course Title</label>
+          <input value={title} onChange={(event) => setTitle(event.target.value)} disabled={!liveCourse} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] disabled:bg-gray-50" />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Course Description</label>
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            disabled={!liveCourse}
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 h-28 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] resize-none disabled:bg-gray-50"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+            <select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!liveCourse} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] disabled:bg-gray-50">
+              <option value="">No category</option>
+              {categories.map((item) => (
+                <option key={item.id} value={item.id}>{item.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <select value={status} onChange={(event) => setStatus(event.target.value as "DRAFT" | "PUBLISHED" | "ARCHIVED")} disabled={!liveCourse} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] disabled:bg-gray-50">
+              <option value="DRAFT">Draft</option>
+              <option value="PUBLISHED">Published</option>
+              <option value="ARCHIVED">Archived</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -133,7 +268,7 @@ export default function CourseBuilderPage() {
           <h3 className="font-bold text-[#1a6b3c] text-lg mb-4">Existing Modules</h3>
 
           <div className="space-y-3 flex-1 overflow-y-auto pr-2" style={{ maxHeight: "600px" }}>
-            {course.modules.map((module) => (
+            {(course?.modules ?? []).map((module) => (
               <div key={module.id} className="border border-gray-200 rounded-xl p-4 hover:border-[#1a6b3c] transition group cursor-pointer relative">
                 <h4 className="font-semibold text-gray-800">{module.title}</h4>
                 <p className="text-sm text-gray-500 mt-1">{module.description}</p>
@@ -160,27 +295,30 @@ export default function CourseBuilderPage() {
             Select the trainers who will be responsible for this course.
         </p>
         <div className="space-y-3">
-            {trainersList.map((trainer) => (
+            {trainers.map((trainer) => (
                 <label key={trainer.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
                     <input
                         type="checkbox"
-                        value={trainer.name}
-                        checked={assignedTrainers.includes(trainer.name)}
+                        checked={trainerIds.includes(trainer.id)}
+                        disabled={!liveCourse}
                         onChange={(e) => {
-                            if (e.target.checked) {
-                                setAssignedTrainers([...assignedTrainers, trainer.name]);
-                            } else {
-                                setAssignedTrainers(assignedTrainers.filter((name) => name !== trainer.name));
-                            }
+                            setTrainerIds((current) =>
+                                e.target.checked
+                                    ? [...current, trainer.id]
+                                    : current.filter((id) => id !== trainer.id)
+                            );
                         }}
                         className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
                     />
-                    <span className="font-semibold text-gray-800">{trainer.name}</span>
+                    <span className="font-semibold text-gray-800">{trainer.full_name}</span>
                 </label>
             ))}
+            {trainers.length === 0 && (
+                <p className="text-sm text-gray-400">No trainers available yet.</p>
+            )}
         </div>
         <div className="pt-2 border-t border-gray-100 flex justify-end">
-            <button className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition">
+            <button onClick={handleSave} disabled={!liveCourse || isSaving} className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition disabled:opacity-60 disabled:cursor-not-allowed">
                 <Save size={18} />
                 Save Trainers
             </button>
@@ -382,9 +520,9 @@ export default function CourseBuilderPage() {
 
       {/* Update Course Button */}
       <div className="flex justify-end pt-2 pb-10">
-        <button className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-8 py-3.5 rounded-xl font-bold flex items-center gap-2 transition shadow-sm text-lg">
+        <button onClick={handleSave} disabled={!liveCourse || isSaving} className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-8 py-3.5 rounded-xl font-bold flex items-center gap-2 transition shadow-sm text-lg disabled:opacity-60 disabled:cursor-not-allowed">
           <Save size={20} />
-          Update Course
+          {isSaving ? "Updating..." : "Update Course"}
         </button>
       </div>
 

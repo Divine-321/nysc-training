@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { MapPin, Briefcase, Hash, BookOpen, ShieldCheck, Phone, Mail, Edit2, Save, X, Camera } from "lucide-react";
+import type { AuthUser } from "@/app/lib/portal-api";
 
 export default function StaffProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
@@ -23,9 +24,51 @@ export default function StaffProfilePage() {
 
   const [formData, setFormData] = useState({ ...staffData });
 
-  const handleSave = () => {
-    setStaffData({ ...formData });
-    setIsEditing(false);
+  useEffect(() => {
+    const loadProfile = async () => {
+      const response = await fetch("/api/accounts/me", { cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const user = payload?.data as AuthUser | undefined;
+      if (!user) return;
+
+      const nextData = {
+        photo: user.profile.profile_picture_url || "/1-blank-profile.png",
+        fileNo: user.file_number || "Not assigned",
+        surname: user.last_name,
+        otherNames: [user.first_name, user.middle_name].filter(Boolean).join(" "),
+        rank: user.role === "staff" ? "Staff" : user.role,
+        gradeLevel: "Not assigned",
+        location: "Not assigned",
+        coursesAttended: staffData.coursesAttended,
+        status: user.is_active ? "Active" : "Inactive",
+        phone: user.profile.phone_number || "",
+        email: user.email,
+      };
+
+      setStaffData(nextData);
+      setFormData(nextData);
+    };
+
+    void loadProfile();
+  }, []);
+
+  const handleSave = async () => {
+    const response = await fetch("/api/accounts/me/update", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        middle_name: formData.otherNames.split(" ").slice(1).join(" "),
+        profile: {
+          phone_number: formData.phone,
+        },
+      }),
+    });
+
+    if (response.ok) {
+      setStaffData({ ...formData });
+      setIsEditing(false);
+    }
   };
 
   const handleCancel = () => {

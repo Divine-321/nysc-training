@@ -1,9 +1,58 @@
-import React from "react";
+"use client";
+
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus, ArrowRight } from "lucide-react";
+import { Plus, ArrowRight, Trash2 } from "lucide-react";
 import { courses } from "@/app/data/courses";
+import { readApiList, type Course } from "@/app/lib/portal-api";
 
 export default function AdminCoursesPage() {
+  const [liveCourses, setLiveCourses] = useState<Course[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const loadCourses = async () => {
+      try {
+        const response = await fetch("/api/training/courses", { cache: "no-store" });
+        if (!response.ok) return;
+        setLiveCourses(readApiList<Course>(await response.json()));
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void loadCourses();
+  }, []);
+
+  const visibleCourses = useMemo(() => {
+    if (liveCourses.length > 0) {
+      return liveCourses.map((course) => ({
+        id: String(course.id),
+        title: course.title,
+        trainers: course.trainers.map((trainer) => trainer.full_name).join(", ") || "Unassigned",
+        modules: 0,
+        progress: course.status,
+        isLive: true,
+      }));
+    }
+
+    return courses.map((course) => ({
+      id: String(course.id),
+      title: course.title,
+      trainers: course.instructors.map((instructor) => instructor.name).join(", "),
+      modules: course.modules.length,
+      progress: `${course.progress}%`,
+      isLive: false,
+    }));
+  }, [liveCourses]);
+
+  const handleDelete = async (id: string) => {
+    const response = await fetch(`/api/training/courses/${id}`, { method: "DELETE" });
+    if (response.ok) {
+      setLiveCourses((current) => current.filter((course) => String(course.id) !== id));
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -33,23 +82,41 @@ export default function AdminCoursesPage() {
             </tr>
           </thead>
           <tbody>
-              {courses.map((course) => (
+              {visibleCourses.map((course) => (
               <tr key={course.id} className="border-b hover:bg-gray-50 transition">
                 <td className="px-4 py-4 font-medium">{course.title}</td>
-                <td className="px-4 py-4 text-gray-600">{course.instructors.map(i => i.name).join(", ")}</td>
-                <td className="px-4 py-4">{course.modules.length}</td>
-                <td className="px-4 py-4">{course.progress}%</td>
+                <td className="px-4 py-4 text-gray-600">{course.trainers}</td>
+                <td className="px-4 py-4">{course.modules}</td>
+                <td className="px-4 py-4">{course.progress}</td>
                 <td className="px-4 py-4">
-                  <Link
-                    href={`/admin/courses/${course.id}/builder`}
-                    className="text-[#1a6b3c] font-semibold hover:underline flex items-center gap-1 w-fit"
-                  >
-                    Build Course
-                    <ArrowRight size={16} />
-                  </Link>
+                  <div className="flex items-center gap-3">
+                    <Link
+                      href={`/admin/courses/${course.id}/builder`}
+                      className="text-[#1a6b3c] font-semibold hover:underline flex items-center gap-1 w-fit"
+                    >
+                      Build Course
+                      <ArrowRight size={16} />
+                    </Link>
+                    {course.isLive && (
+                      <button
+                        onClick={() => handleDelete(course.id)}
+                        className="text-red-600 hover:text-red-700"
+                        aria-label={`Delete ${course.title}`}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
               ))}
+              {!isLoading && visibleCourses.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                    No courses found.
+                  </td>
+                </tr>
+              )}
           </tbody>
         </table>
       </div>

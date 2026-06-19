@@ -59,6 +59,14 @@ export type CourseCategory = {
   created_at: string;
 };
 
+export type Trainer = {
+  id: number;
+  full_name: string;
+  designation: string;
+  organization: string;
+  bio: string | null;
+};
+
 export type Course = {
   id: number;
   title: string;
@@ -68,13 +76,7 @@ export type Course = {
   category: number | null;
   category_name: string;
   created_by: number;
-  trainers: Array<{
-    id: number;
-    full_name: string;
-    designation: string;
-    organization: string;
-    bio: string | null;
-  }>;
+  trainers: Trainer[];
   created_at: string;
 };
 
@@ -174,4 +176,30 @@ export function readApiList<T>(payload: unknown): T[] {
   }
 
   return [];
+}
+
+export function extractErrorMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== "object") return fallback;
+
+  const record = payload as Record<string, unknown>;
+
+  if (typeof record.message === "string") return record.message;
+  if (typeof record.detail === "string") return record.detail;
+
+  for (const value of Object.values(record)) {
+    if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+    if (typeof value === "string") return value;
+  }
+
+  return fallback;
+}
+
+export function readApiItem<T>(payload: unknown): T | null {
+  if (!payload || typeof payload !== "object") return (payload as T) ?? null;
+
+  if ("data" in payload) {
+    return (payload as { data: T }).data;
+  }
+
+  return payload as T;
 }
