@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
-import { Search, Filter, Plus, MoreHorizontal, X, MapPin, Briefcase, BookOpen, ShieldCheck, Hash } from "lucide-react";
-import { courses } from "@/app/data/courses";
-import { departments } from "@/app/data/adminData";
+import { Search, Filter, Plus, MoreHorizontal, X, MapPin, Briefcase, BookOpen, Hash } from "lucide-react";
 import { mockCohorts } from "@/app/admin/cohorts/page";
+import { readApiList } from "@/app/lib/portal-api";
 
 const mockStaff = [
   {
@@ -72,24 +71,58 @@ const mockStaff = [
 
 type StaffUser = typeof mockStaff[0];
 
-const trainersList = [
-  { id: "TRN-1", name: "A.F Omotade" },
-  { id: "TRN-2", name: "Prince Momoh" },
-  { id: "TRN-3", name: "Abdul Sulaiman" },
-];
+type Posting = {
+  id: number;
+  staff: {
+    id: number;
+    email: string;
+    file_number: string;
+    first_name: string;
+    last_name: string;
+  };
+  state: { name: string };
+  department: { name: string } | null;
+  grade_level: { code: string };
+  rank: { title: string };
+  status: "active" | "retired";
+};
 
 export default function AdminUsersPage() {
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [liveStaff, setLiveStaff] = useState<StaffUser[]>([]);
 
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [selectedCohort, setSelectedCohort] = useState("");
+  const staffList = liveStaff.length > 0 ? liveStaff : mockStaff;
+
+  useEffect(() => {
+    const loadPostings = async () => {
+      const response = await fetch("/api/organization/postings", { cache: "no-store" });
+      if (!response.ok) return;
+      const postings = readApiList<Posting>(await response.json());
+      setLiveStaff(postings.map((posting) => ({
+        id: String(posting.staff.id),
+        photo: "/1-blank-profile.png",
+        fileNo: posting.staff.file_number,
+        surname: posting.staff.last_name,
+        otherNames: posting.staff.first_name,
+        rank: posting.rank.title,
+        gradeLevel: posting.grade_level.code,
+        location: [posting.state.name, posting.department?.name].filter(Boolean).join(" / "),
+        coursesAttended: 0,
+        status: posting.status === "active" ? "Active" : "Retired",
+      })));
+    };
+
+    void loadPostings();
+  }, []);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedStaffIds(mockStaff.map(s => s.id));
+      setSelectedStaffIds(staffList.map(s => s.id));
     } else {
       setSelectedStaffIds([]);
     }
@@ -148,7 +181,7 @@ export default function AdminUsersPage() {
                   <input 
                     type="checkbox" 
                     className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
-                    checked={selectedStaffIds.length === mockStaff.length && mockStaff.length > 0}
+                    checked={selectedStaffIds.length === staffList.length && staffList.length > 0}
                     onChange={handleSelectAll}
                   />
                 </th>
@@ -163,7 +196,7 @@ export default function AdminUsersPage() {
             </thead>
 
             <tbody className="divide-y divide-gray-100">
-              {mockStaff.map((staff) => (
+              {staffList.map((staff) => (
                 <tr key={staff.id} className="hover:bg-gray-50 transition group">
                   <td className="px-6 py-4">
                     <input 
@@ -228,7 +261,7 @@ export default function AdminUsersPage() {
         
         {/* Pagination Placeholder */}
         <div className="p-5 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
-          <p>Showing 1 to {mockStaff.length} of {mockStaff.length} entries</p>
+          <p>Showing 1 to {staffList.length} of {staffList.length} entries</p>
           <div className="flex gap-1">
             <button className="px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-50">Prev</button>
             <button className="px-3 py-1 bg-[#1a6b3c] text-white rounded">1</button>
@@ -396,7 +429,7 @@ export default function AdminUsersPage() {
                       Selected Staff ({selectedStaffIds.length})
                     </label>
                     <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto p-2 bg-gray-50 space-y-1">
-                      {mockStaff.filter(s => selectedStaffIds.includes(s.id)).map(staff => (
+                      {staffList.filter(s => selectedStaffIds.includes(s.id)).map(staff => (
                         <div key={staff.id} className="flex items-center justify-between py-2 px-3 border border-gray-100 bg-white rounded-md shadow-sm">
                           <span className="text-sm font-semibold text-gray-800">{staff.surname} <span className="font-normal text-gray-600">{staff.otherNames}</span></span>
                           <span className="text-xs text-gray-500 font-medium">{staff.fileNo}</span>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -33,6 +33,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // Mock signed-in admin (Replace with real auth data later)
@@ -40,6 +41,12 @@ export default function AdminLayout({
   const adminRole = "Super Admin";
   const adminInitial = adminName.charAt(0);
   const adminPhoto = "/1-blank-profile.png"; // Assuming you have an admin avatar
+
+  const handleSignOut = async () => {
+    setIsProfileOpen(false);
+    await fetch("/api/accounts/auth/logout", { method: "POST" });
+    router.push("/login");
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -68,7 +75,7 @@ export default function AdminLayout({
                 <Link href="/admin/profile" onClick={() => setIsProfileOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition">Profile</Link>
                 <Link href="/admin/settings" onClick={() => setIsProfileOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition">Settings</Link>
                 <div className="h-px bg-gray-100 my-1"></div>
-                <Link href="/login" onClick={() => setIsProfileOpen(false)} className="block px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition">Sign out</Link>
+                <button onClick={handleSignOut} className="block w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition">Sign out</button>
               </div>
             )}
           </div>
@@ -113,13 +120,13 @@ export default function AdminLayout({
             </nav>
           </div>
 
-          <Link
-            href="/login"
+          <button
+            onClick={handleSignOut}
             className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-red-200 hover:bg-white/10 hover:text-red-100 w-full mt-4 transition"
           >
             <LogOut size={18} />
             Sign out
-          </Link>
+          </button>
         </aside>
 
         {/* Main Content */}
