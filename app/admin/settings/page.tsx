@@ -32,13 +32,14 @@ export default function AdminSettingsPage() {
 
     try {
       const response = await fetch("/api/accounts/auth/change-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          old_password: currentPassword,
-          new_password: newPassword,
-        }),
-      });
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    old_password: currentPassword,
+    new_password: newPassword,
+    confirm_password: confirmPassword,
+  }),
+});
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {

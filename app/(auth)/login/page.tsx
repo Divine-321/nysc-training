@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -35,17 +35,28 @@ export default function LoginPage() {
         const authData = payload.data;
 
         if (authData.user.role === "admin" || authData.user.role === "superadmin") {
-          router.push("/admin/dashboard");
+          router.replace("/admin/dashboard");
           return;
         }
 
-        router.push("/staff/dashboard");
+        router.replace("/staff/dashboard");
       })
       .catch((loginError: unknown) => {
         setError(loginError instanceof Error ? loginError.message : "Login failed. Please try again.");
         setIsLoading(false);
       });
   };
+
+  useEffect(() => {
+  const check = async () => {
+    const response = await fetch("/api/accounts/me", { cache: "no-store" });
+    if (response.ok) {
+      router.replace("/staff/dashboard");
+    }
+  };
+
+  void check();
+}, [router]);
 
   return (
     <div className="min-h-screen bg-white flex">

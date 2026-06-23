@@ -2,48 +2,65 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { MapPin, Briefcase, Hash, BookOpen, ShieldCheck, Phone, Mail, Edit2, Save, X, Camera } from "lucide-react";
+import {
+  MapPin,
+  Briefcase,
+  Hash,
+  BookOpen,
+  ShieldCheck,
+  Phone,
+  Mail,
+  Edit2,
+  Save,
+  X,
+  Camera,
+} from "lucide-react";
 import type { AuthUser } from "@/app/lib/portal-api";
+
+const defaultProfileData = {
+  photo: "/1-blank-profile.png",
+  fileNo: "",
+  surname: "",
+  otherNames: "",
+  rank: "",
+  gradeLevel: "Not assigned",
+  location: "Not assigned",
+  coursesManaged: 0,
+  status: "",
+  phone: "",
+  email: "",
+};
 
 export default function AdminProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
-  // Mock Admin Data
-  const [adminData, setAdminData] = useState({
-    photo: "/1-blank-profile.png", // Make sure to have an admin-specific avatar
-    fileNo: "NYSC/ADM/2026/001",
-    surname: "ADMIN",
-    otherNames: "Abba",
-    rank: "Super Admin",
-    gradeLevel: "GL 17",
-    location: "National Directorate Headquarters, Abuja",
-    coursesManaged: 12, // Example metric for Admin
-    status: "Active",
-    phone: "+234 900 987 6543",
-    email: "abba.admin@nysc.gov.ng",
-  });
-
-  const [formData, setFormData] = useState({ ...adminData });
+  const [adminData, setAdminData] = useState(defaultProfileData);
+  const [formData, setFormData] = useState(defaultProfileData);
 
   useEffect(() => {
     const loadProfile = async () => {
       const response = await fetch("/api/accounts/me", { cache: "no-store" });
+
       if (!response.ok) return;
+
       const payload = await response.json();
       const user = payload?.data as AuthUser | undefined;
+
       if (!user) return;
 
       const nextData = {
-        photo: user.profile.profile_picture_url || "/1-blank-profile.png",
+        photo: user.profile?.profile_picture_url || "/1-blank-profile.png",
         fileNo: user.file_number || "Not assigned",
-        surname: user.last_name,
-        otherNames: [user.first_name, user.middle_name].filter(Boolean).join(" "),
-        rank: user.role,
+        surname: user.last_name || "",
+        otherNames: [user.first_name, user.middle_name]
+          .filter(Boolean)
+          .join(" "),
+        rank: user.role || "Admin",
         gradeLevel: "Not assigned",
         location: "Not assigned",
-        coursesManaged: adminData.coursesManaged,
+        coursesManaged: 0,
         status: user.is_active ? "Active" : "Inactive",
-        phone: user.profile.phone_number || "",
-        email: user.email,
+        phone: user.profile?.phone_number || "",
+        email: user.email || "",
       };
 
       setAdminData(nextData);
@@ -82,22 +99,25 @@ export default function AdminProfilePage() {
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
-      {/* Header */}
       <div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-1">Admin Profile</h2>
-        <p className="text-sm text-gray-500">View and manage your administrative details.</p>
+        <h2 className="text-2xl font-bold text-gray-800 mb-1">
+          Admin Profile
+        </h2>
+        <p className="text-sm text-gray-500">
+          View and manage your administrative details.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Photo, Name, Rank & Status */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center">
           <div className="w-32 h-32 rounded-full border-4 border-[#f0f7f3] overflow-hidden mb-4 relative bg-gray-100 shadow-sm group">
-            <Image 
-              src={adminData.photo} 
-              alt={`${adminData.surname} Photo`} 
-              fill 
-              className="object-cover" 
+            <Image
+              src={adminData.photo}
+              alt={`${adminData.surname || "Admin"} Photo`}
+              fill
+              className="object-cover"
             />
+
             {isEditing && (
               <label className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover:opacity-100 transition">
                 <Camera size={24} />
@@ -106,58 +126,90 @@ export default function AdminProfilePage() {
               </label>
             )}
           </div>
-          
+
           {isEditing ? (
             <div className="w-full space-y-3 mt-2">
               <div className="flex justify-center mb-4">
-                <span className={`px-4 py-1.5 rounded-full text-xs font-bold shadow-sm flex items-center gap-1 ${adminData.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                  {adminData.status === 'Active' && <ShieldCheck size={14} />}
-                  {adminData.status}
+                <span
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold shadow-sm flex items-center gap-1 ${
+                    adminData.status === "Active"
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {adminData.status === "Active" && <ShieldCheck size={14} />}
+                  {adminData.status || "Unknown"}
                 </span>
               </div>
+
               <div>
-                <label className="block text-xs font-bold text-gray-500 text-left mb-1">Surname</label>
-                <input 
-                  type="text" 
-                  name="surname" 
-                  value={formData.surname} 
+                <label className="block text-xs font-bold text-gray-500 text-left mb-1">
+                  Surname
+                </label>
+                <input
+                  type="text"
+                  name="surname"
+                  value={formData.surname}
                   onChange={handleChange}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
                 />
               </div>
+
               <div>
-                <label className="block text-xs font-bold text-gray-500 text-left mb-1">Other Names</label>
-                <input 
-                  type="text" 
-                  name="otherNames" 
-                  value={formData.otherNames} 
+                <label className="block text-xs font-bold text-gray-500 text-left mb-1">
+                  Other Names
+                </label>
+                <input
+                  type="text"
+                  name="otherNames"
+                  value={formData.otherNames}
                   onChange={handleChange}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
                 />
               </div>
+
               <div className="pt-2">
-                <p className="text-[#1a6b3c] font-bold text-sm">{adminData.rank}</p>
+                <p className="text-[#1a6b3c] font-bold text-sm">
+                  {adminData.rank || "Admin"}
+                </p>
               </div>
             </div>
           ) : (
             <>
-              <span className={`px-4 py-1.5 rounded-full text-xs font-bold mb-4 shadow-sm flex items-center gap-1 ${adminData.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                {adminData.status === 'Active' && <ShieldCheck size={14} />}
-                {adminData.status}
+              <span
+                className={`px-4 py-1.5 rounded-full text-xs font-bold mb-4 shadow-sm flex items-center gap-1 ${
+                  adminData.status === "Active"
+                    ? "bg-green-100 text-green-700"
+                    : "bg-gray-100 text-gray-600"
+                }`}
+              >
+                {adminData.status === "Active" && <ShieldCheck size={14} />}
+                {adminData.status || "Unknown"}
               </span>
-              <h3 className="text-xl font-extrabold text-gray-800 tracking-tight">{adminData.surname}</h3>
-              <p className="text-gray-600 font-medium mb-1">{adminData.otherNames}</p>
-              <p className="text-[#1a6b3c] font-bold text-sm mt-2">{adminData.rank}</p>
+
+              <h3 className="text-xl font-extrabold text-gray-800 tracking-tight">
+                {adminData.surname || "Admin"}
+              </h3>
+
+              <p className="text-gray-600 font-medium mb-1">
+                {adminData.otherNames || "Not assigned"}
+              </p>
+
+              <p className="text-[#1a6b3c] font-bold text-sm mt-2">
+                {adminData.rank || "Admin"}
+              </p>
             </>
           )}
         </div>
 
-        {/* Right Column: Detailed Official Information */}
         <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8">
           <div className="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
-            <h3 className="text-lg font-bold text-gray-800">Official Information</h3>
+            <h3 className="text-lg font-bold text-gray-800">
+              Official Information
+            </h3>
+
             {!isEditing ? (
-              <button 
+              <button
                 onClick={() => setIsEditing(true)}
                 className="text-sm font-semibold text-[#1a6b3c] flex items-center gap-1 hover:underline"
               >
@@ -165,13 +217,14 @@ export default function AdminProfilePage() {
               </button>
             ) : (
               <div className="flex items-center gap-2">
-                <button 
+                <button
                   onClick={handleCancel}
                   className="text-sm font-semibold text-gray-500 flex items-center gap-1 hover:underline bg-gray-50 px-3 py-1.5 rounded-lg transition"
                 >
                   <X size={16} /> Cancel
                 </button>
-                <button 
+
+                <button
                   onClick={handleSave}
                   className="text-sm font-semibold text-white flex items-center gap-1 bg-[#1a6b3c] hover:bg-[#145530] px-3 py-1.5 rounded-lg transition"
                 >
@@ -180,58 +233,72 @@ export default function AdminProfilePage() {
               </div>
             )}
           </div>
-          
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-8 gap-x-8">
-            {/* Email (Editable) */}
             <div className="flex gap-4">
               <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 shrink-0 border border-gray-100">
                 <Mail size={20} />
               </div>
+
               <div className="flex flex-col justify-center w-full">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Email Address</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                  Email Address
+                </p>
+
                 {isEditing ? (
-                  <input 
-                    type="email" 
-                    name="email" 
-                    value={formData.email} 
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
                     onChange={handleChange}
                     className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
                   />
                 ) : (
-                  <p className="font-bold text-gray-800 truncate">{adminData.email}</p>
+                  <p className="font-bold text-gray-800 truncate">
+                    {adminData.email || "Not assigned"}
+                  </p>
                 )}
               </div>
             </div>
 
-            {/* Phone (Editable) */}
             <div className="flex gap-4">
               <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 shrink-0 border border-gray-100">
                 <Phone size={20} />
               </div>
+
               <div className="flex flex-col justify-center w-full">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Phone Number</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                  Phone Number
+                </p>
+
                 {isEditing ? (
-                  <input 
-                    type="tel" 
-                    name="phone" 
-                    value={formData.phone} 
+                  <input
+                    type="tel"
+                    name="phone"
+                    value={formData.phone}
                     onChange={handleChange}
                     className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
                   />
                 ) : (
-                  <p className="font-bold text-gray-800">{adminData.phone}</p>
+                  <p className="font-bold text-gray-800">
+                    {adminData.phone || "Not assigned"}
+                  </p>
                 )}
               </div>
             </div>
 
-            {/* Read-Only Official Details */}
             <div className="flex gap-4">
               <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 shrink-0 border border-gray-100">
                 <Hash size={20} />
               </div>
+
               <div className="flex flex-col justify-center">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">File No</p>
-                <p className="font-bold text-gray-800">{adminData.fileNo}</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                  File No
+                </p>
+                <p className="font-bold text-gray-800">
+                  {adminData.fileNo || "Not assigned"}
+                </p>
               </div>
             </div>
 
@@ -239,9 +306,14 @@ export default function AdminProfilePage() {
               <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 shrink-0 border border-gray-100">
                 <Briefcase size={20} />
               </div>
+
               <div className="flex flex-col justify-center">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Grade Level</p>
-                <p className="font-bold text-gray-800">{adminData.gradeLevel}</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                  Grade Level
+                </p>
+                <p className="font-bold text-gray-800">
+                  {adminData.gradeLevel || "Not assigned"}
+                </p>
               </div>
             </div>
 
@@ -249,9 +321,14 @@ export default function AdminProfilePage() {
               <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 shrink-0 border border-gray-100">
                 <MapPin size={20} />
               </div>
+
               <div className="flex flex-col justify-center">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Location</p>
-                <p className="font-bold text-gray-800">{adminData.location}</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                  Location
+                </p>
+                <p className="font-bold text-gray-800">
+                  {adminData.location || "Not assigned"}
+                </p>
               </div>
             </div>
 
@@ -259,9 +336,14 @@ export default function AdminProfilePage() {
               <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 border border-blue-100">
                 <BookOpen size={20} />
               </div>
+
               <div className="flex flex-col justify-center">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Courses Managed</p>
-                <p className="font-extrabold text-blue-700 text-lg leading-none">{adminData.coursesManaged}</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                  Courses Managed
+                </p>
+                <p className="font-extrabold text-blue-700 text-lg leading-none">
+                  {adminData.coursesManaged}
+                </p>
               </div>
             </div>
           </div>
