@@ -14,19 +14,41 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = () => {
-    setError("");
-    setIsLoading(true);
+  const handleLogin = async () => {
+  setError("");
+  setIsLoading(true);
 
-    setTimeout(() => {
-      if (email === "admin@nysc.com.ng" && password === "admin123") {
-        router.push("/admin/dashboard");
-      } else {
-        setError("Invalid admin credentials. Access denied.");
-        setIsLoading(false);
-      }
-    }, 600);
-  };
+  try {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ login: email, password }),
+    });
+
+    const payload = await response.json();
+
+    if (!response.ok) {
+      throw new Error(payload?.message || "Login failed. Please try again.");
+    }
+
+    const authData = payload.data;
+
+    if (authData.user.role !== "admin" && authData.user.role !== "superadmin") {
+      throw new Error("You do not have admin access.");
+    }
+
+    router.replace("/admin/dashboard");
+  } catch (loginError: unknown) {
+    setError(
+      loginError instanceof Error
+        ? loginError.message
+        : "Login failed. Please try again."
+    );
+    setIsLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-white flex">
