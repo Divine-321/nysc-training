@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { AlertCircle, X } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, X } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,14 +18,33 @@ export default function LoginPage() {
     setError("");
     setIsLoading(true);
 
-    setTimeout(() => {
-      if (username === "favour@nysc.com.ng" && password === "favour123") {
+    fetch("/api/auth/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ login: username, password }),
+    })
+      .then(async (response) => {
+        const payload = await response.json();
+
+        if (!response.ok) {
+          throw new Error(payload?.message || "Login failed. Please try again.");
+        }
+
+        const authData = payload.data;
+
+        if (authData.user.role === "admin" || authData.user.role === "superadmin") {
+          router.push("/admin/dashboard");
+          return;
+        }
+
         router.push("/staff/dashboard");
-      } else {
-        setError("Invalid user name or password. Please try again.");
+      })
+      .catch((loginError: unknown) => {
+        setError(loginError instanceof Error ? loginError.message : "Login failed. Please try again.");
         setIsLoading(false);
-      }
-    }, 600);
+      });
   };
 
   return (
@@ -86,11 +105,11 @@ export default function LoginPage() {
             {/* Username */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                User name
+                File number or email
               </label>
               <input
                 type="text"
-                placeholder="favour@nysc.com.ng"
+                placeholder="NYSC/2024/001 or john.doe@example.com"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full border border-[#1a6b3c] rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
@@ -105,7 +124,7 @@ export default function LoginPage() {
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
-                  placeholder="Enter your Password"
+                    placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full border border-[#1a6b3c] rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] pr-12"
@@ -113,9 +132,11 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-[#1a6b3c] transition"
                 >
-                  {showPassword ? "🙈" : "👁️"}
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
             </div>
@@ -150,7 +171,7 @@ export default function LoginPage() {
               </Link>
             </p>
             <p className="text-center text-sm text-gray-500">
-              Don't have an account?{" "}
+              Don&apos;t have an account?{" "}
               <Link href="/register" className="text-[#1a6b3c] font-semibold">
                 Register here
               </Link>

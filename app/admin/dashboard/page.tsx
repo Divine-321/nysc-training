@@ -1,9 +1,44 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PlusCircle, Users, UserCog, BookOpen, CheckCircle2, TrendingUp, Calendar, Clock, Video, Filter, Download, BarChart3, Award } from "lucide-react";
 import { adminStats } from "@/app/data/adminData";
 import { courses } from "@/app/data/courses";
+import { readApiList, type Course, type Department } from "@/app/lib/portal-api";
+
+const fallbackCourses = courses;
 
 export default function AdminDashboardPage() {
+  const [liveCourses, setLiveCourses] = useState<Course[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [coursesResponse, departmentsResponse] = await Promise.all([
+          fetch("/api/training/courses", { cache: "no-store" }),
+          fetch("/api/organization/departments", { cache: "no-store" }),
+        ]);
+
+        if (coursesResponse.ok) {
+          const coursesPayload = await coursesResponse.json();
+          setLiveCourses(readApiList<Course>(coursesPayload));
+        }
+
+        if (departmentsResponse.ok) {
+          const departmentsPayload = await departmentsResponse.json();
+          setDepartments(readApiList<Department>(departmentsPayload));
+        }
+      } catch {
+        setLiveCourses([]);
+        setDepartments([]);
+      }
+    };
+
+    void loadData();
+  }, []);
+
   const additionalSessions = [
     {
       id: "LS-PROM-01",
@@ -36,11 +71,16 @@ export default function AdminDashboardPage() {
 
   const upcomingSessions = [
     ...additionalSessions,
-    ...courses.flatMap((c) =>
-      (c.liveSessions || [])
-        .filter((s) => s.status === "upcoming")
-        .map((s) => ({ ...s, courseTitle: c.title }))
-    )
+    ...liveCourses.slice(0, 5).map((course, index) => ({
+      id: String(course.id),
+      title: course.title,
+      courseTitle: course.category_name || "General Training",
+      duration: "Live API",
+      scheduledDate: course.created_at.slice(0, 10),
+      time: "--:--",
+      status: course.status === "PUBLISHED" ? "upcoming" : "completed",
+      color: index % 3 === 0 ? "bg-[#1a6b3c]" : index % 3 === 1 ? "bg-yellow-500" : "bg-red-600",
+    }))
   ].slice(0, 8);
 
   const getStatIcon = (label: string) => {
@@ -75,6 +115,21 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-500">Live Courses</h3>
+          <p className="text-3xl font-extrabold text-[#1a6b3c] mt-2">{liveCourses.length || fallbackCourses.length}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-500">Departments</h3>
+          <p className="text-3xl font-extrabold text-[#1a6b3c] mt-2">{departments.length || 0}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-500">Upcoming Sessions</h3>
+          <p className="text-3xl font-extrabold text-[#1a6b3c] mt-2">{upcomingSessions.length}</p>
+        </div>
+      </div>
+
       {/* Charts Section */}
       <div className="grid grid-cols-1 gap-6">
 
@@ -82,18 +137,22 @@ export default function AdminDashboardPage() {
         <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100 flex flex-col justify-center">
           <h3 className="text-lg font-bold text-gray-800 mb-6">Course Progress Overview</h3>
           <div className="space-y-6">
-            {[
-            { label: "Historical Background of the NYSC", progress: 75, color: "bg-[#1a6b3c]" },
-            { label: "Mission/ Vision statements", progress: 45, color: "bg-yellow-500" },
-            { label: "Objectives of the NYSC", progress: 20, color: "bg-red-600" },
-            ].map((course, i) => (
+            {(liveCourses.length > 0 ? liveCourses.slice(0, 3).map((course, index) => ({
+              title: course.title,
+              progress: 0,
+              color: index % 3 === 0 ? "bg-[#1a6b3c]" : index % 3 === 1 ? "bg-yellow-500" : "bg-red-600",
+            })) : [
+            { title: "Historical Background of the NYSC", progress: 75, color: "bg-[#1a6b3c]" },
+            { title: "Mission/ Vision statements", progress: 45, color: "bg-yellow-500" },
+            { title: "Objectives of the NYSC", progress: 20, color: "bg-red-600" },
+            ]).map((course, i) => (
               <div key={i}>
                 <div className="flex justify-between text-sm mb-2">
-                  <span className="font-medium text-gray-700 truncate mr-4">{course.label}</span>
-                  <span className="text-gray-500 font-semibold">{course.progress}%</span>
+                  <span className="font-medium text-gray-700 truncate mr-4">{course.title}</span>
+                  <span className="text-gray-500 font-semibold">{(course as { progress?: number }).progress ?? 0}%</span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-2">
-                  <div className={`${course.color} h-2 rounded-full`} style={{ width: `${course.progress}%` }}></div>
+                  <div className={`${course.color} h-2 rounded-full`} style={{ width: `${(course as { progress?: number }).progress ?? 0}%` }}></div>
                 </div>
               </div>
             ))}

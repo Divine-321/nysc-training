@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, Filter, Plus, MoreHorizontal, Layers } from "lucide-react";
+import { Search, Filter, Plus, MoreHorizontal } from "lucide-react";
 
 export const mockCohorts = [
   { id: "COH-002", name: "Junior staff", batch: "April/2026", staffCount: 320, status: "Upcoming", startDate: "Jun 2026", endDate: "Aug 2026" },
@@ -14,6 +14,7 @@ export default function DepartmentsPage() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
   const dataList = mockCohorts;
+  type Cohort = (typeof mockCohorts)[number];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -95,7 +96,7 @@ export default function DepartmentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-            {dataList.map((item: any) => (
+            {dataList.map((item: Cohort) => (
                 <tr key={item.id} className="hover:bg-gray-50 transition">
                   <td className="px-6 py-4 font-semibold text-gray-800">{item.name}</td>
                   <td className="px-6 py-4 text-gray-600 font-medium">{item.batch}</td>

@@ -1,11 +1,46 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { courses, deadlines, stats } from "@/app/data/courses";
 import { BookOpen, PlayCircle, CheckCircle2, Calendar, Target, ArrowRight } from "lucide-react";
+import { readApiList, type Course } from "@/app/lib/portal-api";
+
+const fallbackCourses = courses;
 
 export default function StaffDashboard() {
-  const activeCourses = courses.slice(0, 2);
+  const [liveCourses, setLiveCourses] = useState<Course[]>([]);
+
+  useEffect(() => {
+    const loadCourses = async () => {
+      try {
+        const response = await fetch("/api/training/courses", { cache: "no-store" });
+        if (!response.ok) return;
+        const payload = await response.json();
+        setLiveCourses(readApiList<Course>(payload));
+      } catch {
+        setLiveCourses([]);
+      }
+    };
+
+    void loadCourses();
+  }, []);
+
+  const activeCourses = useMemo(() => {
+    if (liveCourses.length > 0) {
+      return liveCourses.slice(0, 2).map((course) => ({
+        id: String(course.id),
+        title: course.title,
+        category: course.category_name || "Training",
+        progress: 0,
+      }));
+    }
+
+    return fallbackCourses.slice(0, 2);
+  }, [liveCourses]);
+
   const overallProgress = Math.round(
-    courses.reduce((acc, course) => acc + course.progress, 0) / (courses.length || 1)
+    activeCourses.reduce((acc, course) => acc + (course.progress || 0), 0) / (activeCourses.length || 1)
   );
 
   const getStatIcon = (label: string) => {

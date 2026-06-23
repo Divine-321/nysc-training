@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { courses } from "@/app/data/courses";
-import { ArrowLeft, Calendar, Clock, Video, Users } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, Video } from "lucide-react";
 
 export default function CourseLiveSessionsPage() {
   const params = useParams();
@@ -36,7 +36,7 @@ export default function CourseLiveSessionsPage() {
 
       <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-100">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-6">
-          Live Sessions for "{currentCourse.title}"
+          Live Sessions for &quot;{currentCourse.title}&quot;
         </h1>
 
         {liveSessions && liveSessions.length > 0 ? (
