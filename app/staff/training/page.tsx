@@ -3,240 +3,232 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { courses } from "@/app/data/courses";
-import { Search, Clock, PlayCircle, BookOpen } from "lucide-react";
-import { readApiList, type Course } from "@/app/lib/portal-api";
+import {
+  BookOpen,
+  CheckCircle2,
+  Clock,
+  PlayCircle,
+  Search,
+} from "lucide-react";
+import {
+  loadStaffCourses,
+  toPercentage,
+  type StaffCourse,
+} from "@/app/lib/staff-learning";
 
-const fallbackCourses = courses;
+function statusLabel(status: StaffCourse["enrollment"]["status"]) {
+  if (status === "COMPLETED") return "Completed";
+  if (status === "IN_PROGRESS") return "In progress";
+  return "Not started";
+}
+
+function statusClass(status: StaffCourse["enrollment"]["status"]) {
+  if (status === "COMPLETED") return "bg-green-100 text-green-700";
+  if (status === "IN_PROGRESS") return "bg-blue-100 text-blue-700";
+  return "bg-amber-100 text-amber-700";
+}
 
 export default function StaffTraining() {
-  const [mainTab, setMainTab] = useState<"overview" | "induction">("overview");
-  const [overviewTab, setOverviewTab] = useState<"all" | "inprogress" | "past">(
-    "all"
-  );
-  const [inductionTab, setInductionTab] = useState<"induction" | "outstanding">(
-    "induction"
-  );
-  const [liveCourses, setLiveCourses] = useState<Course[]>([]);
+  const [tab, setTab] = useState<"all" | "inprogress" | "completed">("all");
+  const [search, setSearch] = useState("");
+  const [courses, setCourses] = useState<StaffCourse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const loadCourses = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch("/api/training/courses", { cache: "no-store" });
-        if (!response.ok) return;
-        const payload = await response.json();
-        setLiveCourses(readApiList<Course>(payload));
-      } catch {
-        setLiveCourses([]);
+        setCourses(await loadStaffCourses());
+        setError("");
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Could not load your assigned courses.",
+        );
+      } finally {
+        setLoading(false);
       }
     };
 
-    void loadCourses();
+    void fetchData();
   }, []);
 
   const visibleCourses = useMemo(() => {
-    if (liveCourses.length > 0) {
-      return liveCourses.map((course) => ({
-        id: String(course.id),
-        title: course.title,
-        description: course.description,
-        duration: "Live API",
-        image: "/images/course-thumb.png",
-        category: course.category_name || "Training",
-        categoryColor: "bg-[#1a6b3c]",
-        progress: 0,
-        totalActivities: course.trainers.length || 1,
-        completedActivities: 0,
-      }));
-    }
+    const normalizedSearch = search.trim().toLowerCase();
 
-    return fallbackCourses;
-  }, [liveCourses]);
+    return courses.filter((item) => {
+      const progress = toPercentage(item.enrollment.completion_percentage);
+      const matchesTab =
+        tab === "all" ||
+        (tab === "completed" && item.enrollment.status === "COMPLETED") ||
+        (tab === "inprogress" && item.enrollment.status !== "COMPLETED");
+      const matchesSearch =
+        !normalizedSearch ||
+        `${item.enrollment.course_title} ${item.enrollment.cohort_name}`
+          .toLowerCase()
+          .includes(normalizedSearch);
+
+      return matchesTab && matchesSearch && progress >= 0;
+    });
+  }, [courses, search, tab]);
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
-      <div className="flex gap-2 mb-2 bg-white p-1.5 rounded-full shadow-sm w-fit border border-gray-100">
-        <button
-          onClick={() => setMainTab("overview")}
-          className={`px-6 py-2.5 rounded-full text-sm font-bold transition ${
-            mainTab === "overview"
-              ? "bg-[#1a6b3c] text-white shadow-sm"
-              : "text-gray-600 hover:bg-gray-50"
-          }`}
-        >
-          Course Overview
-        </button>
-
-        <button
-          onClick={() => setMainTab("induction")}
-          className={`px-6 py-2.5 rounded-full text-sm font-bold transition ${
-            mainTab === "induction"
-              ? "bg-[#1a6b3c] text-white shadow-sm"
-              : "text-gray-600 hover:bg-gray-50"
-          }`}
-        >
-          Induction
-        </button>
-      </div>
-
-      {mainTab === "overview" && (
-        <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
-          <h2 className="text-2xl font-bold text-gray-800 mb-6">
-            Course Overview
-          </h2>
-
-          <div className="flex gap-8 mb-6 border-b border-gray-100">
-            {(["all", "inprogress", "past"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setOverviewTab(tab)}
-                className={`pb-3 text-sm font-bold capitalize transition border-b-2 ${
-                  overviewTab === tab
-                    ? "text-[#1a6b3c]"
-                    : "text-gray-400"
-                }`}
-              >
-                {tab === "inprogress"
-                  ? "In progress"
-                  : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
+    <div className="mx-auto max-w-6xl space-y-6">
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:p-8">
+        <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-800">
+              My Assigned Courses
+            </h2>
+            <p className="mt-1 text-sm text-gray-500">
+              These are the courses connected to your cohort.
+            </p>
           </div>
 
-          <div className="flex gap-3 mb-6">
-            <select className="border border-gray-200 rounded-full px-4 py-2 text-sm text-gray-600 outline-none focus:ring-2 focus:ring-[#1a6b3c]">
-              <option>Sort by course name</option>
-            </select>
-
-            <div className="relative flex-1 max-w-xs">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search courses..."
-                className="w-full border border-gray-200 rounded-full pl-9 pr-4 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-              />
-            </div>
+          <div className="relative w-full md:w-80">
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search courses..."
+              className="w-full rounded-full border border-gray-200 py-2 pl-9 pr-4 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+            />
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {visibleCourses.map((course) => (
-              <div
-                key={course.id}
-                className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition group bg-white flex flex-col"
-              >
-                <div className="relative">
-                  <Image
-                    src={course.image}
-                    alt={course.title}
-                    width={400}
-                    height={200}
-                    className="w-full h-40 object-cover"
-                  />
+        <div className="mb-6 flex gap-8 border-b border-gray-100">
+          {(["all", "inprogress", "completed"] as const).map((item) => (
+            <button
+              key={item}
+              onClick={() => setTab(item)}
+              className={`border-b-2 pb-3 text-sm font-bold capitalize transition ${
+                tab === item
+                  ? "border-[#1a6b3c] text-[#1a6b3c]"
+                  : "border-transparent text-gray-400"
+              }`}
+            >
+              {item === "inprogress" ? "In progress" : item}
+            </button>
+          ))}
+        </div>
 
-                  <span
-                    className={`absolute bottom-2 left-2 ${course.categoryColor} text-white text-xs px-2 py-0.5 rounded`}
-                  >
-                    {course.category}
-                  </span>
-                </div>
+        {error && (
+          <div className="mb-6 rounded-lg bg-red-50 p-4 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
-                <div className="p-5 flex flex-col flex-1">
-                  <h3 className="font-bold text-gray-800 mb-3 group-hover:text-[#1a6b3c] transition">
-                    {course.title}
-                  </h3>
+        {loading ? (
+          <p className="rounded-xl bg-gray-50 p-6 text-sm text-gray-500">
+            Loading your assigned courses...
+          </p>
+        ) : visibleCourses.length === 0 ? (
+          <div className="rounded-xl bg-gray-50 p-8 text-center">
+            <BookOpen className="mx-auto mb-3 text-gray-300" size={42} />
+            <p className="font-semibold text-gray-700">
+              No assigned courses found.
+            </p>
+            <p className="mt-1 text-sm text-gray-500">
+              Once an admin assigns your cohort to a course, it will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {visibleCourses.map((item) => {
+              const courseId = item.course?.id ?? item.cohortCourse?.course;
+              const progress = toPercentage(
+                item.enrollment.completion_percentage,
+              );
+              const totalDocuments = item.modules.reduce(
+                (total, module) => total + module.documents.length,
+                0,
+              );
+              const completedDocuments =
+                item.enrollment.document_progress.filter(
+                  (progressItem) => progressItem.is_completed,
+                ).length;
 
-                  <p className="text-xs text-gray-500 font-medium mb-2">
-                    {course.completedActivities} out of {course.totalActivities}{" "}
-                    activities completed
-                  </p>
-
-                  <div className="w-full bg-gray-100 rounded-full h-2 mb-2">
-                    <div
-                      className="bg-[#1a6b3c] h-2 rounded-full"
-                      style={{ width: `${course.progress}%` }}
+              return (
+                <div
+                  key={item.enrollment.id}
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:shadow-md"
+                >
+                  <div className="relative h-40 bg-[#1a6b3c]">
+                    <Image
+                      src={item.course?.thumbnail_url || "/images/course-thumb.png"}
+                      alt={item.enrollment.course_title}
+                      width={400}
+                      height={200}
+                      className="h-40 w-full object-cover"
                     />
+                    <span
+                      className={`absolute bottom-2 left-2 rounded-full px-3 py-1 text-xs font-bold ${statusClass(
+                        item.enrollment.status,
+                      )}`}
+                    >
+                      {statusLabel(item.enrollment.status)}
+                    </span>
                   </div>
 
-                  <p className="text-xs text-gray-500 font-medium mb-5">
-                    <span className="text-[#1a6b3c] font-bold">{course.progress}%</span> Course Completed
-                  </p>
+                  <div className="flex flex-1 flex-col p-5">
+                    <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-gray-500">
+                      <Clock size={14} className="text-[#1a6b3c]" />
+                      {item.enrollment.cohort_name}
+                    </p>
 
-                  <Link
-                    href={`/staff/course/${course.id}`}
-                    className="mt-auto flex items-center justify-center gap-2 w-full border-2 border-[#1a6b3c] text-[#1a6b3c] font-bold text-sm rounded-xl py-2.5 hover:bg-green-50 transition"
-                  >
-                    <PlayCircle size={18} />
-                    Resume Course
-                  </Link>
+                    <h3 className="mb-2 font-bold text-gray-800 transition group-hover:text-[#1a6b3c]">
+                      {item.enrollment.course_title}
+                    </h3>
+
+                    <p className="mb-4 line-clamp-2 flex-1 text-sm leading-relaxed text-gray-500">
+                      {item.course?.description ||
+                        "Open this course to view modules and materials."}
+                    </p>
+
+                    <p className="mb-2 text-xs font-medium text-gray-500">
+                      {completedDocuments} out of {totalDocuments} material(s)
+                      completed
+                    </p>
+
+                    <div className="mb-2 h-2 w-full rounded-full bg-gray-100">
+                      <div
+                        className="h-2 rounded-full bg-[#1a6b3c]"
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+
+                    <p className="mb-5 text-xs font-medium text-gray-500">
+                      <span className="font-bold text-[#1a6b3c]">
+                        {progress}%
+                      </span>{" "}
+                      Course Completed
+                    </p>
+
+                    {courseId && (
+                      <Link
+                        href={`/staff/course/${courseId}`}
+                        className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl border-2 border-[#1a6b3c] py-2.5 text-sm font-bold text-[#1a6b3c] transition hover:bg-green-50"
+                      >
+                        {progress > 0 ? (
+                          <PlayCircle size={18} />
+                        ) : (
+                          <CheckCircle2 size={18} />
+                        )}
+                        {progress > 0 ? "Resume Course" : "Start Course"}
+                      </Link>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
-      )}
-
-      {mainTab === "induction" && (
-        <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
-          <div className="flex gap-2 mb-6">
-            {(["induction", "outstanding"] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setInductionTab(tab)}
-                className={`px-5 py-2 rounded-full text-sm font-bold transition ${
-                  inductionTab === tab
-                    ? "bg-[#e8f5ee] text-[#1a6b3c] font-semibold"
-                    : "border text-gray-500 hover:bg-gray-50"
-                }`}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex justify-end mb-4">
-            <button className="bg-[#c9a84c] hover:bg-[#b59744] text-white font-semibold text-sm px-5 py-2.5 rounded-xl transition flex items-center gap-2 shadow-sm">
-              <BookOpen size={16} /> Go to Class
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {visibleCourses.map((course) => (
-              <div
-                key={course.id}
-                className="rounded-2xl overflow-hidden border border-gray-100 shadow-sm p-5 hover:shadow-md transition flex flex-col bg-white group"
-              >
-                <Image
-                  src={course.image}
-                  alt={course.title}
-                  width={400}
-                  height={160}
-                  className="w-full h-36 object-cover rounded-xl mb-3"
-                />
-
-                <p className="text-xs text-gray-500 font-medium flex items-center gap-1.5 mb-2">
-                  <Clock size={14} className="text-[#1a6b3c]" /> {course.duration}
-                </p>
-
-                <h3 className="font-bold text-[#1a6b3c] mb-2 group-hover:text-green-700 transition">
-                  {course.title}
-                </h3>
-
-                <p className="text-sm text-gray-500 mb-5 leading-relaxed flex-1">
-                  {course.description}
-                </p>
-
-                <Link
-                  href={`/staff/course/${course.id}`}
-                  className="flex items-center justify-center gap-2 w-full border-2 border-[#1a6b3c] text-[#1a6b3c] font-bold text-sm rounded-xl py-2.5 hover:bg-green-50 transition mt-auto"
-                >
-                  <PlayCircle size={18} />
-                  Start Course
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

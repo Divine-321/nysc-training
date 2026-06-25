@@ -10,21 +10,61 @@ import type { AuthUser } from "@/app/lib/portal-api";
 import {
   LayoutDashboard,
   Users,
+  UserPlus,
   BookOpen,
   Layers,
   History,
   Library,
   LogOut,
+  Award,
 } from "lucide-react";
 
 const navItems = [
-  { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
-  { label: "Courses", href: "/admin/courses", icon: BookOpen },
-  { label: "Cohorts", href: "/admin/cohorts", icon: Layers },
-  { label: "Staff", href: "/admin/users", icon: Users },
-  { label: "NYSC Books", href: "/admin/books", icon: Library },
-  { label: "Audit Logs", href: "/admin/audit", icon: History },
+  {
+    label: "Dashboard",
+    href: "/admin/dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    label: "Courses",
+    href: "/admin/courses",
+    icon: BookOpen,
+  },
+  {
+    label: "Cohorts",
+    href: "/admin/cohorts",
+    icon: Layers,
+  },
+  {
+    label: "Staff",
+    href: "/admin/users",
+    icon: Users,
+  },
+  {
+    label: "NYSC Books",
+    href: "/admin/books",
+    icon: Library,
+  },
+  {
+    label: "Certificates",
+    href: "/admin/certificates",
+    icon: Award,
+  },
+  {
+    label: "Invite Admin",
+    href: "/admin/invite",
+    icon: UserPlus,
+    superadminOnly: true,
+  },
+  {
+    label: "Audit Logs",
+    href: "/admin/audit",
+    icon: History,
+    superadminOnly: true,
+  },
 ];
+
+const ADMIN_ROLES = ["admin", "superadmin"] as const;
 
 export default function AdminLayout({
   children,
@@ -33,12 +73,15 @@ export default function AdminLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const isInviteAcceptancePage = pathname === "/admin/accept-invite";
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
 
   useEffect(() => {
+    if (isInviteAcceptancePage) return;
+
     const loadUser = async () => {
       try {
         const res = await fetch("/api/accounts/me", { cache: "no-store" });
@@ -58,7 +101,7 @@ export default function AdminLayout({
     };
 
     void loadUser();
-  }, []);
+  }, [isInviteAcceptancePage]);
 
   const handleSignOut = async () => {
     setIsProfileOpen(false);
@@ -78,8 +121,17 @@ export default function AdminLayout({
   const adminPhoto =
     user?.profile?.profile_picture_url ?? "/1-blank-profile.png";
 
+  const visibleNavItems = navItems.filter(
+    (item) =>
+      !item.superadminOnly || user?.role === "superadmin"
+  );
+
+  if (isInviteAcceptancePage) {
+    return <>{children}</>;
+  }
+
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={ADMIN_ROLES}>
       <div className="min-h-screen flex flex-col">
         <header className="h-16 bg-white flex items-center justify-between px-8 fixed top-0 left-64 right-0 z-40 border-b border-gray-100">
           <h1 className="text-xl font-bold text-gray-800">Admin Portal</h1>
@@ -156,7 +208,7 @@ export default function AdminLayout({
               <div className="w-full h-px bg-white/20 mb-4" />
 
               <nav className="space-y-1">
-                {navItems.map(({ label, href, icon: Icon }) => {
+                {visibleNavItems.map(({ label, href, icon: Icon }) => {
                   const active =
                     pathname === href || pathname.startsWith(`${href}/`);
 

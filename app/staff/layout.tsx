@@ -12,9 +12,32 @@ import {
   LogOut,
   Library,
   FileQuestion,
+  Bell,
+  CheckCheck,
 } from "lucide-react";
-import type { AuthUser } from "@/app/lib/portal-api";
+import { readApiList, type AuthUser } from "@/app/lib/portal-api";
 import AuthGuard from "@/app/components/AuthGuard";
+
+type Notification = {
+  id: number;
+  title: string;
+  message: string;
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+};
+
+type CohortStaffAssignment = {
+  id: number;
+  cohort: number;
+  cohort_name: string;
+  staff: number;
+};
+
+type CourseEnrollment = {
+  id: number;
+  cohort_name: string;
+};
 
 const navItems = [
   { label: "Dashboard", href: "/staff/dashboard", icon: LayoutDashboard },
@@ -35,7 +58,12 @@ export default function StaffLayout({
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [userCohorts, setUserCohorts] = useState<string[]>([]);
   const [loadingUser, setLoadingUser] = useState(true);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -48,9 +76,44 @@ export default function StaffLayout({
         }
 
         const payload = await res.json();
-        setUser(payload?.data ?? null);
+        const currentUser = payload?.data as AuthUser | null;
+        setUser(currentUser);
+
+        if (currentUser) {
+          const cohortResponse = await fetch("/api/training/cohort-staff", {
+            cache: "no-store",
+          });
+
+          if (cohortResponse.ok) {
+            const cohortPayload = await cohortResponse.json().catch(() => null);
+            const assignments =
+              readApiList<CohortStaffAssignment>(cohortPayload);
+
+            setUserCohorts(
+              assignments
+                .filter((assignment) => assignment.staff === currentUser.id)
+                .map((assignment) => assignment.cohort_name),
+            );
+          } else {
+            const enrollmentResponse = await fetch("/api/training/enrollments", {
+              cache: "no-store",
+            });
+
+            if (enrollmentResponse.ok) {
+              const enrollmentPayload = await enrollmentResponse
+                .json()
+                .catch(() => null);
+              const cohortNames = readApiList<CourseEnrollment>(
+                enrollmentPayload,
+              ).map((enrollment) => enrollment.cohort_name);
+
+              setUserCohorts([...new Set(cohortNames)]);
+            }
+          }
+        }
       } catch {
         setUser(null);
+        setUserCohorts([]);
       } finally {
         setLoadingUser(false);
       }
@@ -59,8 +122,90 @@ export default function StaffLayout({
     void loadUser();
   }, []);
 
+  useEffect(() => {
+    const loadUnreadCount = async () => {
+      try {
+        const response = await fetch("/api/notifications/unread-count", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) return;
+
+        const payload = await response.json();
+        const count =
+          payload?.data?.unread_count ??
+          payload?.data?.count ??
+          payload?.unread_count ??
+          payload?.count ??
+          0;
+
+        setUnreadCount(Number(count));
+      } catch {
+        setUnreadCount(0);
+      }
+    };
+
+    void loadUnreadCount();
+  }, []);
+
+  const loadNotifications = async () => {
+    setLoadingNotifications(true);
+
+    try {
+      const response = await fetch("/api/notifications", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) return;
+
+      const payload = await response.json();
+      setNotifications(readApiList<Notification>(payload));
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  const handleNotificationClick = async (notification: Notification) => {
+    if (!notification.is_read) {
+      const response = await fetch(`/api/notifications/${notification.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_read: true }),
+      });
+
+      if (response.ok) {
+        setNotifications((current) =>
+          current.map((item) =>
+            item.id === notification.id ? { ...item, is_read: true } : item
+          )
+        );
+        setUnreadCount((current) => Math.max(0, current - 1));
+      }
+    }
+
+    setIsNotificationsOpen(false);
+
+    if (notification.link) {
+      router.push(notification.link);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    const response = await fetch("/api/notifications/mark-all-read", {
+      method: "POST",
+    });
+
+    if (!response.ok) return;
+
+    setNotifications((current) =>
+      current.map((notification) => ({ ...notification, is_read: true }))
+    );
+    setUnreadCount(0);
+  };
+
   const handleSignOut = async () => {
     setIsProfileOpen(false);
+    setIsNotificationsOpen(false);
 
     await fetch("/api/accounts/auth/logout", {
       method: "POST",
@@ -79,6 +224,8 @@ export default function StaffLayout({
     : "User";
 
   const firstName = user?.first_name || "User";
+  const cohortLabel =
+    userCohorts.length > 0 ? userCohorts.join(", ") : "No cohort assigned";
 
   const userPhoto =
     user?.profile?.profile_picture_url ?? "/1-blank-profile.png";
@@ -92,16 +239,116 @@ export default function StaffLayout({
       <div className="min-h-screen flex flex-col">
         <header className="h-16 bg-white flex items-center justify-between px-8 fixed top-0 left-60 right-0 z-40 border-b border-gray-100">
           <h1 className="text-xl font-bold text-gray-800">
-            {loadingUser ? "Welcome…" : `Welcome, ${firstName}`}
+            {loadingUser ? "Welcome..." : `Welcome, ${firstName}`}
           </h1>
 
           <div className="flex items-center gap-4">
-            <button className="text-gray-500 hover:text-[#1a6b3c]">🔔</button>
+            <div className="hidden rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-[#1a6b3c] md:block">
+              Cohort: {loadingUser ? "Loading..." : cohortLabel}
+            </div>
+
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="Open notifications"
+                aria-expanded={isNotificationsOpen}
+                onClick={() => {
+                  const shouldOpen = !isNotificationsOpen;
+                  setIsNotificationsOpen(shouldOpen);
+                  setIsProfileOpen(false);
+
+                  if (shouldOpen) void loadNotifications();
+                }}
+                className="relative rounded-full p-2 text-gray-500 transition hover:bg-green-50 hover:text-[#1a6b3c]"
+              >
+                <Bell size={21} />
+
+                {unreadCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-5 text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {isNotificationsOpen && (
+                <div className="absolute right-0 z-50 mt-3 w-80 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">
+                  <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+                    <div>
+                      <p className="font-semibold text-gray-800">Notifications</p>
+                      <p className="text-xs text-gray-500">
+                        {unreadCount} unread
+                      </p>
+                    </div>
+
+                    {unreadCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => void handleMarkAllRead()}
+                        className="flex items-center gap-1 text-xs font-medium text-[#1a6b3c] hover:underline"
+                      >
+                        <CheckCheck size={15} />
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-96 overflow-y-auto">
+                    {loadingNotifications ? (
+                      <p className="px-4 py-8 text-center text-sm text-gray-500">
+                        Loading notifications...
+                      </p>
+                    ) : notifications.length === 0 ? (
+                      <p className="px-4 py-8 text-center text-sm text-gray-500">
+                        You have no notifications.
+                      </p>
+                    ) : (
+                      notifications.map((notification) => (
+                        <button
+                          key={notification.id}
+                          type="button"
+                          onClick={() =>
+                            void handleNotificationClick(notification)
+                          }
+                          className={`block w-full border-b border-gray-100 px-4 py-3 text-left transition hover:bg-gray-50 ${
+                            notification.is_read ? "bg-white" : "bg-green-50/60"
+                          }`}
+                        >
+                          <div className="flex gap-3">
+                            <span
+                              className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
+                                notification.is_read
+                                  ? "bg-transparent"
+                                  : "bg-[#1a6b3c]"
+                              }`}
+                            />
+
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-800">
+                                {notification.title}
+                              </p>
+                              <p className="mt-1 text-xs leading-5 text-gray-600">
+                                {notification.message}
+                              </p>
+                              <p className="mt-1 text-[11px] text-gray-400">
+                                {new Date(notification.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="relative">
               <div
                 className="flex items-center gap-2 cursor-pointer"
-                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                onClick={() => {
+                  setIsProfileOpen(!isProfileOpen);
+                  setIsNotificationsOpen(false);
+                }}
               >
                 <Image
                   src={userPhoto}
@@ -112,7 +359,7 @@ export default function StaffLayout({
                 />
 
                 <span className="text-sm font-medium text-gray-700">
-                  {loadingUser ? "Loading…" : `${displayName} ▾`}
+                  {loadingUser ? "Loading..." : `${displayName} ▾`}
                 </span>
               </div>
 

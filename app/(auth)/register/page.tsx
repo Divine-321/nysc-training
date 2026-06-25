@@ -28,6 +28,7 @@ export default function RegisterPage() {
   const [isValidatingFileNo, setIsValidatingFileNo] = useState(false);
   const [fileNoValid, setFileNoValid] = useState<boolean | null>(null);
   const [fileNoValidationMsg, setFileNoValidationMsg] = useState("");
+  const [profilePicture, setProfilePicture] = useState<File | null>(null);
 
   const validateFileNumber = async (fileNo: string) => {
     if (!fileNo) {
@@ -185,6 +186,9 @@ export default function RegisterPage() {
       registerPayload.set("email", formData.email);
       registerPayload.set("password", formData.password);
       registerPayload.set("phone_number", formData.phone);
+      if (profilePicture) {
+  registerPayload.set("profile_picture_url", profilePicture);
+}
 
       const response = await fetch("/api/accounts/auth/register", {
         method: "POST",
@@ -383,6 +387,38 @@ export default function RegisterPage() {
                   className="w-full border border-[#1a6b3c] rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
                 />
               </div>
+
+              <div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Profile Picture
+  </label>
+
+  <input
+    type="file"
+    accept="image/jpeg,image/png,image/webp"
+    onChange={(event) => {
+      const file = event.target.files?.[0] ?? null;
+
+      if (file && file.size > 5 * 1024 * 1024) {
+        setError("Profile picture must not exceed 5MB.");
+        event.target.value = "";
+        setProfilePicture(null);
+        return;
+      }
+
+      setError("");
+      setProfilePicture(file);
+    }}
+    className="w-full rounded-full border border-[#1a6b3c] px-4 py-2.5 text-sm"
+  />
+
+  {profilePicture && (
+    <p className="mt-1 text-xs text-gray-500">
+      Selected: {profilePicture.name}
+    </p>
+  )}
+</div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Password

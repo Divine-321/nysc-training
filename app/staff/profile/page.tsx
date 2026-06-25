@@ -4,25 +4,40 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { MapPin, Briefcase, Hash, BookOpen, ShieldCheck, Phone, Mail, Edit2, Save, X, Camera } from "lucide-react";
 import type { AuthUser } from "@/app/lib/portal-api";
+import { readApiList } from "@/app/lib/portal-api";
+
+type CohortStaffAssignment = {
+  id: number;
+  cohort: number;
+  cohort_name: string;
+  staff: number;
+};
+
+type CourseEnrollment = {
+  id: number;
+  cohort_name: string;
+};
 
 export default function StaffProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
-  // Mock Staff Data based on your requested fields
-  const [staffData, setStaffData] = useState({
-    photo: "/1-blank-profile.png",
-    fileNo: "NYSC/STF/2026/045",
-    surname: "ABBA",
-    otherNames: "Sulaiman Nasir",
-    rank: "Senior Inspector",
-    gradeLevel: "GL 09",
-    location: "National Directorate Headquarters, Abuja",
-    coursesAttended: 4,
-    status: "Active",
-    phone: "+234 800 123 4567",
-    email: "sulaiman.abba@nysc.gov.ng",
-  });
 
-  const [formData, setFormData] = useState({ ...staffData });
+  const emptyProfileData = {
+  photo: "/1-blank-profile.png",
+  fileNo: "",
+  surname: "",
+  otherNames: "",
+  rank: "",
+  gradeLevel: "Not assigned",
+  location: "Not assigned",
+  cohort: "Not assigned",
+  coursesAttended: 0,
+  status: "",
+  phone: "",
+  email: "",
+};
+
+const [staffData, setStaffData] = useState(emptyProfileData);
+const [formData, setFormData] = useState(emptyProfileData);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -32,17 +47,41 @@ export default function StaffProfilePage() {
       const user = payload?.data as AuthUser | undefined;
       if (!user) return;
 
+      const cohortResponse = await fetch("/api/training/cohort-staff", {
+        cache: "no-store",
+      });
+      const cohortPayload = cohortResponse.ok
+        ? await cohortResponse.json().catch(() => null)
+        : null;
+      let cohortNames = readApiList<CohortStaffAssignment>(cohortPayload)
+        .filter((assignment) => assignment.staff === user.id)
+        .map((assignment) => assignment.cohort_name);
+
+      if (cohortNames.length === 0) {
+        const enrollmentResponse = await fetch("/api/training/enrollments", {
+          cache: "no-store",
+        });
+        const enrollmentPayload = enrollmentResponse.ok
+          ? await enrollmentResponse.json().catch(() => null)
+          : null;
+
+        cohortNames = readApiList<CourseEnrollment>(enrollmentPayload).map(
+          (enrollment) => enrollment.cohort_name,
+        );
+      }
+
       const nextData = {
-        photo: user.profile.profile_picture_url || "/1-blank-profile.png",
+        photo: user.profile?.profile_picture_url || "/1-blank-profile.png",
         fileNo: user.file_number || "Not assigned",
         surname: user.last_name,
         otherNames: [user.first_name, user.middle_name].filter(Boolean).join(" "),
         rank: user.role === "staff" ? "Staff" : user.role,
         gradeLevel: "Not assigned",
         location: "Not assigned",
-        coursesAttended: staffData.coursesAttended,
+        cohort: [...new Set(cohortNames)].join(", ") || "Not assigned",
+        coursesAttended: 0,
         status: user.is_active ? "Active" : "Inactive",
-        phone: user.profile.phone_number || "",
+        phone: user.profile?.phone_number || "",
         email: user.email,
       };
 
@@ -252,6 +291,16 @@ export default function StaffProfilePage() {
               <div className="flex flex-col justify-center">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Location</p>
                 <p className="font-bold text-gray-800">{staffData.location}</p>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-[#1a6b3c] shrink-0 border border-green-100">
+                <ShieldCheck size={20} />
+              </div>
+              <div className="flex flex-col justify-center">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Cohort</p>
+                <p className="font-bold text-gray-800">{staffData.cohort}</p>
               </div>
             </div>
 

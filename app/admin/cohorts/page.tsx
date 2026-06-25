@@ -1,145 +1,410 @@
 "use client";
 
-import { useState } from "react";
-import { Search, Filter, Plus, MoreHorizontal } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
 
-export const mockCohorts = [
-  { id: "COH-002", name: "Junior staff", batch: "April/2026", staffCount: 320, status: "Upcoming", startDate: "Jun 2026", endDate: "Aug 2026" },
-  { id: "COH-003", name: "Middle level staff", batch: "March/2027", staffCount: 510, status: "Completed", startDate: "Sep 2025", endDate: "Nov 2025" },
-  { id: "COH-004", name: "Senior staff", batch: "May/2024", staffCount: 150, status: "Active", startDate: "Mar 2026", endDate: "May 2026" },
-];
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  extractErrorMessage,
+  readApiList,
+} from "@/app/lib/portal-api";
 
-export default function DepartmentsPage() {
+type Cohort = {
+  id: number;
+  name: string;
+  batch: string;
+  description: string | null;
+  start_date: string;
+  end_date: string;
+  status: "UPCOMING" | "ACTIVE" | "COMPLETED";
+  created_by: number | null;
+  created_at: string;
+};
+
+
+const emptyForm = {
+  name: "",
+  batch: "",
+  description: "",
+  start_date: "",
+  end_date: "",
+  status: "UPCOMING" as Cohort["status"],
+};
+
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const text = await response.text();
+
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+}
+
+export default function CohortsPage() {
+  const [cohorts, setCohorts] = useState<Cohort[]>([]);
+  const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
-  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const dataList = mockCohorts;
-  type Cohort = (typeof mockCohorts)[number];
+  const loadCohorts = useCallback(async () => {
+    try {
+      const response = await fetch("/api/training/cohorts", {
+        cache: "no-store",
+      });
+
+      const payload = await readResponsePayload(response);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(
+            payload,
+            `Could not load cohorts (HTTP ${response.status}).`
+          )
+        );
+      }
+
+      const nextCohorts = readApiList<Cohort>(payload);
+      setCohorts(nextCohorts);
+      setError("");
+      return nextCohorts;
+    } catch (loadError) {
+      setError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not load cohorts."
+      );
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      await loadCohorts();
+    };
+
+    void fetchData();
+  }, [loadCohorts]);
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const isEditing = editingId !== null;
+      const response = await fetch(
+        isEditing
+          ? `/api/training/cohorts/${editingId}`
+          : "/api/training/cohorts",
+        {
+        method: isEditing ? "PATCH" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(form),
+      },
+      );
+
+      const payload = await readResponsePayload(response);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(
+            payload,
+            `Could not ${isEditing ? "update" : "create"} cohort (HTTP ${response.status}).`
+          )
+        );
+      }
+
+      setForm(emptyForm);
+      setEditingId(null);
+      setShowForm(false);
+      await loadCohorts();
+      setNotice(
+        isEditing
+          ? "Cohort updated successfully."
+          : "Cohort created successfully.",
+      );
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Could not create cohort."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEditing = (cohort: Cohort) => {
+    setEditingId(cohort.id);
+    setForm({
+      name: cohort.name,
+      batch: cohort.batch,
+      description: cohort.description ?? "",
+      start_date: cohort.start_date,
+      end_date: cohort.end_date,
+      status: cohort.status,
+    });
+    setError("");
+    setNotice("");
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDelete = async (id: number) => {
+    const shouldDelete = window.confirm(
+      "Are you sure you want to delete this cohort?"
+    );
+
+    if (!shouldDelete) return;
+
+    setDeletingId(id);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/training/cohorts/${id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const payload = await readResponsePayload(response);
+        const refreshedCohorts = await loadCohorts();
+        const cohortStillExists = refreshedCohorts?.some(
+          (cohort) => cohort.id === id
+        );
+
+        if (refreshedCohorts && !cohortStillExists) {
+          setError("");
+          setNotice(
+            "Cohort was deleted. The backend returned an incorrect error status after deleting it."
+          );
+          return;
+        }
+
+        throw new Error(
+          extractErrorMessage(
+            payload,
+            `Could not delete cohort (HTTP ${response.status}).`
+          )
+        );
+      }
+
+      await loadCohorts();
+      setNotice("Cohort deleted successfully.");
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Could not delete cohort."
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="max-w-7xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Cohorts</h2>
-          <p className="text-sm text-gray-500 mt-1">Manage staff training cohorts.</p>
+          <h2 className="text-2xl font-bold text-gray-800">
+            Cohorts
+          </h2>
+
+          <p className="text-sm text-gray-500">
+            Manage staff training cohorts.
+          </p>
         </div>
 
         <button
-          onClick={() => setShowForm(!showForm)}
-          className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm"
+          onClick={() => {
+            if (showForm) {
+              setShowForm(false);
+              setEditingId(null);
+              setForm(emptyForm);
+              return;
+            }
+
+            setEditingId(null);
+            setForm(emptyForm);
+            setShowForm(true);
+          }}
+          className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-white"
         >
-          <Plus size={18} className={showForm ? "rotate-45 transition-transform" : "transition-transform"} />
-          {showForm ? "Close Form" : "Create Cohort"}
+          <Plus size={18} />
+          {showForm ? "Close form" : "Create cohort"}
         </button>
       </div>
 
-      {showForm && (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-4">
-          <h3 className="font-bold text-gray-800 mb-2">Create Cohort</h3>
-          <div className="max-w-md space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Cohort Name</label>
-              <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
-                <option value="">Select Cohort...</option>
-                <option value="Junior staff">Junior staff</option>
-                <option value="Middle level staff">Middle level staff</option>
-                <option value="Senior staff">Senior staff</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Batch</label>
-              <input
-                className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                placeholder="e.g. April/2026"
-              />
-            </div>
-          </div>
-          <div className="pt-2">
-            <button className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg text-sm font-semibold transition">
-              Save Cohort
-            </button>
-          </div>
+      {error && (
+        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+          {error}
         </div>
       )}
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        {/* Toolbar */}
-        <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
-          <div className="relative max-w-md w-full">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search cohorts..."
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] shadow-sm"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <button className="bg-white border border-gray-200 text-gray-600 px-4 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2 hover:bg-gray-50 transition shadow-sm">
-              <Filter size={16} />
-              Filter
-            </button>
-          </div>
+      {notice && (
+        <div className="rounded-lg bg-green-50 p-4 text-sm text-green-700">
+          {notice}
         </div>
+      )}
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
+      {showForm && (
+        <form
+          onSubmit={handleSubmit}
+          className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-2"
+        >
+          <h3 className="text-lg font-bold text-[#1a6b3c] md:col-span-2">
+            {editingId ? "Edit cohort" : "Create cohort"}
+          </h3>
+          <input
+            required
+            placeholder="Cohort name"
+            value={form.name}
+            onChange={(event) =>
+              setForm({ ...form, name: event.target.value })
+            }
+            className="rounded-lg border p-3"
+          />
+
+          <input
+            required
+            placeholder="Batch, for example April/2026"
+            value={form.batch}
+            onChange={(event) =>
+              setForm({ ...form, batch: event.target.value })
+            }
+            className="rounded-lg border p-3"
+          />
+
+          <input
+            required
+            type="date"
+            value={form.start_date}
+            onChange={(event) =>
+              setForm({ ...form, start_date: event.target.value })
+            }
+            className="rounded-lg border p-3"
+          />
+
+          <input
+            required
+            type="date"
+            value={form.end_date}
+            onChange={(event) =>
+              setForm({ ...form, end_date: event.target.value })
+            }
+            className="rounded-lg border p-3"
+          />
+
+          <select
+            value={form.status}
+            onChange={(event) =>
+              setForm({
+                ...form,
+                status: event.target.value as Cohort["status"],
+              })
+            }
+            className="rounded-lg border p-3"
+          >
+            <option value="UPCOMING">Upcoming</option>
+            <option value="ACTIVE">Active</option>
+            <option value="COMPLETED">Completed</option>
+          </select>
+
+          <textarea
+            placeholder="Description"
+            value={form.description}
+            onChange={(event) =>
+              setForm({ ...form, description: event.target.value })
+            }
+            className="rounded-lg border p-3 md:col-span-2"
+          />
+
+          <button
+            disabled={saving}
+            className="rounded-lg bg-[#1a6b3c] px-6 py-3 font-semibold text-white disabled:opacity-60"
+          >
+            {saving
+              ? "Saving..."
+              : editingId
+                ? "Update cohort"
+                : "Save cohort"}
+          </button>
+        </form>
+      )}
+
+      <div className="overflow-x-auto rounded-2xl bg-white shadow-sm">
+        {loading ? (
+          <p className="p-6 text-gray-500">Loading cohorts...</p>
+        ) : cohorts.length === 0 ? (
+          <p className="p-6 text-gray-500">
+            No cohorts have been created.
+          </p>
+        ) : (
+          <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-gray-500">
               <tr>
-                <th className="px-6 py-4 font-medium">Cohort Name</th>
-                <th className="px-6 py-4 font-medium">Batch</th>
-                <th className="px-6 py-4 font-medium">Start Date</th>
-                <th className="px-6 py-4 font-medium">End Date</th>
-                <th className="px-6 py-4 font-medium">Staff Count</th>
-                <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium text-right">Actions</th>
+                <th className="p-4">Name</th>
+                <th className="p-4">Batch</th>
+                <th className="p-4">Start</th>
+                <th className="p-4">End</th>
+                <th className="p-4">Status</th>
+                <th className="p-4">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
-            {dataList.map((item: Cohort) => (
-                <tr key={item.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4 font-semibold text-gray-800">{item.name}</td>
-                  <td className="px-6 py-4 text-gray-600 font-medium">{item.batch}</td>
-                  <td className="px-6 py-4 text-gray-600 font-medium">{item.startDate}</td>
-                  <td className="px-6 py-4 text-gray-600 font-medium">{item.endDate}</td>
-                  <td className="px-6 py-4 text-gray-600">{item.staffCount} members</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-3 py-1.5 rounded-full text-xs font-bold ${
-                      item.status === 'Active'
-                        ? 'bg-green-100 text-green-700'
-                        : item.status === 'Completed'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {item.status}
-                    </span>
+
+            <tbody>
+              {cohorts.map((cohort) => (
+                <tr key={cohort.id} className="border-t">
+                  <td className="p-4 font-semibold">
+                    {cohort.name}
                   </td>
-                  <td className="px-6 py-4 text-right relative">
-                    <button onClick={() => setOpenDropdownId(openDropdownId === item.id ? null : item.id)} className="text-gray-400 hover:text-[#1a6b3c] transition p-1 rounded-full hover:bg-gray-100">
-                      <MoreHorizontal size={18} />
-                    </button>
-                    {openDropdownId === item.id && (
-                      <div className="absolute right-8 mt-2 w-32 bg-white rounded-lg shadow-lg z-10 border border-gray-100 py-1">
-                        <button className="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition">Edit</button>
-                        <button className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition">Delete</button>
-                      </div>
-                    )}
+
+                  <td className="p-4">{cohort.batch}</td>
+                  <td className="p-4">{cohort.start_date}</td>
+                  <td className="p-4">{cohort.end_date}</td>
+
+                  <td className="p-4">
+                    {cohort.status}
+                  </td>
+
+                  <td className="p-4">
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => startEditing(cohort)}
+                        className="text-[#1a6b3c]"
+                        aria-label={`Edit ${cohort.name}`}
+                      >
+                        <Pencil size={18} />
+                      </button>
+
+                      <button
+                        onClick={() => handleDelete(cohort.id)}
+                        disabled={deletingId === cohort.id}
+                        className="text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        aria-label={`Delete ${cohort.name}`}
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
-            ))}
+              ))}
             </tbody>
           </table>
-        </div>
-
-        {/* Pagination Placeholder */}
-        <div className="p-5 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
-          <p>Showing 1 to {dataList.length} of {dataList.length} entries</p>
-          <div className="flex gap-1">
-            <button className="px-3 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">Prev</button>
-            <button className="px-3 py-1 bg-[#1a6b3c] text-white rounded-lg shadow-sm">1</button>
-            <button className="px-3 py-1 border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 transition">Next</button>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );

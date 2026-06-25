@@ -2,276 +2,314 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { PlusCircle, Users, UserCog, BookOpen, CheckCircle2, TrendingUp, Calendar, Clock, Video, Filter, Download, BarChart3, Award } from "lucide-react";
-import { adminStats } from "@/app/data/adminData";
-import { courses } from "@/app/data/courses";
-import { readApiList, type Course, type Department } from "@/app/lib/portal-api";
+import {
+  Award,
+  BookOpen,
+  Calendar,
+  Clock,
+  Layers,
+  PlusCircle,
+  UserCog,
+  Users,
+  Video,
+} from "lucide-react";
+import {
+  extractErrorMessage,
+  readApiItem,
+} from "@/app/lib/portal-api";
 
-const fallbackCourses = courses;
+type UpcomingLiveClass = {
+  id: number;
+  cohort_course: number;
+  course_title: string;
+  cohort_name: string;
+  title: string;
+  description: string | null;
+  meeting_url: string;
+  start_time: string;
+  end_time: string;
+  status: string;
+  created_at: string;
+};
+
+type DashboardAnalytics = {
+  totalNumberOfStaff: number;
+  totalNumberOfActiveCourses: number;
+  totalNumberOfCohorts: number;
+  totalNumberOfActiveCohorts: number;
+  totalNumberOfCertificatesAssigned: number;
+  totalNumberOfDepartments: number;
+  totalUpcomingLiveSessionsWithinMonth: number;
+  upcomingLiveClasses: UpcomingLiveClass[];
+};
 
 export default function AdminDashboardPage() {
-  const [liveCourses, setLiveCourses] = useState<Course[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
+  const [analytics, setAnalytics] =
+    useState<DashboardAnalytics | null>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadAnalytics = async () => {
       try {
-        const [coursesResponse, departmentsResponse] = await Promise.all([
-          fetch("/api/training/courses", { cache: "no-store" }),
-          fetch("/api/organization/departments", { cache: "no-store" }),
-        ]);
+        const response = await fetch("/api/analytics/dashboard", {
+          cache: "no-store",
+        });
 
-        if (coursesResponse.ok) {
-          const coursesPayload = await coursesResponse.json();
-          setLiveCourses(readApiList<Course>(coursesPayload));
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(
+            extractErrorMessage(
+              payload,
+              `Could not load dashboard (HTTP ${response.status}).`
+            )
+          );
         }
 
-        if (departmentsResponse.ok) {
-          const departmentsPayload = await departmentsResponse.json();
-          setDepartments(readApiList<Department>(departmentsPayload));
+        const data = readApiItem<DashboardAnalytics>(payload);
+
+        if (!data) {
+          throw new Error("The dashboard response was empty.");
         }
-      } catch {
-        setLiveCourses([]);
-        setDepartments([]);
+
+        setAnalytics(data);
+        setError("");
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Could not load dashboard."
+        );
+      } finally {
+        setLoading(false);
       }
     };
 
-    void loadData();
+    void loadAnalytics();
   }, []);
 
-  const additionalSessions = [
+  const primaryStats = [
     {
-      id: "LS-PROM-01",
-      title: "Objectives of the NYSC",
-      courseTitle: "Annual Assessment",
-      duration: "3h 00m",
-      scheduledDate: "Aug 10, 2026",
-      time: "09:00 AM",
-      status: "upcoming"
+      label: "Total Staff",
+      value: analytics?.totalNumberOfStaff,
+      description: "Registered staff accounts",
+      icon: Users,
     },
     {
-      id: "LS-ADV-01",
-      title: "Historical Background of the NYSC",
-      courseTitle: "Leadership & Management",
-      duration: "1h 30m",
-      scheduledDate: "Jul 22, 2026",
-      time: "01:00 PM",
-      status: "upcoming"
+      label: "Active Courses",
+      value: analytics?.totalNumberOfActiveCourses,
+      description: "Published training courses",
+      icon: BookOpen,
     },
     {
-      id: "LS-IT-01",
-      title: "Cardinal Programmes",
-      courseTitle: "ICT Proficiency",
-      duration: "2h 00m",
-      scheduledDate: "Jul 28, 2026",
-      time: "11:00 AM",
-      status: "upcoming"
-    }
+      label: "Total Cohorts",
+      value: analytics?.totalNumberOfCohorts,
+      description: "All training cohorts",
+      icon: Layers,
+    },
+    {
+      label: "Certificates Issued",
+      value: analytics?.totalNumberOfCertificatesAssigned,
+      description: "Generated certificates",
+      icon: Award,
+    },
   ];
 
-  const upcomingSessions = [
-    ...additionalSessions,
-    ...liveCourses.slice(0, 5).map((course, index) => ({
-      id: String(course.id),
-      title: course.title,
-      courseTitle: course.category_name || "General Training",
-      duration: "Live API",
-      scheduledDate: course.created_at.slice(0, 10),
-      time: "--:--",
-      status: course.status === "PUBLISHED" ? "upcoming" : "completed",
-      color: index % 3 === 0 ? "bg-[#1a6b3c]" : index % 3 === 1 ? "bg-yellow-500" : "bg-red-600",
-    }))
-  ].slice(0, 8);
+  const secondaryStats = [
+    {
+      label: "Active Cohorts",
+      value: analytics?.totalNumberOfActiveCohorts,
+    },
+    {
+      label: "Departments",
+      value: analytics?.totalNumberOfDepartments,
+    },
+    {
+      label: "Upcoming Sessions",
+      value: analytics?.totalUpcomingLiveSessionsWithinMonth,
+    },
+  ];
 
-  const getStatIcon = (label: string) => {
-    const lowerLabel = label.toLowerCase();
-    if (lowerLabel.includes("course")) return <BookOpen size={24} />;
-    if (lowerLabel.includes("staff") || lowerLabel.includes("user")) return <Users size={24} />;
-    if (lowerLabel.includes("completion") || lowerLabel.includes("rate")) return <CheckCircle2 size={24} />;
-    return <TrendingUp size={24} />;
-  };
+  const formatDate = (value: string) =>
+    new Intl.DateTimeFormat("en-NG", {
+      dateStyle: "medium",
+    }).format(new Date(value));
+
+  const formatTime = (value: string) =>
+    new Intl.DateTimeFormat("en-NG", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(value));
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
+    <div className="mx-auto max-w-7xl space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-1">Overview</h2>
-        <p className="text-sm text-gray-500">
-          Manage courses, staff assignments, and training progress.
+        <h2 className="text-2xl font-bold text-gray-800">
+          Overview
+        </h2>
+
+        <p className="mt-1 text-sm text-gray-500">
+          Current staff, course, cohort and training information.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {adminStats.map((stat) => (
-          <div key={stat.label} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between relative overflow-hidden">
-            <div className="flex justify-between items-start mb-4">
-              <div className="p-3 rounded-xl bg-[#f0f7f3] text-[#1a6b3c] shadow-sm">
-                {getStatIcon(stat.label)}
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {primaryStats.map((stat) => {
+          const Icon = stat.icon;
+
+          return (
+            <div
+              key={stat.label}
+              className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm"
+            >
+              <div className="mb-4 flex items-start justify-between">
+                <div className="rounded-xl bg-[#f0f7f3] p-3 text-[#1a6b3c]">
+                  <Icon size={24} />
+                </div>
+
+                <p className="text-3xl font-extrabold text-[#1a6b3c]">
+                  {loading ? "..." : (stat.value ?? 0)}
+                </p>
               </div>
-              <h3 className="text-3xl font-extrabold text-[#1a6b3c]">{stat.value}</h3>
+
+              <p className="text-sm font-bold text-gray-700">
+                {stat.label}
+              </p>
+
+              <p className="mt-1 text-xs text-gray-400">
+                {stat.description}
+              </p>
             </div>
-            <p className="text-sm font-bold text-gray-700">{stat.label}</p>
-            <p className="text-xs text-gray-400 font-medium mt-1">{stat.meta}</p>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        {secondaryStats.map((stat) => (
+          <div
+            key={stat.label}
+            className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm"
+          >
+            <p className="text-sm font-semibold text-gray-500">
+              {stat.label}
+            </p>
+
+            <p className="mt-2 text-3xl font-extrabold text-[#1a6b3c]">
+              {loading ? "..." : (stat.value ?? 0)}
+            </p>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-500">Live Courses</h3>
-          <p className="text-3xl font-extrabold text-[#1a6b3c] mt-2">{liveCourses.length || fallbackCourses.length}</p>
-        </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-500">Departments</h3>
-          <p className="text-3xl font-extrabold text-[#1a6b3c] mt-2">{departments.length || 0}</p>
-        </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-500">Upcoming Sessions</h3>
-          <p className="text-3xl font-extrabold text-[#1a6b3c] mt-2">{upcomingSessions.length}</p>
-        </div>
-      </div>
-
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 gap-6">
-
-        {/* Progress Chart: Course Completion */}
-        <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100 flex flex-col justify-center">
-          <h3 className="text-lg font-bold text-gray-800 mb-6">Course Progress Overview</h3>
-          <div className="space-y-6">
-            {(liveCourses.length > 0 ? liveCourses.slice(0, 3).map((course, index) => ({
-              title: course.title,
-              progress: 0,
-              color: index % 3 === 0 ? "bg-[#1a6b3c]" : index % 3 === 1 ? "bg-yellow-500" : "bg-red-600",
-            })) : [
-            { title: "Historical Background of the NYSC", progress: 75, color: "bg-[#1a6b3c]" },
-            { title: "Mission/ Vision statements", progress: 45, color: "bg-yellow-500" },
-            { title: "Objectives of the NYSC", progress: 20, color: "bg-red-600" },
-            ]).map((course, i) => (
-              <div key={i}>
-                <div className="flex justify-between text-sm mb-2">
-                  <span className="font-medium text-gray-700 truncate mr-4">{course.title}</span>
-                  <span className="text-gray-500 font-semibold">{(course as { progress?: number }).progress ?? 0}%</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-2">
-                  <div className={`${course.color} h-2 rounded-full`} style={{ width: `${(course as { progress?: number }).progress ?? 0}%` }}></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         <Link
           href="/admin/courses/create"
-          className="group bg-[#1a6b3c] text-white rounded-2xl p-6 lg:p-8 shadow-sm hover:bg-[#145530] transition relative overflow-hidden"
+          className="rounded-2xl bg-[#1a6b3c] p-6 text-white shadow-sm transition hover:bg-[#145530]"
         >
-          <PlusCircle size={32} className="mb-4 text-green-200 group-hover:scale-110 transition-transform" />
-          <h3 className="text-lg font-bold mb-1">Create Course</h3>
-          <p className="text-sm text-green-100 mt-1">
-            Add course details and modules.
+          <PlusCircle size={32} className="mb-4 text-green-200" />
+
+          <h3 className="text-lg font-bold">Create Course</h3>
+
+          <p className="mt-1 text-sm text-green-100">
+            Add a course and its modules.
           </p>
         </Link>
 
         <Link
-          href="/admin/assignments"
-          className="group bg-yellow-500 text-white rounded-2xl p-6 lg:p-8 shadow-sm hover:bg-yellow-600 transition relative overflow-hidden"
+          href="/admin/cohorts"
+          className="rounded-2xl bg-yellow-500 p-6 text-white shadow-sm transition hover:bg-yellow-600"
         >
-          <Users size={32} className="mb-4 text-yellow-100 group-hover:scale-110 transition-transform" />
-          <h3 className="text-lg font-bold mb-1">Assign Course</h3>
-          <p className="text-sm text-yellow-100 mt-1">
-            Assign courses to staff, cohort, or department.
+          <Layers size={32} className="mb-4 text-yellow-100" />
+
+          <h3 className="text-lg font-bold">Manage Cohorts</h3>
+
+          <p className="mt-1 text-sm text-yellow-100">
+            Create and manage training cohorts.
           </p>
         </Link>
 
         <Link
           href="/admin/users"
-          className="group bg-red-600 text-white rounded-2xl p-6 lg:p-8 shadow-sm hover:bg-red-700 transition relative overflow-hidden"
+          className="rounded-2xl bg-red-600 p-6 text-white shadow-sm transition hover:bg-red-700"
         >
-          <UserCog size={32} className="mb-4 text-red-200 group-hover:scale-110 transition-transform" />
-          <h3 className="text-lg font-bold mb-1">Staff</h3>
-          <p className="text-sm text-red-100 mt-1">
-            View staff and training status.
+          <UserCog size={32} className="mb-4 text-red-200" />
+
+          <h3 className="text-lg font-bold">Manage Staff</h3>
+
+          <p className="mt-1 text-sm text-red-100">
+            View staff and cohort assignments.
           </p>
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div className="flex items-center gap-2 border-b border-gray-100 p-6">
+          <Video size={20} className="text-[#1a6b3c]" />
 
-        {/* Upcoming Live Classes */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-          <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Video className="text-[#1a6b3c]" size={20} />
-              <h3 className="text-lg font-bold text-gray-800">Upcoming Live Classes</h3>
-            </div>
-          </div>
-          
-          <ul className="divide-y divide-gray-100 flex-1">
-            {upcomingSessions.map((session) => (
-              <li key={session.id} className="p-6 hover:bg-gray-50 transition flex flex-col gap-3">
-                <div className="flex justify-between items-start">
+          <h3 className="text-lg font-bold text-gray-800">
+            Upcoming Live Classes
+          </h3>
+        </div>
+
+        {loading ? (
+          <p className="p-8 text-center text-sm text-gray-500">
+            Loading upcoming classes...
+          </p>
+        ) : analytics?.upcomingLiveClasses.length ? (
+          <ul className="divide-y divide-gray-100">
+            {analytics.upcomingLiveClasses.map((session) => (
+              <li
+                key={session.id}
+                className="p-6 transition hover:bg-gray-50"
+              >
+                <div className="flex flex-col justify-between gap-4 sm:flex-row">
                   <div>
-                    <h4 className="font-bold text-gray-800">{session.title}</h4>
-                    <p className="text-xs font-medium text-[#1a6b3c] mt-1 truncate max-w-[250px]">{session.courseTitle}</p>
+                    <h4 className="font-bold text-gray-800">
+                      {session.title}
+                    </h4>
+
+                    <p className="mt-1 text-sm font-medium text-[#1a6b3c]">
+                      {session.course_title}
+                    </p>
+
+                    <p className="mt-1 text-xs text-gray-500">
+                      Cohort: {session.cohort_name}
+                    </p>
                   </div>
-                  <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md shrink-0 border border-blue-100">
-                    {session.duration}
+
+                  <span className="h-fit rounded-md bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                    {session.status}
                   </span>
                 </div>
-                <div className="flex items-center gap-5 text-sm text-gray-500 font-medium mt-1">
-                  <span className="flex items-center gap-1.5"><Calendar size={14} /> {session.scheduledDate}</span>
-                  <span className="flex items-center gap-1.5"><Clock size={14} /> {session.time}</span>
+
+                <div className="mt-4 flex flex-wrap gap-5 text-sm text-gray-500">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar size={14} />
+                    {formatDate(session.start_time)}
+                  </span>
+
+                  <span className="flex items-center gap-1.5">
+                    <Clock size={14} />
+                    {formatTime(session.start_time)} –{" "}
+                    {formatTime(session.end_time)}
+                  </span>
                 </div>
               </li>
             ))}
-            {upcomingSessions.length === 0 && (
-              <li className="p-8 text-center text-gray-500 text-sm font-medium flex-1 flex items-center justify-center">
-                No upcoming sessions scheduled at the moment.
-              </li>
-            )}
           </ul>
-        </div>
-      </div>
-
-      {/* --- REPORTS & ANALYTICS SECTION --- */}
-      <div className="pt-8 mt-4 border-t border-gray-200 space-y-8">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-800 mb-1">Reports & Analytics</h2>
-            <p className="text-sm text-gray-500">View completion rates, staff progress, and assessment results.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button className="bg-white border border-gray-200 text-gray-600 px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 transition shadow-sm">
-              <Filter size={16} />
-              Filter Options
-            </button>
-            <button className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm">
-              <Download size={16} />
-              Export CSV
-            </button>
-          </div>
-        </div>
-
-        {/* Reports Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[
-            { label: "Course Completions", value: "854", trend: "+12% vs last month", icon: Award, color: "text-[#1a6b3c]", bg: "bg-[#f0f7f3]" },
-            { label: "Average Score", value: "76%", trend: "+3% vs last month", icon: BarChart3, color: "text-blue-600", bg: "bg-blue-50" },
-            { label: "Active Learners", value: "1,205", trend: "+5% vs last month", icon: Users, color: "text-yellow-600", bg: "bg-yellow-50" },
-            { label: "Pass Rate", value: "92%", trend: "-1% vs last month", icon: TrendingUp, color: "text-red-600", bg: "bg-red-50" },
-          ].map((stat, i) => (
-            <div key={i} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between relative overflow-hidden">
-              <div className="flex justify-between items-start mb-4">
-                <div className={`p-3 rounded-xl ${stat.bg} ${stat.color} shadow-sm`}>
-                  <stat.icon size={24} />
-                </div>
-                <h3 className="text-3xl font-extrabold text-gray-800">{stat.value}</h3>
-              </div>
-              <p className="text-sm font-bold text-gray-700">{stat.label}</p>
-              <p className="text-xs text-gray-400 font-medium mt-1">{stat.trend}</p>
-            </div>
-          ))}
-        </div>
+        ) : (
+          <p className="p-8 text-center text-sm text-gray-500">
+            No upcoming live classes in the next 30 days.
+          </p>
+        )}
       </div>
     </div>
   );

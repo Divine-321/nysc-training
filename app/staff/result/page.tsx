@@ -1,92 +1,160 @@
-import { results } from "@/app/data/courses";
-import { Search, Filter, CheckCircle2, XCircle, FileText, Award } from "lucide-react";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  Award,
+  CheckCircle2,
+  FileText,
+  Search,
+  XCircle,
+} from "lucide-react";
+import {
+  readStoredAssessmentResults,
+  type AssessmentResult,
+} from "@/app/lib/staff-learning";
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-NG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
 
 export default function ResultPage() {
+  const [results, setResults] = useState<AssessmentResult[]>([]);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    const loadResults = async () => {
+      setResults(readStoredAssessmentResults());
+    };
+
+    void loadResults();
+  }, []);
+
+  const filteredResults = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+
+    if (!normalizedSearch) return results;
+
+    return results.filter((result) =>
+      `${result.course_title} ${result.assessment_type}`
+        .toLowerCase()
+        .includes(normalizedSearch),
+    );
+  }, [results, search]);
+
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-1">Assessment Results</h2>
-        <p className="text-sm text-gray-500">Track your test scores, assignments, and overall performance.</p>
+        <h2 className="mb-1 text-2xl font-bold text-gray-800">
+          Assessment Results
+        </h2>
+        <p className="text-sm text-gray-500">
+          View results returned after submitting course assessments.
+        </p>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        {/* Toolbar */}
-        <div className="p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
-          <div className="relative max-w-md w-full">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+      <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <div className="flex flex-col justify-between gap-4 border-b border-gray-100 p-5 sm:flex-row sm:items-center">
+          <div className="relative w-full max-w-md">
+            <Search
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
             <input
               type="text"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="Search courses or assessments..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+              className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
             />
           </div>
-          <button className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-gray-50 transition">
-            <Filter size={16} />
-            Filter Options
-          </button>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-gray-50 text-gray-500 font-medium">
-              <tr>
-                <th className="px-6 py-4">Course</th>
-                <th className="px-6 py-4">Assessment</th>
-                <th className="px-6 py-4">Score</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Date</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-gray-100">
-              {results.map((result) => (
-                <tr key={result.id} className="hover:bg-gray-50 transition">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center text-[#1a6b3c] shrink-0">
-                        <Award size={20} />
-                      </div>
-                      <span className="font-semibold text-gray-800 max-w-xs truncate" title={result.courseTitle}>
-                        {result.courseTitle}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2 text-gray-600 font-medium">
-                      <FileText size={16} className="text-gray-400" />
-                      {result.assessment}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="font-bold text-gray-800">{result.score}%</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${
-                        result.status === "Passed"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
-                      }`}
-                    >
-                      {result.status === "Passed" ? <CheckCircle2 size={14} /> : <XCircle size={14} />}
-                      {result.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-gray-500 font-medium">{result.date}</td>
+          {filteredResults.length === 0 ? (
+            <div className="p-8 text-center">
+              <Award className="mx-auto mb-3 text-gray-300" size={42} />
+              <p className="font-semibold text-gray-700">
+                No assessment results yet.
+              </p>
+              <p className="mt-1 text-sm text-gray-500">
+                After you submit a course assessment, its backend-graded result
+                will appear here.
+              </p>
+              <p className="mt-3 text-xs text-gray-400">
+                For permanent result history, backend still needs to expose a
+                staff results-list endpoint.
+              </p>
+            </div>
+          ) : (
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 font-medium text-gray-500">
+                <tr>
+                  <th className="px-6 py-4">Course</th>
+                  <th className="px-6 py-4">Assessment</th>
+                  <th className="px-6 py-4">Score</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Date</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody className="divide-y divide-gray-100">
+                {filteredResults.map((result) => (
+                  <tr key={result.id} className="transition hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-50 text-[#1a6b3c]">
+                          <Award size={20} />
+                        </div>
+                        <span
+                          className="max-w-xs truncate font-semibold text-gray-800"
+                          title={result.course_title}
+                        >
+                          {result.course_title}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2 font-medium text-gray-600">
+                        <FileText size={16} className="text-gray-400" />
+                        {result.assessment_type}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="font-bold text-gray-800">
+                        {result.percentage}%
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${
+                          result.passed
+                            ? "bg-green-100 text-green-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {result.passed ? (
+                          <CheckCircle2 size={14} />
+                        ) : (
+                          <XCircle size={14} />
+                        )}
+                        {result.passed ? "Passed" : "Failed"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 font-medium text-gray-500">
+                      {formatDate(result.submitted_at)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
-        
-        {/* Pagination Placeholder */}
-        <div className="p-5 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
-          <p>Showing {results.length} results</p>
-          <div className="flex gap-1">
-            <button className="px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-50">Prev</button>
-            <button className="px-3 py-1 bg-[#1a6b3c] text-white rounded">1</button>
-            <button className="px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-50">Next</button>
-          </div>
+
+        <div className="flex items-center justify-between border-t border-gray-100 p-5 text-sm text-gray-500">
+          <p>Showing {filteredResults.length} result(s)</p>
         </div>
       </div>
     </div>

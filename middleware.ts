@@ -4,9 +4,11 @@ import type { NextRequest } from "next/server";
 export function middleware(request: NextRequest) {
   const token = request.cookies.get("nysc_access_token")?.value;
   const { pathname } = request.nextUrl;
+  const isPublicInvitePage = pathname === "/admin/accept-invite";
 
   const isProtected =
-    pathname.startsWith("/admin") || pathname.startsWith("/staff");
+    !isPublicInvitePage &&
+    (pathname.startsWith("/admin") || pathname.startsWith("/staff"));
 
   if (isProtected && !token) {
     return NextResponse.redirect(new URL("/login", request.url));

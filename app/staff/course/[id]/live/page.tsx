@@ -1,111 +1,177 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { courses } from "@/app/data/courses";
 import { ArrowLeft, Calendar, Clock, Video } from "lucide-react";
+import {
+  loadLiveSessionsForCourse,
+  loadStaffCourse,
+  type LiveSession,
+  type StaffCourse,
+} from "@/app/lib/staff-learning";
+import { extractErrorMessage } from "@/app/lib/portal-api";
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-NG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function sessionButtonLabel(session: LiveSession) {
+  if (session.status === "ONGOING") return "Join Live Now";
+  if (session.status === "SCHEDULED") return "Join Session";
+  return session.status;
+}
 
 export default function CourseLiveSessionsPage() {
   const params = useParams();
-  const courseId = String(params.id);
+  const courseId = Number(params.id);
+  const [staffCourse, setStaffCourse] = useState<StaffCourse | null>(null);
+  const [sessions, setSessions] = useState<LiveSession[]>([]);
+  const [joiningId, setJoiningId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const currentCourse = courses.find(
-    (course) => String(course.id) === courseId
-  );
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const course = await loadStaffCourse(courseId);
+        setStaffCourse(course);
+        setSessions(
+          course
+            ? await loadLiveSessionsForCourse([course.enrollment.cohort_course])
+            : [],
+        );
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Could not load live sessions.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  if (!currentCourse) {
-    return (
-      <div className="p-6">
-        <div className="bg-white rounded-xl p-6">
-          <h2 className="text-xl font-bold text-red-600">Course not found</h2>
-        </div>
-      </div>
-    );
-  }
+    void fetchData();
+  }, [courseId]);
 
-  const { liveSessions } = currentCourse;
+  const handleJoin = async (session: LiveSession) => {
+    setJoiningId(session.id);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/training/live-sessions/${session.id}/join`, {
+        method: "POST",
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not join this live session."),
+        );
+      }
+
+      window.open(session.meeting_url, "_blank", "noopener,noreferrer");
+    } catch (joinError) {
+      setError(
+        joinError instanceof Error
+          ? joinError.message
+          : "Could not join this live session.",
+      );
+    } finally {
+      setJoiningId(null);
+    }
+  };
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-5xl space-y-6 p-6">
       <Link
         href={`/staff/course/${courseId}`}
-        className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#1a6b3c] transition font-medium"
+        className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 transition hover:text-[#1a6b3c]"
       >
         <ArrowLeft size={16} /> Back to Course
       </Link>
 
-      <div className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border border-gray-100">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-6">
-          Live Sessions for &quot;{currentCourse.title}&quot;
-        </h1>
+      {error && (
+        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
 
-        {liveSessions && liveSessions.length > 0 ? (
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8">
+        <h1 className="mb-2 text-2xl font-bold text-gray-800 sm:text-3xl">
+          Live Sessions
+        </h1>
+        <p className="mb-6 text-sm text-gray-500">
+          {staffCourse
+            ? `Sessions for ${staffCourse.enrollment.course_title}`
+            : "Sessions for this course"}
+        </p>
+
+        {loading ? (
+          <p className="py-10 text-center text-gray-500">
+            Loading live sessions...
+          </p>
+        ) : sessions.length > 0 ? (
           <div className="space-y-6">
-            {liveSessions.map((session) => (
+            {sessions.map((session) => (
               <div
                 key={session.id}
-                className="border border-gray-200 rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50 hover:bg-white transition"
+                className="flex flex-col justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 p-5 transition hover:bg-white md:flex-row md:items-center"
               >
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-800 mb-1">
+                  <h2 className="mb-1 text-lg font-semibold text-gray-800">
                     {session.title}
                   </h2>
-                  <div className="flex items-center gap-4 text-sm text-gray-600">
+                  <p className="mb-3 text-sm text-gray-500">
+                    {session.description || "No description provided."}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
                     <span className="flex items-center gap-1">
-                      <Calendar size={16} className="text-[#1a6b3c]" />{" "}
-                      {session.scheduledDate}
+                      <Calendar size={16} className="text-[#1a6b3c]" />
+                      {formatDateTime(session.start_time)}
                     </span>
                     <span className="flex items-center gap-1">
-                      <Clock size={16} className="text-[#1a6b3c]" />{" "}
-                      {session.time} ({session.duration})
+                      <Clock size={16} className="text-[#1a6b3c]" />
+                      Ends {formatDateTime(session.end_time)}
                     </span>
                   </div>
-                  {session.meetingId && (
-                    <p className="text-xs text-gray-500 mt-2">
-                      Meeting ID:{" "}
-                      <span className="font-mono">{session.meetingId}</span>
-                      {session.passcode && (
-                        <>
-                          {" "}
-                          | Passcode:{" "}
-                          <span className="font-mono">
-                            {session.passcode}
-                          </span>
-                        </>
-                      )}
-                    </p>
-                  )}
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  {session.status === "upcoming" && (
-                    <Link
-                      href={`/staff/course/${courseId}/live/${session.id}`}
-                      className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm"
-                    >
-                      <Video size={18} />
-                      Join Session
-                    </Link>
-                  )}
-                  {session.status === "live" && (
-                    <Link
-                      href={`/staff/course/${courseId}/live/${session.id}`}
-                      className="bg-red-500 hover:bg-red-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm"
-                    >
-                      <Video size={18} />
-                      Join Live Now
-                    </Link>
-                  )}
-                  {session.status === "completed" && (
-                    <span className="bg-gray-100 text-gray-500 px-4 py-2 rounded-lg text-sm font-medium">
-                      Completed
+
+                <div className="flex shrink-0 items-center gap-3">
+                  {session.status === "COMPLETED" ||
+                  session.status === "CANCELLED" ? (
+                    <span className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-500">
+                      {session.status}
                     </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleJoin(session)}
+                      disabled={joiningId === session.id}
+                      className={`flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition disabled:opacity-60 ${
+                        session.status === "ONGOING"
+                          ? "bg-red-500 hover:bg-red-600"
+                          : "bg-[#1a6b3c] hover:bg-[#145530]"
+                      }`}
+                    >
+                      <Video size={18} />
+                      {joiningId === session.id
+                        ? "Joining..."
+                        : sessionButtonLabel(session)}
+                    </button>
                   )}
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-gray-500 text-center py-10">No live sessions scheduled for this course.</p>
+          <p className="py-10 text-center text-gray-500">
+            No live sessions have been scheduled for this course.
+          </p>
         )}
       </div>
     </div>

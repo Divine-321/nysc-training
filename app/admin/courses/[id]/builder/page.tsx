@@ -1,83 +1,97 @@
 "use client";
 
-import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Plus, Save, FileText, CheckCircle2, Video, UploadCloud, UserCheck } from "lucide-react";
-import { courses } from "@/app/data/courses";
-import { readApiItem, readApiList, extractErrorMessage, type Course, type CourseCategory, type Trainer } from "@/app/lib/portal-api";
-
-const suggestedModules = [
-  "Historical Background of the NYSC",
-  "Mission/ Vision statements",
-  "Objectives of the NYSC",
-  "NYSC cardinal programmes",
-  "NYSC organizational structure",
-  "NYSC Conditions of Service",
-  "Public Service Rules",
-  "The qualities and duties of the Inspector",
-  "The role of support staff",
-  "Work Ethics and Code of Conduct",
-  "Teamwork and Interpersonal Relationships",
-  "Managing Corps Members",
-  "Introduction to Report Writing and Documentation",
-  "Orientation camp and camp committees",
-  "Office Procedures",
-  "Security protocols in NYSC",
-  "Conflict Management",
-  "Time Management"
-];
+import { useParams } from "next/navigation";
+import { ArrowLeft, Save, UserCheck } from "lucide-react";
+import CourseModulesManager from "./CourseModulesManager";
+import CourseDeliveryManager from "./CourseDeliveryManager";
+import {
+  extractErrorMessage,
+  readApiItem,
+  readApiList,
+  type Course,
+  type CourseCategory,
+  type Trainer,
+} from "@/app/lib/portal-api";
 
 export default function CourseBuilderPage() {
   const params = useParams();
   const courseId = String(params.id);
 
-  const mockCourse = courses.find((course) => String(course.id) === courseId);
-
-  const [contentType, setContentType] = useState("Text");
-  const [liveCourse, setLiveCourse] = useState<Course | null>(null);
-  const [isLoadingCourse, setIsLoadingCourse] = useState(true);
+  const [course, setCourse] = useState<Course | null>(null);
+  const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState<CourseCategory[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [thumbnailUrl, setThumbnailUrl] = useState("");
   const [category, setCategory] = useState("");
-  const [status, setStatus] = useState<"DRAFT" | "PUBLISHED" | "ARCHIVED">("DRAFT");
+  const [status, setStatus] =
+    useState<"DRAFT" | "PUBLISHED" | "ARCHIVED">("DRAFT");
   const [trainerIds, setTrainerIds] = useState<number[]>([]);
-  const [saveError, setSaveError] = useState("");
-  const [saveSuccess, setSaveSuccess] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [courseResponse, categoryResponse, trainerResponse] = await Promise.all([
-          fetch(`/api/training/courses/${courseId}`, { cache: "no-store" }),
-          fetch("/api/training/categories", { cache: "no-store" }),
-          fetch("/api/training/trainers", { cache: "no-store" }),
-        ]);
+        const [courseResponse, categoryResponse, trainerResponse] =
+          await Promise.all([
+            fetch(`/api/training/courses/${courseId}`, {
+              cache: "no-store",
+            }),
+            fetch("/api/training/categories", { cache: "no-store" }),
+            fetch("/api/training/trainers", { cache: "no-store" }),
+          ]);
+
+        const [coursePayload, categoryPayload, trainerPayload] =
+          await Promise.all([
+            courseResponse.json().catch(() => null),
+            categoryResponse.json().catch(() => null),
+            trainerResponse.json().catch(() => null),
+          ]);
+
+        if (!courseResponse.ok) {
+          throw new Error(
+            extractErrorMessage(coursePayload, "Could not load this course."),
+          );
+        }
+
+        const loadedCourse = readApiItem<Course>(coursePayload);
+
+        if (!loadedCourse) {
+          throw new Error("The course response was empty.");
+        }
+
+        setCourse(loadedCourse);
+        setTitle(loadedCourse.title);
+        setDescription(loadedCourse.description);
+        setThumbnailUrl(loadedCourse.thumbnail_url ?? "");
+        setCategory(
+          loadedCourse.category ? String(loadedCourse.category) : "",
+        );
+        setStatus(loadedCourse.status);
+        setTrainerIds(
+          loadedCourse.trainers.map((trainer) => trainer.id),
+        );
 
         if (categoryResponse.ok) {
-          setCategories(readApiList<CourseCategory>(await categoryResponse.json()));
+          setCategories(readApiList<CourseCategory>(categoryPayload));
         }
 
         if (trainerResponse.ok) {
-          setTrainers(readApiList<Trainer>(await trainerResponse.json()));
+          setTrainers(readApiList<Trainer>(trainerPayload));
         }
-
-        if (courseResponse.ok) {
-          const course = readApiItem<Course>(await courseResponse.json());
-          if (course) {
-            setLiveCourse(course);
-            setTitle(course.title);
-            setDescription(course.description);
-            setCategory(course.category ? String(course.category) : "");
-            setStatus(course.status);
-            setTrainerIds(course.trainers.map((trainer) => trainer.id));
-          }
-        }
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Could not load this course.",
+        );
       } finally {
-        setIsLoadingCourse(false);
+        setLoading(false);
       }
     };
 
@@ -85,17 +99,18 @@ export default function CourseBuilderPage() {
   }, [courseId]);
 
   const handleSave = async () => {
-    setSaveError("");
-    setSaveSuccess("");
-    setIsSaving(true);
+    setSaving(true);
+    setError("");
+    setNotice("");
 
     try {
       const response = await fetch(`/api/training/courses/${courseId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title,
-          description,
+          title: title.trim(),
+          description: description.trim(),
+          thumbnail_url: thumbnailUrl.trim() || null,
           status,
           category: category ? Number(category) : null,
           trainer_ids: trainerIds,
@@ -104,428 +119,217 @@ export default function CourseBuilderPage() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(extractErrorMessage(payload, "Course could not be updated."));
+        throw new Error(
+          extractErrorMessage(payload, "Course could not be updated."),
+        );
       }
 
-      setLiveCourse(readApiItem<Course>(payload));
-      setSaveSuccess("Course updated successfully.");
-    } catch (updateError) {
-      setSaveError(updateError instanceof Error ? updateError.message : "Course could not be updated.");
+      const updatedCourse = readApiItem<Course>(payload);
+      if (updatedCourse) setCourse(updatedCourse);
+      setNotice("Course updated successfully.");
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Course could not be updated.",
+      );
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
-  if (isLoadingCourse) {
-    return <div className="bg-white p-6 rounded-xl">Loading course...</div>;
+  if (loading) {
+    return <div className="rounded-xl bg-white p-6">Loading course...</div>;
   }
 
-  if (!liveCourse && !mockCourse) {
-    return <div className="bg-white p-6 rounded-xl">Course not found</div>;
+  if (!course) {
+    return (
+      <div className="rounded-xl bg-white p-6">
+        {error || "Course could not be loaded."}
+      </div>
+    );
   }
-
-  const course = mockCourse;
 
   return (
     <div className="max-w-6xl space-y-6">
       <div>
-        <Link href="/admin/courses" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#1a6b3c] mb-2 transition">
+        <Link
+          href="/admin/courses"
+          className="mb-2 inline-flex items-center gap-2 text-sm text-gray-500 transition hover:text-[#1a6b3c]"
+        >
           <ArrowLeft size={16} /> Back to Courses
         </Link>
         <h2 className="text-2xl font-bold text-gray-800">Course Builder</h2>
-        <p className="text-sm text-gray-500 mt-1">{liveCourse?.title ?? course?.title}</p>
+        <p className="mt-1 text-sm text-gray-500">{course.title}</p>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
-        <h3 className="font-bold text-[#1a6b3c] text-lg">Course Details</h3>
-
-        {saveError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            {saveError}
-          </div>
-        )}
-        {saveSuccess && (
-          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-700">
-            {saveSuccess}
-          </div>
-        )}
-
-        {!liveCourse && (
-          <div className="rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm font-medium text-yellow-700">
-            This is demo data. Changes here will not be saved.
-          </div>
-        )}
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Course Title</label>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} disabled={!liveCourse} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] disabled:bg-gray-50" />
+      {error && (
+        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+          {error}
         </div>
+      )}
+
+      {notice && (
+        <div className="rounded-lg bg-green-50 p-4 text-sm text-green-700">
+          {notice}
+        </div>
+      )}
+
+      <section className="space-y-5 rounded-2xl bg-white p-6 shadow-sm">
+        <h3 className="text-lg font-bold text-[#1a6b3c]">Course Details</h3>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Course Description</label>
-          <textarea
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            disabled={!liveCourse}
-            className="w-full border border-gray-300 rounded-lg px-4 py-3 h-28 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] resize-none disabled:bg-gray-50"
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Course Title
+          </label>
+          <input
+            required
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            className="w-full rounded-lg border px-4 py-2.5 text-sm"
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Course Description
+          </label>
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            className="h-28 w-full resize-none rounded-lg border px-4 py-3 text-sm"
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Course Thumbnail URL
+          </label>
+          <input
+            type="url"
+            value={thumbnailUrl}
+            onChange={(event) => setThumbnailUrl(event.target.value)}
+            placeholder="https://res.cloudinary.com/... or another image URL"
+            className="w-full rounded-lg border px-4 py-2.5 text-sm"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            This image appears on the staff course card and course overview.
+          </p>
+          {thumbnailUrl && (
+            <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={thumbnailUrl}
+                alt="Course thumbnail preview"
+                className="h-40 w-full object-cover"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-            <select value={category} onChange={(event) => setCategory(event.target.value)} disabled={!liveCourse} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] disabled:bg-gray-50">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Category
+            </label>
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              className="w-full rounded-lg border px-4 py-2.5 text-sm"
+            >
               <option value="">No category</option>
               {categories.map((item) => (
-                <option key={item.id} value={item.id}>{item.name}</option>
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select value={status} onChange={(event) => setStatus(event.target.value as "DRAFT" | "PUBLISHED" | "ARCHIVED")} disabled={!liveCourse} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] disabled:bg-gray-50">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Status
+            </label>
+            <select
+              value={status}
+              onChange={(event) =>
+                setStatus(
+                  event.target.value as
+                    | "DRAFT"
+                    | "PUBLISHED"
+                    | "ARCHIVED",
+                )
+              }
+              className="w-full rounded-lg border px-4 py-2.5 text-sm"
+            >
               <option value="DRAFT">Draft</option>
               <option value="PUBLISHED">Published</option>
               <option value="ARCHIVED">Archived</option>
             </select>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm space-y-5 border border-gray-100">
-          <h3 className="font-bold text-[#1a6b3c] text-lg mb-2">Add Module</h3>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Module Title</label>
-            <input 
-              list="suggested-modules"
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" 
-              placeholder="Enter module title or choose a suggestion..." 
-            />
-            <datalist id="suggested-modules">
-              {suggestedModules.map((mod, idx) => (
-                <option key={idx} value={mod} />
-              ))}
-            </datalist>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Module Description</label>
-            <textarea
-              className="w-full border border-gray-300 rounded-lg px-4 py-3 h-24 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] resize-none"
-              placeholder="Briefly describe what this module covers"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Content Type</label>
-            <select
-              value={contentType}
-              onChange={(e) => setContentType(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-            >
-              <option>Text</option>
-              <option>PDF</option>
-              <option>Video</option>
-              <option>Audio</option>
-              <option>External Link</option>
-            </select>
-          </div>
-
-          <div>
-            {contentType === "Text" && (
-              <textarea
-                className="w-full border border-gray-300 rounded-lg px-4 py-3 h-32 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] resize-none"
-                placeholder="Type lesson content here..."
-              />
-            )}
-
-            {["PDF", "Video", "Audio"].includes(contentType) && (
-              <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:bg-gray-50 transition cursor-pointer">
-                <input type="file" className="hidden" id="file-upload" />
-                <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center">
-                  <FileText size={24} className="text-gray-400 mb-2" />
-                  <span className="text-sm font-medium text-[#1a6b3c]">Click to upload {contentType}</span>
-                  <span className="text-xs text-gray-500 mt-1">Max file size: 50MB</span>
-                </label>
-              </div>
-            )}
-
-            {contentType === "External Link" && (
-              <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="https://..." />
-            )}
-          </div>
-
-          <button className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 w-full transition">
-            <Plus size={18} />
-            Add Module to Course
-          </button>
-        </div>
-
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col">
-          <h3 className="font-bold text-[#1a6b3c] text-lg mb-4">Existing Modules</h3>
-
-          <div className="space-y-3 flex-1 overflow-y-auto pr-2" style={{ maxHeight: "600px" }}>
-            {(course?.modules ?? []).map((module) => (
-              <div key={module.id} className="border border-gray-200 rounded-xl p-4 hover:border-[#1a6b3c] transition group cursor-pointer relative">
-                <h4 className="font-semibold text-gray-800">{module.title}</h4>
-                <p className="text-sm text-gray-500 mt-1">{module.description}</p>
-                <div className="flex items-center gap-2 mt-3">
-                  <span className="bg-gray-100 text-gray-600 text-xs px-2.5 py-1 rounded-md font-medium">
-                    {module.contentType}
-                  </span>
-                </div>
-                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition">
-                  <button className="text-sm text-[#1a6b3c] font-semibold hover:underline">Edit</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
-        <div className="flex items-center gap-2 mb-2">
-            <UserCheck className="text-[#1a6b3c]" size={24} />
-            <h3 className="font-bold text-[#1a6b3c] text-lg">Assign Trainers</h3>
-        </div>
-        <p className="text-sm text-gray-500 -mt-3 mb-4">
-            Select the trainers who will be responsible for this course.
-        </p>
-        <div className="space-y-3">
-            {trainers.map((trainer) => (
-                <label key={trainer.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
-                    <input
-                        type="checkbox"
-                        checked={trainerIds.includes(trainer.id)}
-                        disabled={!liveCourse}
-                        onChange={(e) => {
-                            setTrainerIds((current) =>
-                                e.target.checked
-                                    ? [...current, trainer.id]
-                                    : current.filter((id) => id !== trainer.id)
-                            );
-                        }}
-                        className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
-                    />
-                    <span className="font-semibold text-gray-800">{trainer.full_name}</span>
-                </label>
-            ))}
-            {trainers.length === 0 && (
-                <p className="text-sm text-gray-400">No trainers available yet.</p>
-            )}
-        </div>
-        <div className="pt-2 border-t border-gray-100 flex justify-end">
-            <button onClick={handleSave} disabled={!liveCourse || isSaving} className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition disabled:opacity-60 disabled:cursor-not-allowed">
-                <Save size={18} />
-                Save Trainers
-            </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
-        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-2">
-          <h3 className="font-bold text-[#1a6b3c] text-lg">Exams/Test Builder</h3>
-          <div className="flex items-center gap-3">
-            <input type="file" id="upload-questions" className="hidden" accept=".csv, .xlsx" />
-            <label htmlFor="upload-questions" className="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition cursor-pointer shadow-sm text-sm">
-              <UploadCloud size={16} />
-              Upload Questions
-            </label>
-            <button className="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 px-4 py-2 rounded-lg font-semibold flex items-center gap-2 transition cursor-pointer shadow-sm text-sm">
-              Edit
-            </button>
-          </div>
-        </div>
-        
-        <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
-          <span className="font-bold text-gray-700">Upload Format (.csv, .xlsx):</span> Columns should include: <span className="font-medium">Question, Option A, Option B, Option C, Option D, and Correct Answer</span>.
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assessment Type</label>
-              <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
-                <option>Pre-Course Test</option>
-                <option>Post-Course Test</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Question</label>
-              <textarea className="w-full border border-gray-300 rounded-lg px-4 py-3 h-24 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] resize-none" placeholder="Type your question here..." />
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Options</label>
-              <div className="grid grid-cols-2 gap-3">
-                <input className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="A." />
-                <input className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="B." />
-                <input className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="C." />
-                <input className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="D." />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Correct Answer</label>
-              <select className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
-                <option>Option A</option>
-                <option>Option B</option>
-                <option>Option C</option>
-                <option>Option D</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="pt-2 border-t border-gray-100 flex justify-end">
-          <button className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition">
-            <CheckCircle2 size={18} />
-            Save Question
-          </button>
-        </div>
-      </div>
-
-      {/* Course Materials & Resources Upload */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
-        <div className="flex items-center gap-2 mb-2">
-          <UploadCloud className="text-[#1a6b3c]" size={24} />
-          <h3 className="font-bold text-[#1a6b3c] text-lg">Upload Course Materials</h3>
-        </div>
-        
-        <p className="text-sm text-gray-500 -mt-3 mb-4">
-          Add supplementary videos, audios, and PDFs for this course. These will be available for staff to download or view.
-        </p>
-
-        <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-gray-50 transition cursor-pointer">
-          <input type="file" className="hidden" id="global-file-upload" multiple accept="video/*,audio/*,application/pdf" />
-          <label htmlFor="global-file-upload" className="cursor-pointer flex flex-col items-center">
-            <div className="w-14 h-14 bg-[#f0f7f3] text-[#1a6b3c] rounded-full flex items-center justify-center mb-3 shadow-sm">
-              <UploadCloud size={28} />
-            </div>
-            <span className="text-base font-bold text-gray-800">Click to upload files</span>
-            <span className="text-sm text-gray-500 mt-1">MP4, MP3, or PDF (Max 100MB)</span>
-          </label>
-        </div>
-
-        <div className="space-y-3">
-          <h4 className="font-semibold text-gray-800 text-sm mt-4">Recently Uploaded</h4>
-          <div className="flex items-center justify-between p-4 border border-gray-100 rounded-xl bg-gray-50 hover:border-gray-200 transition">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 text-red-600 rounded-lg shrink-0">
-                <FileText size={20} />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-800 text-sm">Orientation_Guide.pdf</p>
-                <p className="text-xs text-gray-500">4.2 MB • Uploaded just now</p>
-              </div>
-            </div>
-            <button className="text-sm text-red-600 font-semibold hover:underline">Remove</button>
-          </div>
-          <div className="flex items-center justify-between p-4 border border-gray-100 rounded-xl bg-gray-50 hover:border-gray-200 transition">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 text-blue-600 rounded-lg shrink-0">
-                <Video size={20} />
-              </div>
-              <div>
-                <p className="font-semibold text-gray-800 text-sm">Welcome_Address.mp4</p>
-                <p className="text-xs text-gray-500">24.5 MB • Uploaded yesterday</p>
-              </div>
-            </div>
-            <button className="text-sm text-red-600 font-semibold hover:underline">Remove</button>
-          </div>
-        </div>
-
-        <div className="pt-2 border-t border-gray-100 flex justify-end">
-          <button className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition">
-            <Save size={18} />
-            Save Materials
-          </button>
-        </div>
-      </div>
-
-      {/* Live Session Builder */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-5">
-        <div className="flex items-center gap-2 mb-2">
-          <Video className="text-[#1a6b3c]" size={24} />
-          <h3 className="font-bold text-[#1a6b3c] text-lg">Schedule Live Session</h3>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Session Title</label>
-              <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="e.g., Q&A Session or Camp Briefing" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input type="date" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Time</label>
-                <input type="time" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Zoom Link</label>
-              <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="https://zoom.us/j/..." />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Meeting ID <span className="text-gray-400 font-normal">(Optional)</span></label>
-                <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="123 456 7890" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Passcode <span className="text-gray-400 font-normal">(Optional)</span></label>
-                <input className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="Secret123" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="pt-2 border-t border-gray-100 flex justify-end">
-          <button className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition">
-            <Plus size={18} />
-            Add Live Session
-          </button>
-        </div>
-      </div>
-
-      {/* Course Duration */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 space-y-4">
-        <h3 className="font-bold text-[#1a6b3c] text-lg">Course Duration</h3>
-        <p className="text-sm text-gray-500 -mt-2 mb-4">
-          Set the start and end dates for when this course will be active.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-            <input type="date" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-            <input type="date" className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" />
-          </div>
-        </div>
-      </div>
-
-      {/* Update Course Button */}
-      <div className="flex justify-end pt-2 pb-10">
-        <button onClick={handleSave} disabled={!liveCourse || isSaving} className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-8 py-3.5 rounded-xl font-bold flex items-center gap-2 transition shadow-sm text-lg disabled:opacity-60 disabled:cursor-not-allowed">
-          <Save size={20} />
-          {isSaving ? "Updating..." : "Update Course"}
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !title.trim()}
+          className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-6 py-2.5 font-semibold text-white disabled:opacity-50"
+        >
+          <Save size={18} />
+          {saving ? "Updating..." : "Update Course"}
         </button>
-      </div>
+      </section>
 
+      <CourseModulesManager courseId={Number(courseId)} />
+
+      <section className="space-y-5 rounded-2xl bg-white p-6 shadow-sm">
+        <div className="flex items-center gap-2">
+          <UserCheck className="text-[#1a6b3c]" size={22} />
+          <h3 className="text-lg font-bold text-[#1a6b3c]">
+            Assign Trainers
+          </h3>
+        </div>
+
+        <div className="space-y-3">
+          {trainers.length === 0 ? (
+            <p className="text-sm text-gray-500">No trainers available.</p>
+          ) : (
+            trainers.map((trainer) => (
+              <label
+                key={trainer.id}
+                className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 hover:bg-gray-50"
+              >
+                <input
+                  type="checkbox"
+                  checked={trainerIds.includes(trainer.id)}
+                  onChange={(event) => {
+                    setTrainerIds((current) =>
+                      event.target.checked
+                        ? [...current, trainer.id]
+                        : current.filter((id) => id !== trainer.id),
+                    );
+                  }}
+                  className="h-4 w-4 accent-[#1a6b3c]"
+                />
+                <span className="font-semibold text-gray-800">
+                  {trainer.full_name}
+                </span>
+              </label>
+            ))
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-6 py-2.5 font-semibold text-white disabled:opacity-50"
+        >
+          <Save size={18} /> Save Trainers
+        </button>
+      </section>
+
+      <CourseDeliveryManager courseId={Number(courseId)} />
     </div>
   );
 }

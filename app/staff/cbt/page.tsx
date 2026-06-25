@@ -1,142 +1,228 @@
-import { PlayCircle, Clock, FileText, CheckCircle2, AlertCircle, Timer, Award } from "lucide-react";
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import {
+  AlertCircle,
+  Award,
+  CheckCircle2,
+  Clock,
+  FileText,
+  PlayCircle,
+  Timer,
+} from "lucide-react";
+import {
+  loadAssessments,
+  loadStaffCourses,
+  readStoredAssessmentResults,
+  type Assessment,
+  type AssessmentResult,
+  type StaffCourse,
+} from "@/app/lib/staff-learning";
 
-const upcomingExams = [
-  {
-    id: "EXM-101",
-    title: "Promotion Examination",
-    duration: "45 Mins",
-    questions: 50,
-    dueDate: "Jun 15, 2026",
-    status: "Pending",
-    icon: Timer,
-    color: "text-blue-600",
-    bgColor: "bg-blue-50"
-  },
-  {
-    id: "EXM-102",
-    title: "NYSC Cardinal Programmes Final Exam",
-    course: "NYSC cardinal programmes",
-    duration: "60 Mins",
-    questions: 75,
-    dueDate: "Jun 20, 2026",
-    status: "Available",
-    icon: FileText,
-    color: "text-yellow-600",
-    bgColor: "bg-yellow-50"
-  }
-];
+type AvailableAssessment = {
+  assessment: Assessment;
+  staffCourse: StaffCourse;
+};
 
-const completedExams = [
-  {
-    id: "EXM-099",
-    title: "Conditions of Service Quiz",
-    course: "NYSC Conditions of Service",
-    dateTaken: "May 25, 2026",
-    score: 92,
-    total: 100,
-    status: "Passed",
-  },
-  {
-    id: "EXM-098",
-    title: "Work Ethics & Code of Conduct Test",
-    course: "Work Ethics and Code of Conduct",
-    dateTaken: "May 10, 2026",
-    score: 85,
-    total: 100,
-    status: "Passed",
-  }
-];
+function assessmentRoute(courseId: number, type: Assessment["type"]) {
+  return `/staff/course/${courseId}/assessment/${
+    type === "POST_TEST" ? "post-test" : "pre-test"
+  }`;
+}
 
 export default function CBTPage() {
+  const [items, setItems] = useState<AvailableAssessment[]>([]);
+  const [results, setResults] = useState<AssessmentResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const staffCourses = await loadStaffCourses();
+        const assessmentGroups = await Promise.all(
+          staffCourses.map(async (staffCourse) => {
+            const courseId = staffCourse.course?.id ?? staffCourse.cohortCourse?.course;
+
+            if (!courseId) return [];
+
+            const assessments = await loadAssessments(courseId).catch(() => []);
+
+            return assessments.map((assessment) => ({
+              assessment,
+              staffCourse,
+            }));
+          }),
+        );
+
+        setItems(assessmentGroups.flat());
+        setResults(readStoredAssessmentResults());
+        setError("");
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Could not load assessments.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void fetchData();
+  }, []);
+
+  const completedAssessmentIds = useMemo(
+    () => new Set(results.map((result) => result.assessment)),
+    [results],
+  );
+  const availableItems = items.filter(
+    (item) => !completedAssessmentIds.has(item.assessment.id),
+  );
+  const averageScore =
+    results.length === 0
+      ? 0
+      : Math.round(
+          results.reduce(
+            (total, result) => total + Number(result.percentage || 0),
+            0,
+          ) / results.length,
+        );
+
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
-      {/* Header */}
+    <div className="mx-auto max-w-7xl space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-1">CBT Examinations</h2>
-        <p className="text-sm text-gray-500">Access your scheduled Computer Based Tests and view past results.</p>
+        <h2 className="mb-1 text-2xl font-bold text-gray-800">
+          Tests / Exams
+        </h2>
+        <p className="text-sm text-gray-500">
+          Access assessments attached to your assigned courses.
+        </p>
       </div>
 
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition">
-          <div className="w-14 h-14 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+      {error && (
+        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <div className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
             <Clock size={28} />
           </div>
           <div>
-            <p className="text-sm font-bold text-gray-500">Upcoming Exams</p>
-            <h3 className="text-3xl font-extrabold text-gray-800 mt-1">2</h3>
+            <p className="text-sm font-bold text-gray-500">Available Tests</p>
+            <h3 className="mt-1 text-3xl font-extrabold text-gray-800">
+              {availableItems.length}
+            </h3>
           </div>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition">
-          <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center text-[#1a6b3c] shrink-0">
+
+        <div className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-green-50 text-[#1a6b3c]">
             <CheckCircle2 size={28} />
           </div>
           <div>
-            <p className="text-sm font-bold text-gray-500">Completed Exams</p>
-            <h3 className="text-3xl font-extrabold text-gray-800 mt-1">14</h3>
+            <p className="text-sm font-bold text-gray-500">Completed Tests</p>
+            <h3 className="mt-1 text-3xl font-extrabold text-gray-800">
+              {results.length}
+            </h3>
           </div>
         </div>
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex items-center gap-4 hover:shadow-md transition">
-          <div className="w-14 h-14 rounded-full bg-yellow-50 flex items-center justify-center text-yellow-600 shrink-0">
+
+        <div className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-yellow-50 text-yellow-600">
             <Award size={28} />
           </div>
           <div>
             <p className="text-sm font-bold text-gray-500">Average Score</p>
-            <h3 className="text-3xl font-extrabold text-gray-800 mt-1">88%</h3>
+            <h3 className="mt-1 text-3xl font-extrabold text-gray-800">
+              {averageScore}%
+            </h3>
           </div>
         </div>
       </div>
 
-      {/* Upcoming Exams */}
       <div>
-        <div className="flex items-center gap-2 mb-4">
+        <div className="mb-4 flex items-center gap-2">
           <AlertCircle size={20} className="text-[#1a6b3c]" />
-          <h3 className="text-lg font-bold text-gray-800">Available & Upcoming</h3>
+          <h3 className="text-lg font-bold text-gray-800">
+            Available Assessments
+          </h3>
         </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {upcomingExams.map((exam) => (
-            <div key={exam.id} className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition group flex flex-col relative overflow-hidden">
-              <div className="flex justify-between items-start mb-4">
-                <div className={`p-3 rounded-xl ${exam.bgColor} ${exam.color} shadow-sm`}>
-                  <exam.icon size={24} />
+
+        {loading ? (
+          <p className="rounded-2xl bg-white p-6 text-sm text-gray-500 shadow-sm">
+            Loading assessments...
+          </p>
+        ) : availableItems.length === 0 ? (
+          <p className="rounded-2xl bg-white p-6 text-sm text-gray-500 shadow-sm">
+            No available assessments right now.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {availableItems.map(({ assessment, staffCourse }) => {
+              const courseId =
+                staffCourse.course?.id ?? staffCourse.cohortCourse?.course;
+
+              return (
+                <div
+                  key={assessment.id}
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:shadow-md"
+                >
+                  <div className="mb-4 flex items-start justify-between">
+                    <div className="rounded-xl bg-blue-50 p-3 text-blue-600 shadow-sm">
+                      <Timer size={24} />
+                    </div>
+                    <span className="rounded-full bg-green-100 px-3 py-1.5 text-xs font-bold text-green-700 shadow-sm">
+                      Available
+                    </span>
+                  </div>
+
+                  <h4 className="mb-1 text-lg font-bold text-gray-800">
+                    {assessment.title}
+                  </h4>
+                  <p className="mb-5 text-sm font-bold text-[#1a6b3c]">
+                    {assessment.course_title ||
+                      staffCourse.enrollment.course_title}
+                  </p>
+
+                  <div className="mb-8 flex flex-wrap items-center gap-5 text-sm font-medium text-gray-500">
+                    <span className="flex items-center gap-1.5">
+                      <FileText size={16} />
+                      {assessment.questions.length} Questions
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Award size={16} />
+                      Pass mark: {assessment.pass_mark}%
+                    </span>
+                  </div>
+
+                  <div className="mt-auto">
+                    {courseId && (
+                      <Link
+                        href={assessmentRoute(courseId, assessment.type)}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#145530]"
+                      >
+                        <PlayCircle size={18} />
+                        Start Assessment
+                      </Link>
+                    )}
+                  </div>
                 </div>
-                <span className={`px-3 py-1.5 rounded-full text-xs font-bold shadow-sm ${exam.status === 'Available' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
-                  {exam.status}
-                </span>
-              </div>
-              <h4 className="text-lg font-bold text-gray-800 mb-1">{exam.title}</h4>
-              <p className="text-sm text-[#1a6b3c] font-bold mb-5">{exam.course}</p>
-              
-              <div className="flex items-center gap-5 text-sm text-gray-500 font-medium mb-8">
-                <span className="flex items-center gap-1.5"><Timer size={16} /> {exam.duration}</span>
-                <span className="flex items-center gap-1.5"><FileText size={16} /> {exam.questions} Questions</span>
-                <span className="flex items-center gap-1.5"><Clock size={16} /> Due: {exam.dueDate}</span>
-              </div>
-              
-              <div className="mt-auto">
-                {exam.status === 'Available' ? (
-                  <Link 
-                    href={`/staff/cbt/${exam.id}`}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition shadow-sm bg-[#1a6b3c] text-white hover:bg-[#145530]"
-                  >
-                    <PlayCircle size={18} />
-                    Start Examination
-                  </Link>
-                ) : (
-                  <button 
-                    disabled
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition shadow-sm bg-gray-100 text-gray-400 cursor-not-allowed"
-                  >
-                    <PlayCircle size={18} />
-                    Not Yet Available
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      <p className="text-xs text-gray-500">
+        Note: completed result history currently uses results returned after
+        submission on this browser. A backend results-list endpoint is needed
+        for permanent history across devices.
+      </p>
     </div>
   );
 }

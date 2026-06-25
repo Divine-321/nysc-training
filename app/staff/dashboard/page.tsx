@@ -2,197 +2,235 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { courses, deadlines, stats } from "@/app/data/courses";
-import { BookOpen, PlayCircle, CheckCircle2, Calendar, Target, ArrowRight } from "lucide-react";
-import { readApiList, type Course } from "@/app/lib/portal-api";
-
-const fallbackCourses = courses;
+import {
+  ArrowRight,
+  BookOpen,
+  CheckCircle2,
+  PlayCircle,
+  Target,
+} from "lucide-react";
+import {
+  loadStaffCourses,
+  toPercentage,
+  type StaffCourse,
+} from "@/app/lib/staff-learning";
 
 export default function StaffDashboard() {
-  const [liveCourses, setLiveCourses] = useState<Course[]>([]);
+  const [courses, setCourses] = useState<StaffCourse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    const loadCourses = async () => {
+    const fetchData = async () => {
       try {
-        const response = await fetch("/api/training/courses", { cache: "no-store" });
-        if (!response.ok) return;
-        const payload = await response.json();
-        setLiveCourses(readApiList<Course>(payload));
-      } catch {
-        setLiveCourses([]);
+        setCourses(await loadStaffCourses());
+        setError("");
+      } catch (loadError) {
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Could not load your dashboard.",
+        );
+      } finally {
+        setLoading(false);
       }
     };
 
-    void loadCourses();
+    void fetchData();
   }, []);
 
-  const activeCourses = useMemo(() => {
-    if (liveCourses.length > 0) {
-      return liveCourses.slice(0, 2).map((course) => ({
-        id: String(course.id),
-        title: course.title,
-        category: course.category_name || "Training",
-        progress: 0,
-      }));
-    }
-
-    return fallbackCourses.slice(0, 2);
-  }, [liveCourses]);
-
+  const activeCourses = useMemo(() => courses.slice(0, 3), [courses]);
+  const completedCount = courses.filter(
+    (course) => course.enrollment.status === "COMPLETED",
+  ).length;
   const overallProgress = Math.round(
-    activeCourses.reduce((acc, course) => acc + (course.progress || 0), 0) / (activeCourses.length || 1)
+    courses.reduce(
+      (total, course) =>
+        total + toPercentage(course.enrollment.completion_percentage),
+      0,
+    ) / (courses.length || 1),
   );
 
-  const getStatIcon = (label: string) => {
-    if (label.includes("Assigned")) return <BookOpen size={24} />;
-    if (label.includes("Progress")) return <PlayCircle size={24} />;
-    return <CheckCircle2 size={24} />;
-  };
+  const stats = [
+    {
+      label: "Assigned Courses",
+      value: courses.length,
+      color: "bg-green-50",
+      text: "text-[#1a6b3c]",
+      icon: <BookOpen size={24} />,
+    },
+    {
+      label: "Average Progress",
+      value: `${overallProgress}%`,
+      color: "bg-blue-50",
+      text: "text-blue-700",
+      icon: <PlayCircle size={24} />,
+    },
+    {
+      label: "Completed Courses",
+      value: completedCount,
+      color: "bg-amber-50",
+      text: "text-amber-700",
+      icon: <CheckCircle2 size={24} />,
+    },
+  ];
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="mx-auto max-w-6xl space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-1">Dashboard Overview</h2>
-        <p className="text-sm text-gray-500">Track your learning progress and upcoming deadlines.</p>
+        <h2 className="mb-1 text-2xl font-bold text-gray-800">
+          Dashboard Overview
+        </h2>
+        <p className="text-sm text-gray-500">
+          Track your assigned courses and learning progress.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {error && (
+        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
         {stats.map((stat) => (
           <div
             key={stat.label}
-            className={`${stat.color} rounded-2xl p-6 flex flex-col justify-between border border-white/50 shadow-sm relative overflow-hidden`}
+            className={`${stat.color} relative flex flex-col justify-between overflow-hidden rounded-2xl border border-white/50 p-6 shadow-sm`}
           >
-            <div className="flex justify-between items-start mb-4">
-              <div className={`p-3 rounded-xl bg-white/60 ${stat.text} shadow-sm`}>
-                {getStatIcon(stat.label)}
+            <div className="mb-4 flex items-start justify-between">
+              <div className={`rounded-xl bg-white/60 p-3 shadow-sm ${stat.text}`}>
+                {stat.icon}
               </div>
-              <p className={`text-3xl font-extrabold ${stat.text}`}>{stat.value}</p>
+              <p className={`text-3xl font-extrabold ${stat.text}`}>
+                {stat.value}
+              </p>
             </div>
             <p className="text-sm font-bold text-gray-700">{stat.label}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-gray-800">My Active Courses</h3>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-2 lg:p-8">
+          <div className="mb-6 flex items-center justify-between">
+            <h3 className="text-lg font-bold text-gray-800">
+              My Active Courses
+            </h3>
             <Link
               href="/staff/training"
-              className="text-sm text-[#1a6b3c] font-semibold hover:underline flex items-center gap-1"
+              className="flex items-center gap-1 text-sm font-semibold text-[#1a6b3c] hover:underline"
             >
               View All <ArrowRight size={16} />
             </Link>
           </div>
 
-          <div className="space-y-4">
-            {activeCourses.map((course) => (
-              <div key={course.id} className="border border-gray-100 rounded-xl p-5 hover:border-green-200 hover:bg-green-50/30 transition group">
-                <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-4 gap-4">
-                  <div>
-                    <h4 className="text-base font-bold text-gray-800 group-hover:text-[#1a6b3c] transition">
-                      {course.title}
-                    </h4>
-                    <p className="text-xs font-semibold text-gray-400 mt-1 uppercase tracking-wider">
-                      {course.category}
-                    </p>
-                  </div>
+          {loading ? (
+            <p className="rounded-xl bg-gray-50 p-6 text-sm text-gray-500">
+              Loading courses...
+            </p>
+          ) : activeCourses.length === 0 ? (
+            <p className="rounded-xl bg-gray-50 p-6 text-sm text-gray-500">
+              No course has been assigned to you yet.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {activeCourses.map((item) => {
+                const courseId = item.course?.id ?? item.cohortCourse?.course;
+                const progress = toPercentage(
+                  item.enrollment.completion_percentage,
+                );
 
-                  <Link
-                    href={`/staff/course/${course.id}`}
-                    className="text-sm bg-white border border-gray-200 text-gray-700 px-5 py-2.5 rounded-full hover:border-[#1a6b3c] hover:text-[#1a6b3c] transition shrink-0 shadow-sm font-medium flex items-center justify-center gap-2"
+                return (
+                  <div
+                    key={item.enrollment.id}
+                    className="group rounded-xl border border-gray-100 p-5 transition hover:border-green-200 hover:bg-green-50/30"
                   >
-                    <PlayCircle size={16} /> Continue
-                  </Link>
-                </div>
+                    <div className="mb-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                      <div>
+                        <h4 className="text-base font-bold text-gray-800 transition group-hover:text-[#1a6b3c]">
+                          {item.enrollment.course_title}
+                        </h4>
+                        <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-gray-400">
+                          {item.enrollment.cohort_name}
+                        </p>
+                      </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-medium text-gray-500">Progress</p>
-                    <p className="text-xs font-bold text-[#1a6b3c]">{course.progress}%</p>
+                      {courseId && (
+                        <Link
+                          href={`/staff/course/${courseId}`}
+                          className="flex shrink-0 items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:border-[#1a6b3c] hover:text-[#1a6b3c]"
+                        >
+                          <PlayCircle size={16} /> Continue
+                        </Link>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-medium text-gray-500">
+                          Progress
+                        </p>
+                        <p className="text-xs font-bold text-[#1a6b3c]">
+                          {progress}%
+                        </p>
+                      </div>
+                      <div className="h-2 w-full rounded-full bg-gray-100">
+                        <div
+                          className="h-2 rounded-full bg-[#1a6b3c] transition-all duration-500"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div className="w-full bg-gray-100 rounded-full h-2">
-                    <div
-                      className="bg-[#1a6b3c] h-2 rounded-full transition-all duration-500"
-                      style={{ width: `${course.progress}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100 flex flex-col items-center relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-5">
-              <Target size={100} />
-            </div>
-            <h3 className="text-lg font-bold text-gray-800 mb-6 w-full text-left z-10">
+        <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:p-8">
+          <div className="relative z-10 mb-6 flex items-center justify-between">
+            <h3 className="text-lg font-bold text-gray-800">
               Overall Progress
             </h3>
+            <Target className="text-gray-200" size={42} />
+          </div>
 
-            <div className="relative w-32 h-32 z-10 mb-4">
-              <svg viewBox="0 0 36 36" className="w-32 h-32 -rotate-90">
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="15.9"
-                  fill="none"
-                  stroke="#f3f4f6"
-                  strokeWidth="3.5"
-                />
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="15.9"
-                  fill="none"
-                  stroke="#1a6b3c"
-                  strokeWidth="3.5"
-                  strokeDasharray={`${overallProgress} ${100 - overallProgress}`}
-                  strokeLinecap="round"
-                  className="transition-all duration-1000 ease-out"
-                />
-              </svg>
+          <div className="relative z-10 mx-auto mb-4 h-32 w-32">
+            <svg viewBox="0 0 36 36" className="h-32 w-32 -rotate-90">
+              <circle
+                cx="18"
+                cy="18"
+                r="15.9"
+                fill="none"
+                stroke="#f3f4f6"
+                strokeWidth="3.5"
+              />
+              <circle
+                cx="18"
+                cy="18"
+                r="15.9"
+                fill="none"
+                stroke="#1a6b3c"
+                strokeWidth="3.5"
+                strokeDasharray={`${overallProgress} ${100 - overallProgress}`}
+                strokeLinecap="round"
+                className="transition-all duration-1000 ease-out"
+              />
+            </svg>
 
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-3xl font-black text-gray-800">
-                  {overallProgress}<span className="text-lg text-gray-400">%</span>
-                </span>
-              </div>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-3xl font-black text-gray-800">
+                {overallProgress}
+                <span className="text-lg text-gray-400">%</span>
+              </span>
             </div>
-
-            <p className="text-sm font-medium text-gray-500 text-center z-10">
-              Total completion rate across all assigned courses
-            </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-6 lg:p-8 shadow-sm border border-gray-100">
-            <h3 className="text-lg font-bold text-gray-800 mb-5">
-              Upcoming Deadlines
-            </h3>
-
-            <ul className="space-y-3">
-              {deadlines.map((deadline) => (
-                <li
-                  key={deadline.title}
-                  className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50 hover:bg-gray-100/50 transition"
-                >
-                  <div className="flex items-center gap-3 overflow-hidden pr-2">
-                    <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
-                      <Calendar size={14} />
-                    </div>
-                    <p className="text-sm font-medium text-gray-800 truncate">
-                      {deadline.title}
-                    </p>
-                  </div>
-                  <span className="text-xs font-bold text-red-700 bg-red-100 px-2.5 py-1 rounded-md shrink-0 whitespace-nowrap">
-                    {deadline.due}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          <p className="text-center text-sm font-medium text-gray-500">
+            Completion rate across all your assigned courses.
+          </p>
         </div>
       </div>
     </div>

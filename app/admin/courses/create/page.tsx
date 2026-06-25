@@ -1,17 +1,20 @@
 "use client";
 
+import {
+  extractErrorMessage,
+  readApiItem,
+  readApiList,
+  type Course,
+  type CourseCategory,
+  type Trainer,
+} from "@/app/lib/portal-api";
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
-import { readApiList, type CourseCategory, type Trainer } from "@/app/lib/portal-api";
 
 export default function CreateCoursePage() {
   const router = useRouter();
-  const [hasPreTest, setHasPreTest] = useState(true);
-  const [hasPostTest, setHasPostTest] = useState(true);
-  const [hasEvaluation, setHasEvaluation] = useState(true);
-  const [hasLiveSession, setHasLiveSession] = useState(true);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [thumbnailUrl, setThumbnailUrl] = useState("");
@@ -62,10 +65,25 @@ export default function CreateCoursePage() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(payload?.message || "Course could not be created.");
-      }
+  throw new Error(
+    extractErrorMessage(
+      payload,
+      "Course could not be created."
+    )
+  );
+}
 
-      router.push("/admin/courses");
+const createdCourse = readApiItem<Course>(payload);
+
+if (!createdCourse) {
+  throw new Error(
+    "The course was created, but its ID was not returned."
+  );
+}
+
+router.push(
+  `/admin/courses/${createdCourse.id}/builder`
+);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Course could not be created.");
     } finally {
@@ -81,7 +99,7 @@ export default function CreateCoursePage() {
         </Link>
         <h2 className="text-2xl font-bold text-gray-800">Create Course</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Create a course before adding modules and assessments.
+          Create a course before adding modules and learning materials.
         </p>
       </div>
 
@@ -106,7 +124,33 @@ export default function CreateCoursePage() {
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Course Thumbnail URL (optional)
+          </label>
+          <input
+            type="url"
+            value={thumbnailUrl}
+            onChange={(event) => setThumbnailUrl(event.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+            placeholder="https://res.cloudinary.com/... or another image URL"
+          />
+          <p className="mt-1 text-xs text-gray-500">
+            This image appears on the staff course card, course overview, and module header.
+          </p>
+          {thumbnailUrl && (
+            <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={thumbnailUrl}
+                alt="Course thumbnail preview"
+                className="h-44 w-full object-cover"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
             <select value={category} onChange={(event) => setCategory(event.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
@@ -126,10 +170,6 @@ export default function CreateCoursePage() {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Thumbnail URL</label>
-            <input value={thumbnailUrl} onChange={(event) => setThumbnailUrl(event.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="https://..." />
-          </div>
         </div>
 
         <div>
@@ -158,36 +198,7 @@ export default function CreateCoursePage() {
           </div>
         </div>
 
-        <div className="pt-2">
-          <h3 className="text-sm font-bold text-gray-800 mb-3">Certification Criteria</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <label className="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50 transition">
-              <input type="checkbox" className="w-4 h-4 accent-[#1a6b3c]" checked={hasLiveSession} onChange={() => setHasLiveSession(!hasLiveSession)} />
-              <span className="text-sm font-medium text-gray-700">Live Session</span>
-            </label>
-
-            <label className="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50 transition">
-              <input type="checkbox" className="w-4 h-4 accent-[#1a6b3c]" checked={hasLiveSession} onChange={() => setHasLiveSession(!hasLiveSession)} />
-              <span className="text-sm font-medium text-gray-700">Introductory Video</span>
-            </label>
-
-            
-            <label className="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50 transition">
-              <input type="checkbox" className="w-4 h-4 accent-[#1a6b3c]" checked={hasPreTest} onChange={() => setHasPreTest(!hasPreTest)} />
-              <span className="text-sm font-medium text-gray-700">Pre-Test</span>
-            </label>
-
-            <label className="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50 transition">
-              <input type="checkbox" className="w-4 h-4 accent-[#1a6b3c]" checked={hasPostTest} onChange={() => setHasPostTest(!hasPostTest)} />
-              <span className="text-sm font-medium text-gray-700">Post-Test</span>
-            </label>
-
-            <label className="flex items-center gap-3 border border-gray-200 rounded-lg px-4 py-3 cursor-pointer hover:bg-gray-50 transition">
-              <input type="checkbox" className="w-4 h-4 accent-[#1a6b3c]" checked={hasEvaluation} onChange={() => setHasEvaluation(!hasEvaluation)} />
-              <span className="text-sm font-medium text-gray-700">Evaluation</span>
-            </label>
-          </div>
-        </div>
+      
 
         <button onClick={handleSave} disabled={isSaving || !title || !description} className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition disabled:opacity-60 disabled:cursor-not-allowed">
           <Save size={18} />
