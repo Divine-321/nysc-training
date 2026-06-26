@@ -20,12 +20,12 @@ const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24;
 
 export async function getAccessToken() {
   const cookieStore = await cookies();
-  return cookieStore.get("nysc_access_token")?.value;
+  return cookieStore.get("nysc_access_token")?.value ?? null;
 }
 
 async function getRefreshToken() {
   const cookieStore = await cookies();
-  return cookieStore.get("nysc_refresh_token")?.value;
+  return cookieStore.get("nysc_refresh_token")?.value ?? null;
 }
 
 async function clearAuthCookies() {
