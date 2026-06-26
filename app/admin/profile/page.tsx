@@ -15,7 +15,11 @@ import {
   X,
   Camera,
 } from "lucide-react";
-import type { AuthUser } from "@/app/lib/portal-api";
+import {
+  extractErrorMessage,
+  resolveMediaUrl,
+  type AuthUser,
+} from "@/app/lib/portal-api";
 
 const defaultProfileData = {
   photo: "/1-blank-profile.png",
@@ -35,6 +39,10 @@ export default function AdminProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [adminData, setAdminData] = useState(defaultProfileData);
   const [formData, setFormData] = useState(defaultProfileData);
+  const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -48,7 +56,7 @@ export default function AdminProfilePage() {
       if (!user) return;
 
       const nextData = {
-        photo: user.profile?.profile_picture_url || "/1-blank-profile.png",
+        photo: resolveMediaUrl(user.profile?.profile_picture_url),
         fileNo: user.file_number || "Not assigned",
         surname: user.last_name || "",
         otherNames: [user.first_name, user.middle_name]
@@ -71,20 +79,107 @@ export default function AdminProfilePage() {
   }, []);
 
   const handleSave = async () => {
-    const response = await fetch("/api/accounts/me/update", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        middle_name: formData.otherNames.split(" ").slice(1).join(" "),
-        profile: {
-          phone_number: formData.phone,
-        },
-      }),
-    });
+    setSaving(true);
+    setError("");
+    setMessage("");
 
-    if (response.ok) {
+    try {
+      const response = await fetch("/api/accounts/me/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          middle_name: formData.otherNames.split(" ").slice(1).join(" "),
+          profile: {
+            phone_number: formData.phone,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not update profile."),
+        );
+      }
+
       setAdminData({ ...formData });
       setIsEditing(false);
+      setMessage("Profile updated successfully.");
+      window.dispatchEvent(new Event("nysc-profile-updated"));
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Could not update profile.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePhotoChange = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file.");
+      return;
+    }
+
+    setUploadingPhoto(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const uploadPayload = new FormData();
+      uploadPayload.set("profile_picture_url", file);
+      uploadPayload.set("profile.profile_picture_url", file);
+
+      const response = await fetch("/api/accounts/me/update", {
+        method: "PATCH",
+        body: uploadPayload,
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not update profile picture."),
+        );
+      }
+
+      const currentUserResponse = await fetch("/api/accounts/me", {
+        cache: "no-store",
+      });
+      const currentUserPayload = currentUserResponse.ok
+        ? await currentUserResponse.json().catch(() => null)
+        : null;
+      const updatedUser = currentUserPayload?.data as AuthUser | undefined;
+      const profilePictureUrl = updatedUser?.profile?.profile_picture_url;
+
+      if (!profilePictureUrl) {
+        throw new Error(
+          "The upload was accepted, but the backend did not save a profile picture URL.",
+        );
+      }
+
+      const nextPhoto = `${resolveMediaUrl(profilePictureUrl)}?v=${Date.now()}`;
+
+      setAdminData((current) => ({ ...current, photo: nextPhoto }));
+      setFormData((current) => ({ ...current, photo: nextPhoto }));
+      setMessage("Profile picture updated successfully.");
+      window.dispatchEvent(new Event("nysc-profile-updated"));
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Could not update profile picture.",
+      );
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -108,6 +203,18 @@ export default function AdminProfilePage() {
         </p>
       </div>
 
+      {error && (
+        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {message && (
+        <div className="rounded-lg bg-green-50 p-4 text-sm text-green-700">
+          {message}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center">
           <div className="w-32 h-32 rounded-full border-4 border-[#f0f7f3] overflow-hidden mb-4 relative bg-gray-100 shadow-sm group">
@@ -121,8 +228,16 @@ export default function AdminProfilePage() {
             {isEditing && (
               <label className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover:opacity-100 transition">
                 <Camera size={24} />
-                <span className="text-xs mt-1 font-medium">Change</span>
-                <input type="file" className="hidden" accept="image/*" />
+                <span className="text-xs mt-1 font-medium">
+                  {uploadingPhoto ? "Uploading..." : "Change"}
+                </span>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*"
+                  disabled={uploadingPhoto}
+                  onChange={handlePhotoChange}
+                />
               </label>
             )}
           </div>
@@ -226,9 +341,10 @@ export default function AdminProfilePage() {
 
                 <button
                   onClick={handleSave}
-                  className="text-sm font-semibold text-white flex items-center gap-1 bg-[#1a6b3c] hover:bg-[#145530] px-3 py-1.5 rounded-lg transition"
+                  disabled={saving}
+                  className="text-sm font-semibold text-white flex items-center gap-1 bg-[#1a6b3c] hover:bg-[#145530] px-3 py-1.5 rounded-lg transition disabled:opacity-60"
                 >
-                  <Save size={16} /> Save
+                  <Save size={16} /> {saving ? "Saving..." : "Save"}
                 </button>
               </div>
             )}

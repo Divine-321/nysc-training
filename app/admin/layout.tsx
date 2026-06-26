@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import AuthGuard from "@/app/components/AuthGuard";
-import type { AuthUser } from "@/app/lib/portal-api";
+import { resolveMediaUrl, type AuthUser } from "@/app/lib/portal-api";
 
 import {
   LayoutDashboard,
@@ -108,6 +108,16 @@ export default function AdminLayout({
     };
 
     void loadUser();
+
+    const refreshUser = () => {
+      void loadUser();
+    };
+
+    window.addEventListener("nysc-profile-updated", refreshUser);
+
+    return () => {
+      window.removeEventListener("nysc-profile-updated", refreshUser);
+    };
   }, [isInviteAcceptancePage]);
 
   const handleSignOut = async () => {
@@ -125,8 +135,7 @@ export default function AdminLayout({
     ? `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || "Admin"
     : "Admin";
 
-  const adminPhoto =
-    user?.profile?.profile_picture_url ?? "/1-blank-profile.png";
+  const adminPhoto = resolveMediaUrl(user?.profile?.profile_picture_url);
 
   const visibleNavItems = navItems.filter(
     (item) =>

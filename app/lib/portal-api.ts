@@ -3,6 +3,23 @@ const DEFAULT_API_BASE_URL = "https://web-production-84896.up.railway.app";
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL;
 
+export function resolveMediaUrl(
+  url: string | null | undefined,
+  fallback = "/1-blank-profile.png",
+) {
+  if (!url) return fallback;
+
+  if (url.startsWith("/media/")) {
+    return `${API_BASE_URL}${url}`;
+  }
+
+  if (url.startsWith("media/")) {
+    return `${API_BASE_URL}/${url}`;
+  }
+
+  return url;
+}
+
 type ApiEnvelope<T> = {
   success?: boolean;
   message?: string;

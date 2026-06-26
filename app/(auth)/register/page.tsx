@@ -161,7 +161,8 @@ export default function RegisterPage() {
       !formData.email ||
       !formData.password ||
       !formData.fileNo ||
-      !formData.phone
+      !formData.phone ||
+      !profilePicture
     ) {
       setError("Please fill in all required fields.");
       setIsLoading(false);
@@ -186,9 +187,7 @@ export default function RegisterPage() {
       registerPayload.set("email", formData.email);
       registerPayload.set("password", formData.password);
       registerPayload.set("phone_number", formData.phone);
-      if (profilePicture) {
-  registerPayload.set("profile_picture_url", profilePicture);
-}
+      registerPayload.set("profile_picture_url", profilePicture);
 
       const response = await fetch("/api/accounts/auth/register", {
         method: "POST",
@@ -389,35 +388,40 @@ export default function RegisterPage() {
               </div>
 
               <div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">
-    Profile Picture
-  </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Profile Picture <span className="text-red-600">*</span>
+                </label>
 
-  <input
-    type="file"
-    accept="image/jpeg,image/png,image/webp"
-    onChange={(event) => {
-      const file = event.target.files?.[0] ?? null;
+                <input
+                  required
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
 
-      if (file && file.size > 5 * 1024 * 1024) {
-        setError("Profile picture must not exceed 5MB.");
-        event.target.value = "";
-        setProfilePicture(null);
-        return;
-      }
+                    if (file && file.size > 5 * 1024 * 1024) {
+                      setError("Profile picture must not exceed 5MB.");
+                      event.target.value = "";
+                      setProfilePicture(null);
+                      return;
+                    }
 
-      setError("");
-      setProfilePicture(file);
-    }}
-    className="w-full rounded-full border border-[#1a6b3c] px-4 py-2.5 text-sm"
-  />
+                    setError("");
+                    setProfilePicture(file);
+                  }}
+                  className="w-full rounded-full border border-[#1a6b3c] px-4 py-2.5 text-sm"
+                />
 
-  {profilePicture && (
-    <p className="mt-1 text-xs text-gray-500">
-      Selected: {profilePicture.name}
-    </p>
-  )}
-</div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Required. JPG, PNG, or WebP. Maximum size: 5MB.
+                </p>
+
+                {profilePicture && (
+                  <p className="mt-1 text-xs font-medium text-[#1a6b3c]">
+                    Selected: {profilePicture.name}
+                  </p>
+                )}
+              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { MapPin, Briefcase, Hash, BookOpen, ShieldCheck, Phone, Mail, Edit2, Save, X, Camera } from "lucide-react";
 import type { AuthUser } from "@/app/lib/portal-api";
-import { readApiItem, readApiList } from "@/app/lib/portal-api";
+import {
+  extractErrorMessage,
+  readApiItem,
+  readApiList,
+  resolveMediaUrl,
+} from "@/app/lib/portal-api";
 
 type CohortStaffAssignment = {
   id: number;
@@ -16,6 +21,7 @@ type CohortStaffAssignment = {
 type CourseEnrollment = {
   id: number;
   cohort_name: string;
+  status?: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
 };
 
 type CurrentPosting = {
@@ -39,6 +45,10 @@ type CurrentPosting = {
 
 export default function StaffProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
   const emptyProfileData = {
   photo: "/1-blank-profile.png",
@@ -50,6 +60,7 @@ export default function StaffProfilePage() {
   location: "Not assigned",
   cohort: "Not assigned",
   coursesAttended: 0,
+  completedCourses: 0,
   status: "",
   phone: "",
   email: "",
@@ -102,7 +113,7 @@ const [formData, setFormData] = useState(emptyProfileData);
       ].filter(Boolean);
 
       const nextData = {
-        photo: user.profile?.profile_picture_url || "/1-blank-profile.png",
+        photo: resolveMediaUrl(user.profile?.profile_picture_url),
         fileNo: user.file_number || "Not assigned",
         surname: user.last_name,
         otherNames: [user.first_name, user.middle_name].filter(Boolean).join(" "),
@@ -111,6 +122,9 @@ const [formData, setFormData] = useState(emptyProfileData);
         location: locationParts.join(" • ") || "Not assigned",
         cohort: [...new Set(cohortNames)].join(", ") || "Not assigned",
         coursesAttended: enrollments.length,
+        completedCourses: enrollments.filter(
+          (enrollment) => enrollment.status === "COMPLETED",
+        ).length,
         status: user.is_active ? "Active" : "Inactive",
         phone: user.profile?.phone_number || "",
         email: user.email,
@@ -124,19 +138,106 @@ const [formData, setFormData] = useState(emptyProfileData);
   }, []);
 
   const handleSave = async () => {
-    const response = await fetch("/api/accounts/me/update", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        profile: {
-          phone_number: formData.phone,
-        },
-      }),
-    });
+    setSaving(true);
+    setError("");
+    setMessage("");
 
-    if (response.ok) {
+    try {
+      const response = await fetch("/api/accounts/me/update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile: {
+            phone_number: formData.phone,
+          },
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not update profile."),
+        );
+      }
+
       setStaffData({ ...formData });
       setIsEditing(false);
+      setMessage("Profile updated successfully.");
+      window.dispatchEvent(new Event("nysc-profile-updated"));
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Could not update profile.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePhotoChange = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please choose an image file.");
+      return;
+    }
+
+    setUploadingPhoto(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const uploadPayload = new FormData();
+      uploadPayload.set("profile_picture_url", file);
+      uploadPayload.set("profile.profile_picture_url", file);
+
+      const response = await fetch("/api/accounts/me/update", {
+        method: "PATCH",
+        body: uploadPayload,
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not update profile picture."),
+        );
+      }
+
+      const currentUserResponse = await fetch("/api/accounts/me", {
+        cache: "no-store",
+      });
+      const currentUserPayload = currentUserResponse.ok
+        ? await currentUserResponse.json().catch(() => null)
+        : null;
+      const updatedUser = currentUserPayload?.data as AuthUser | undefined;
+      const profilePictureUrl = updatedUser?.profile?.profile_picture_url;
+
+      if (!profilePictureUrl) {
+        throw new Error(
+          "The upload was accepted, but the backend did not save a profile picture URL.",
+        );
+      }
+
+      const nextPhoto = `${resolveMediaUrl(profilePictureUrl)}?v=${Date.now()}`;
+
+      setStaffData((current) => ({ ...current, photo: nextPhoto }));
+      setFormData((current) => ({ ...current, photo: nextPhoto }));
+      setMessage("Profile picture updated successfully.");
+      window.dispatchEvent(new Event("nysc-profile-updated"));
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Could not update profile picture.",
+      );
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -157,6 +258,18 @@ const [formData, setFormData] = useState(emptyProfileData);
         <p className="text-sm text-gray-500">View your official NYSC personnel details.</p>
       </div>
 
+      {error && (
+        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {message && (
+        <div className="rounded-lg bg-green-50 p-4 text-sm text-green-700">
+          {message}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Photo, Name, Rank & Status */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center">
@@ -170,8 +283,16 @@ const [formData, setFormData] = useState(emptyProfileData);
             {isEditing && (
               <label className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover:opacity-100 transition">
                 <Camera size={24} />
-                <span className="text-xs mt-1 font-medium">Change</span>
-                <input type="file" className="hidden" accept="image/*" />
+                <span className="text-xs mt-1 font-medium">
+                  {uploadingPhoto ? "Uploading..." : "Change"}
+                </span>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept="image/*"
+                  disabled={uploadingPhoto}
+                  onChange={handlePhotoChange}
+                />
               </label>
             )}
           </div>
@@ -235,9 +356,10 @@ const [formData, setFormData] = useState(emptyProfileData);
                 </button>
                 <button 
                   onClick={handleSave}
-                  className="text-sm font-semibold text-white flex items-center gap-1 bg-[#1a6b3c] hover:bg-[#145530] px-3 py-1.5 rounded-lg transition"
+                  disabled={saving}
+                  className="text-sm font-semibold text-white flex items-center gap-1 bg-[#1a6b3c] hover:bg-[#145530] px-3 py-1.5 rounded-lg transition disabled:opacity-60"
                 >
-                  <Save size={16} /> Save
+                  <Save size={16} /> {saving ? "Saving..." : "Save"}
                 </button>
               </div>
             )}
@@ -327,8 +449,18 @@ const [formData, setFormData] = useState(emptyProfileData);
                 <BookOpen size={20} />
               </div>
               <div className="flex flex-col justify-center">
-                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Courses Attended</p>
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Enrolled Courses</p>
                 <p className="font-extrabold text-blue-700 text-lg leading-none">{staffData.coursesAttended}</p>
+              </div>
+            </div>
+
+            <div className="flex gap-4">
+              <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center text-[#1a6b3c] shrink-0 border border-green-100">
+                <ShieldCheck size={20} />
+              </div>
+              <div className="flex flex-col justify-center">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Completed Courses</p>
+                <p className="font-extrabold text-[#1a6b3c] text-lg leading-none">{staffData.completedCourses}</p>
               </div>
             </div>
           </div>

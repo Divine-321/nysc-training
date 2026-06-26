@@ -15,7 +15,11 @@ import {
   Bell,
   CheckCheck,
 } from "lucide-react";
-import { readApiList, type AuthUser } from "@/app/lib/portal-api";
+import {
+  readApiList,
+  resolveMediaUrl,
+  type AuthUser,
+} from "@/app/lib/portal-api";
 import AuthGuard from "@/app/components/AuthGuard";
 
 type Notification = {
@@ -162,6 +166,16 @@ export default function StaffLayout({
     };
 
     void loadUser();
+
+    const refreshUser = () => {
+      void loadUser();
+    };
+
+    window.addEventListener("nysc-profile-updated", refreshUser);
+
+    return () => {
+      window.removeEventListener("nysc-profile-updated", refreshUser);
+    };
   }, []);
 
   useEffect(() => {
@@ -269,8 +283,7 @@ export default function StaffLayout({
   const cohortLabel =
     userCohorts.length > 0 ? userCohorts.join(", ") : "No cohort assigned";
 
-  const userPhoto =
-    user?.profile?.profile_picture_url ?? "/1-blank-profile.png";
+  const userPhoto = resolveMediaUrl(user?.profile?.profile_picture_url);
 
   if (isFullScreenView) {
     return <AuthGuard allowedRoles={STAFF_ROLES}>{children}</AuthGuard>;
