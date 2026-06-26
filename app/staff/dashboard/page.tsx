@@ -40,7 +40,7 @@ export default function StaffDashboard() {
   }, []);
 
   const activeCourses = useMemo(() => courses.slice(0, 3), [courses]);
-  const completedCount = courses.filter(
+  const materialsCompletedCount = courses.filter(
     (course) => course.enrollment.status === "COMPLETED",
   ).length;
   const overallProgress = Math.round(
@@ -60,15 +60,15 @@ export default function StaffDashboard() {
       icon: <BookOpen size={24} />,
     },
     {
-      label: "Average Progress",
+      label: "Average Material Progress",
       value: `${overallProgress}%`,
       color: "bg-blue-50",
       text: "text-blue-700",
       icon: <PlayCircle size={24} />,
     },
     {
-      label: "Completed Courses",
-      value: completedCount,
+      label: "Materials Completed",
+      value: materialsCompletedCount,
       color: "bg-amber-50",
       text: "text-amber-700",
       icon: <CheckCircle2 size={24} />,
@@ -82,7 +82,7 @@ export default function StaffDashboard() {
           Dashboard Overview
         </h2>
         <p className="text-sm text-gray-500">
-          Track your assigned courses and learning progress.
+          Track your assigned courses, materials, tests and certificates.
         </p>
       </div>
 
@@ -169,7 +169,7 @@ export default function StaffDashboard() {
                     <div>
                       <div className="mb-2 flex items-center justify-between">
                         <p className="text-xs font-medium text-gray-500">
-                          Progress
+                          Material Progress
                         </p>
                         <p className="text-xs font-bold text-[#1a6b3c]">
                           {progress}%
@@ -192,7 +192,7 @@ export default function StaffDashboard() {
         <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:p-8">
           <div className="relative z-10 mb-6 flex items-center justify-between">
             <h3 className="text-lg font-bold text-gray-800">
-              Overall Progress
+              Overall Material Progress
             </h3>
             <Target className="text-gray-200" size={42} />
           </div>
@@ -229,7 +229,7 @@ export default function StaffDashboard() {
           </div>
 
           <p className="text-center text-sm font-medium text-gray-500">
-            Completion rate across all your assigned courses.
+            Material completion rate across all your assigned courses.
           </p>
         </div>
       </div>

@@ -9,6 +9,12 @@ type CloudinarySignature = {
   upload_preset: string;
 };
 
+export type CloudinaryUploadType =
+  | "module"
+  | "course"
+  | "book_pdf"
+  | "book_cover";
+
 export type CloudinaryUploadResult = {
   secure_url: string;
   public_id: string;
@@ -20,8 +26,8 @@ export type CloudinaryUploadResult = {
 const CHUNK_SIZE = 6 * 1024 * 1024;
 const CHUNK_THRESHOLD = 100 * 1024 * 1024;
 
-async function getUploadSignature() {
-  const response = await fetch("/api/training/cloudinary-signature", {
+async function getUploadSignature(type: CloudinaryUploadType = "module") {
+  const response = await fetch(`/api/training/cloudinary-signature?type=${type}`, {
     cache: "no-store",
   });
   const payload = await response.json().catch(() => null);
@@ -71,10 +77,10 @@ async function readCloudinaryResponse(response: Response) {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    throw new Error(
-      extractErrorMessage(payload, "Cloudinary could not upload this file."),
-    );
-  }
+  throw new Error(
+    extractErrorMessage(payload, "Cloudinary could not upload this file."),
+  );
+}
 
   return payload as CloudinaryUploadResult;
 }
@@ -82,11 +88,13 @@ async function readCloudinaryResponse(response: Response) {
 export async function uploadFileToCloudinary(
   file: File,
   onProgress?: (percentage: number) => void,
+  type: CloudinaryUploadType = "module",
 ) {
-  const signature = await getUploadSignature();
+  const signature = await getUploadSignature(type);
+  const resourceType = type === "book_pdf" ? "raw" : "auto";
   const uploadUrl = `https://api.cloudinary.com/v1_1/${encodeURIComponent(
     signature.cloud_name,
-  )}/auto/upload`;
+  )}/${resourceType}/upload`;
 
   if (file.size <= CHUNK_THRESHOLD) {
     const response = await fetch(uploadUrl, {

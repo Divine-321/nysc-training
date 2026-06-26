@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ChangeEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Save, UserCheck } from "lucide-react";
+import { ArrowLeft, ImageUp, Save, UserCheck } from "lucide-react";
 import CourseModulesManager from "./CourseModulesManager";
+import CourseAssessmentsManager from "./CourseAssessmentsManager";
 import CourseDeliveryManager from "./CourseDeliveryManager";
+import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import {
   extractErrorMessage,
   readApiItem,
@@ -26,6 +28,9 @@ export default function CourseBuilderPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [thumbnailUrl, setThumbnailUrl] = useState("");
+  const [thumbnailPublicId, setThumbnailPublicId] = useState("");
+  const [thumbnailProgress, setThumbnailProgress] = useState(0);
+  const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
   const [category, setCategory] = useState("");
   const [status, setStatus] =
     useState<"DRAFT" | "PUBLISHED" | "ARCHIVED">("DRAFT");
@@ -69,6 +74,7 @@ export default function CourseBuilderPage() {
         setTitle(loadedCourse.title);
         setDescription(loadedCourse.description);
         setThumbnailUrl(loadedCourse.thumbnail_url ?? "");
+        setThumbnailPublicId(loadedCourse.cloudinary_public_id ?? "");
         setCategory(
           loadedCourse.category ? String(loadedCourse.category) : "",
         );
@@ -98,6 +104,45 @@ export default function CourseBuilderPage() {
     void loadData();
   }, [courseId]);
 
+  const handleThumbnailUpload = async (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file for the course thumbnail.");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setIsUploadingThumbnail(true);
+    setThumbnailProgress(0);
+
+    try {
+      const uploadedFile = await uploadFileToCloudinary(
+        file,
+        setThumbnailProgress,
+        "course",
+      );
+
+      setThumbnailUrl(uploadedFile.secure_url);
+      setThumbnailPublicId(uploadedFile.public_id);
+      setNotice("Thumbnail uploaded. Click Update Course to save it.");
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Could not upload the course thumbnail.",
+      );
+    } finally {
+      setIsUploadingThumbnail(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError("");
@@ -111,6 +156,7 @@ export default function CourseBuilderPage() {
           title: title.trim(),
           description: description.trim(),
           thumbnail_url: thumbnailUrl.trim() || null,
+          cloudinary_public_id: thumbnailPublicId || null,
           status,
           category: category ? Number(category) : null,
           trainer_ids: trainerIds,
@@ -203,18 +249,43 @@ export default function CourseBuilderPage() {
 
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">
-            Course Thumbnail URL
+            Course Thumbnail
           </label>
-          <input
-            type="url"
-            value={thumbnailUrl}
-            onChange={(event) => setThumbnailUrl(event.target.value)}
-            placeholder="https://res.cloudinary.com/... or another image URL"
-            className="w-full rounded-lg border px-4 py-2.5 text-sm"
-          />
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <input
+              type="url"
+              value={thumbnailUrl}
+              onChange={(event) => {
+                setThumbnailUrl(event.target.value);
+                setThumbnailPublicId("");
+              }}
+              placeholder="https://res.cloudinary.com/... or another image URL"
+              className="w-full rounded-lg border px-4 py-2.5 text-sm"
+            />
+
+            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50">
+              <ImageUp size={18} />
+              {isUploadingThumbnail ? "Uploading..." : "Upload image"}
+              <input
+                type="file"
+                accept="image/*"
+                disabled={isUploadingThumbnail}
+                onChange={handleThumbnailUpload}
+                className="sr-only"
+              />
+            </label>
+          </div>
           <p className="mt-1 text-xs text-gray-500">
-            This image appears on the staff course card and course overview.
+            Upload an image or paste an image URL. This image appears on the staff course card and course overview.
           </p>
+          {isUploadingThumbnail && (
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
+              <div
+                className="h-full rounded-full bg-[#1a6b3c] transition-all"
+                style={{ width: `${thumbnailProgress}%` }}
+              />
+            </div>
+          )}
           {thumbnailUrl && (
             <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -281,6 +352,8 @@ export default function CourseBuilderPage() {
       </section>
 
       <CourseModulesManager courseId={Number(courseId)} />
+
+      <CourseAssessmentsManager courseId={Number(courseId)} />
 
       <section className="space-y-5 rounded-2xl bg-white p-6 shadow-sm">
         <div className="flex items-center gap-2">

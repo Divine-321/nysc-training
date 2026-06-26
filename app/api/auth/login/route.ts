@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { loginUser } from "@/app/lib/portal-api";
 
 const isProduction = process.env.NODE_ENV === "production";
+const ACCESS_TOKEN_MAX_AGE = 60 * 20;
+const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24;
 
 export async function POST(request: Request) {
   try {
@@ -26,7 +28,7 @@ export async function POST(request: Request) {
       sameSite: "lax",
       secure: isProduction,
       path: "/",
-      maxAge: 60 * 60 * 24,
+      maxAge: ACCESS_TOKEN_MAX_AGE,
     });
 
     nextResponse.cookies.set("nysc_refresh_token", response.data.tokens.refresh, {
@@ -34,18 +36,31 @@ export async function POST(request: Request) {
       sameSite: "lax",
       secure: isProduction,
       path: "/",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: REFRESH_TOKEN_MAX_AGE,
     });
 
     return nextResponse;
   } catch (error: unknown) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Login failed. Please try again.";
+    const status =
+      message.toLowerCase().includes("fetch failed") ||
+      message.toLowerCase().includes("failed to fetch")
+        ? 502
+        : 401;
+
     return NextResponse.json(
       {
         success: false,
-        message: error instanceof Error ? error.message : "Login failed. Please try again.",
+        message:
+          status === 502
+            ? "Could not reach the backend login service. Please try again."
+            : message,
         data: null,
       },
-      { status: 401 }
+      { status }
     );
   }
 }

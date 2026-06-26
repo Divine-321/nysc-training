@@ -17,6 +17,7 @@ type NYSCBook = {
   title: string;
   description: string | null;
   file_url: string;
+  cover_image_url: string | null;
   uploaded_at: string;
 };
 
@@ -126,12 +127,21 @@ export default function LibraryPage() {
               key={book.id}
               className="group flex flex-col rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:shadow-md"
             >
-              <div className="mb-5 flex h-32 w-full items-center justify-center rounded-xl border border-green-100 bg-[#f0f7f3] transition-transform group-hover:scale-[1.02]">
-                <FileText
-                  size={48}
-                  className="text-[#1a6b3c]"
-                  strokeWidth={1.5}
-                />
+              <div className="mb-5 flex h-40 w-full items-center justify-center overflow-hidden rounded-xl border border-green-100 bg-[#f0f7f3] transition-transform group-hover:scale-[1.02]">
+                {book.cover_image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={book.cover_image_url}
+                    alt={`${book.title} cover`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <FileText
+                    size={48}
+                    className="text-[#1a6b3c]"
+                    strokeWidth={1.5}
+                  />
+                )}
               </div>
 
               <div className="flex-1">

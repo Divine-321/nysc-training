@@ -155,17 +155,57 @@ export function documentIsComplete(
   );
 }
 
+async function loadModulesForCourse(courseId: number) {
+  try {
+    const modulePayload = await getJson(
+      `/api/training/modules?course=${courseId}`,
+    );
+
+    return readApiList<CourseModule>(modulePayload);
+  } catch (filteredError) {
+    try {
+      const modulePayload = await getJson("/api/training/modules");
+
+      return readApiList<CourseModule>(modulePayload).filter(
+        (module) => module.course === courseId,
+      );
+    } catch (listError) {
+      console.error(
+        `Could not load modules for course ${courseId}.`,
+        filteredError,
+        listError,
+      );
+
+      return [];
+    }
+  }
+}
+
 export async function loadStaffCourses() {
-  const [enrollmentPayload, cohortCoursePayload, modulePayload] =
+  const [enrollmentPayload, cohortCoursePayload] =
     await Promise.all([
       getJson("/api/training/enrollments"),
       getJson("/api/training/cohort-courses"),
-      getJson("/api/training/modules"),
     ]);
 
   const enrollments = readApiList<CourseEnrollment>(enrollmentPayload);
   const cohortCourses = readApiList<CohortCourse>(cohortCoursePayload);
-  const modules = readApiList<CourseModule>(modulePayload);
+  const assignedCourseIds = Array.from(
+    new Set(
+      enrollments
+        .map((enrollment) =>
+          cohortCourses.find((item) => item.id === enrollment.cohort_course),
+        )
+        .map((cohortCourse) => cohortCourse?.course)
+        .filter((courseId): courseId is number => typeof courseId === "number"),
+    ),
+  );
+
+  const modules = (
+    await Promise.all(
+      assignedCourseIds.map((courseId) => loadModulesForCourse(courseId)),
+    )
+  ).flat();
 
   return enrollments.map((enrollment) => {
     const cohortCourse =
@@ -222,7 +262,10 @@ export async function markDocumentComplete(
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ document: documentId }),
+      body: JSON.stringify({
+        document: documentId,
+        document_id: documentId,
+      }),
     },
   );
   const payload = await response.json().catch(() => null);

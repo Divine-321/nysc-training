@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import { MapPin, Briefcase, Hash, BookOpen, ShieldCheck, Phone, Mail, Edit2, Save, X, Camera } from "lucide-react";
 import type { AuthUser } from "@/app/lib/portal-api";
-import { readApiList } from "@/app/lib/portal-api";
+import { readApiItem, readApiList } from "@/app/lib/portal-api";
 
 type CohortStaffAssignment = {
   id: number;
@@ -16,6 +16,25 @@ type CohortStaffAssignment = {
 type CourseEnrollment = {
   id: number;
   cohort_name: string;
+};
+
+type CurrentPosting = {
+  id: number;
+  state: {
+    name: string;
+    code: string;
+  } | null;
+  department: {
+    name: string;
+  } | null;
+  grade_level: {
+    code: string;
+    level?: number;
+  } | null;
+  rank: {
+    title: string;
+  } | null;
+  status: "active" | "retired";
 };
 
 export default function StaffProfilePage() {
@@ -50,36 +69,48 @@ const [formData, setFormData] = useState(emptyProfileData);
       const cohortResponse = await fetch("/api/training/cohort-staff", {
         cache: "no-store",
       });
+      const enrollmentResponse = await fetch("/api/training/enrollments", {
+        cache: "no-store",
+      });
+      const postingResponse = await fetch("/api/organization/postings/current", {
+        cache: "no-store",
+      });
+
       const cohortPayload = cohortResponse.ok
         ? await cohortResponse.json().catch(() => null)
         : null;
+      const enrollmentPayload = enrollmentResponse.ok
+        ? await enrollmentResponse.json().catch(() => null)
+        : null;
+      const postingPayload = postingResponse.ok
+        ? await postingResponse.json().catch(() => null)
+        : null;
+
+      const currentPosting = readApiItem<CurrentPosting>(postingPayload);
+      const enrollments = readApiList<CourseEnrollment>(enrollmentPayload);
       let cohortNames = readApiList<CohortStaffAssignment>(cohortPayload)
         .filter((assignment) => assignment.staff === user.id)
         .map((assignment) => assignment.cohort_name);
 
       if (cohortNames.length === 0) {
-        const enrollmentResponse = await fetch("/api/training/enrollments", {
-          cache: "no-store",
-        });
-        const enrollmentPayload = enrollmentResponse.ok
-          ? await enrollmentResponse.json().catch(() => null)
-          : null;
-
-        cohortNames = readApiList<CourseEnrollment>(enrollmentPayload).map(
-          (enrollment) => enrollment.cohort_name,
-        );
+        cohortNames = enrollments.map((enrollment) => enrollment.cohort_name);
       }
+
+      const locationParts = [
+        currentPosting?.state?.name,
+        currentPosting?.department?.name,
+      ].filter(Boolean);
 
       const nextData = {
         photo: user.profile?.profile_picture_url || "/1-blank-profile.png",
         fileNo: user.file_number || "Not assigned",
         surname: user.last_name,
         otherNames: [user.first_name, user.middle_name].filter(Boolean).join(" "),
-        rank: user.role === "staff" ? "Staff" : user.role,
-        gradeLevel: "Not assigned",
-        location: "Not assigned",
+        rank: currentPosting?.rank?.title || "Not assigned",
+        gradeLevel: currentPosting?.grade_level?.code || "Not assigned",
+        location: locationParts.join(" • ") || "Not assigned",
         cohort: [...new Set(cohortNames)].join(", ") || "Not assigned",
-        coursesAttended: 0,
+        coursesAttended: enrollments.length,
         status: user.is_active ? "Active" : "Inactive",
         phone: user.profile?.phone_number || "",
         email: user.email,
@@ -97,7 +128,6 @@ const [formData, setFormData] = useState(emptyProfileData);
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        middle_name: formData.otherNames.split(" ").slice(1).join(" "),
         profile: {
           phone_number: formData.phone,
         },
@@ -154,25 +184,18 @@ const [formData, setFormData] = useState(emptyProfileData);
                   {staffData.status}
                 </span>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 text-left mb-1">Surname</label>
-                <input 
-                  type="text" 
-                  name="surname" 
-                  value={formData.surname} 
-                  onChange={handleChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 text-left mb-1">Other Names</label>
-                <input 
-                  type="text" 
-                  name="otherNames" 
-                  value={formData.otherNames} 
-                  onChange={handleChange}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                />
+              <div className="rounded-lg bg-gray-50 p-3 text-left">
+                <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                  Name
+                </p>
+                <p className="mt-1 font-semibold text-gray-800">
+                  {[staffData.otherNames, staffData.surname]
+                    .filter(Boolean)
+                    .join(" ") || "Not assigned"}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Names come from your staff record and cannot be edited here.
+                </p>
               </div>
               <div className="pt-2">
                 <p className="text-[#1a6b3c] font-bold text-sm">{staffData.rank}</p>
@@ -221,23 +244,18 @@ const [formData, setFormData] = useState(emptyProfileData);
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-8 gap-x-8">
-            {/* Email (Editable) */}
+            {/* Email */}
             <div className="flex gap-4">
               <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center text-gray-500 shrink-0 border border-gray-100">
                 <Mail size={20} />
               </div>
               <div className="flex flex-col justify-center w-full">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Email Address</p>
-                {isEditing ? (
-                  <input 
-                    type="email" 
-                    name="email" 
-                    value={formData.email} 
-                    onChange={handleChange}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                  />
-                ) : (
-                  <p className="font-bold text-gray-800 truncate">{staffData.email}</p>
+                <p className="font-bold text-gray-800 truncate">{staffData.email}</p>
+                {isEditing && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Use the email change flow in settings when enabled.
+                  </p>
                 )}
               </div>
             </div>

@@ -11,13 +11,17 @@ import {
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, ImageUp, Save } from "lucide-react";
+import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 
 export default function CreateCoursePage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [thumbnailUrl, setThumbnailUrl] = useState("");
+  const [thumbnailPublicId, setThumbnailPublicId] = useState("");
+  const [thumbnailProgress, setThumbnailProgress] = useState(0);
+  const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
   const [status, setStatus] = useState<"DRAFT" | "PUBLISHED" | "ARCHIVED">("DRAFT");
   const [category, setCategory] = useState("");
   const [trainerIds, setTrainerIds] = useState<number[]>([]);
@@ -45,6 +49,43 @@ export default function CreateCoursePage() {
     void loadOptions();
   }, []);
 
+  const handleThumbnailUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please select an image file for the course thumbnail.");
+      return;
+    }
+
+    setError("");
+    setIsUploadingThumbnail(true);
+    setThumbnailProgress(0);
+
+    try {
+      const uploadedFile = await uploadFileToCloudinary(
+        file,
+        setThumbnailProgress,
+        "course",
+      );
+
+      setThumbnailUrl(uploadedFile.secure_url);
+      setThumbnailPublicId(uploadedFile.public_id);
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Could not upload the course thumbnail.",
+      );
+    } finally {
+      setIsUploadingThumbnail(false);
+    }
+  };
+
   const handleSave = async () => {
     setError("");
     setIsSaving(true);
@@ -57,6 +98,7 @@ export default function CreateCoursePage() {
           title,
           description,
           thumbnail_url: thumbnailUrl || null,
+          cloudinary_public_id: thumbnailPublicId || null,
           status,
           category: category ? Number(category) : null,
           trainer_ids: trainerIds,
@@ -126,18 +168,43 @@ router.push(
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Course Thumbnail URL (optional)
+            Course Thumbnail (optional)
           </label>
-          <input
-            type="url"
-            value={thumbnailUrl}
-            onChange={(event) => setThumbnailUrl(event.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-            placeholder="https://res.cloudinary.com/... or another image URL"
-          />
+          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+            <input
+              type="url"
+              value={thumbnailUrl}
+              onChange={(event) => {
+                setThumbnailUrl(event.target.value);
+                setThumbnailPublicId("");
+              }}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+              placeholder="https://res.cloudinary.com/... or another image URL"
+            />
+
+            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50">
+              <ImageUp size={18} />
+              {isUploadingThumbnail ? "Uploading..." : "Upload image"}
+              <input
+                type="file"
+                accept="image/*"
+                disabled={isUploadingThumbnail}
+                onChange={handleThumbnailUpload}
+                className="sr-only"
+              />
+            </label>
+          </div>
           <p className="mt-1 text-xs text-gray-500">
-            This image appears on the staff course card, course overview, and module header.
+            Upload an image or paste an image URL. This appears on the staff course card, course overview, and module header.
           </p>
+          {isUploadingThumbnail && (
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
+              <div
+                className="h-full rounded-full bg-[#1a6b3c] transition-all"
+                style={{ width: `${thumbnailProgress}%` }}
+              />
+            </div>
+          )}
           {thumbnailUrl && (
             <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
               {/* eslint-disable-next-line @next/next/no-img-element */}

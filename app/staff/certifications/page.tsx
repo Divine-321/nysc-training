@@ -35,11 +35,16 @@ export default function CertificationsPage() {
       const response = await fetch("/api/training/certificates", {
         cache: "no-store",
       });
-      const payload = await response.json();
+      const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
         throw new Error(
-          extractErrorMessage(payload, "Could not load certificates.")
+          extractErrorMessage(
+            payload,
+            response.status >= 500
+              ? "The certificate service is currently returning a server error."
+              : "Could not load certificates.",
+          )
         );
       }
 

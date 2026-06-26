@@ -72,6 +72,7 @@ export type Course = {
   title: string;
   description: string;
   thumbnail_url: string | null;
+  cloudinary_public_id?: string | null;
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
   category: number | null;
   category_name: string;
@@ -185,6 +186,22 @@ export function extractErrorMessage(payload: unknown, fallback: string): string 
 
   if (typeof record.message === "string") return record.message;
   if (typeof record.detail === "string") return record.detail;
+  if (
+    record.error &&
+    typeof record.error === "object" &&
+    "message" in record.error &&
+    typeof (record.error as { message: unknown }).message === "string"
+  ) {
+    return (record.error as { message: string }).message;
+  }
+  if (
+    record.error &&
+    typeof record.error === "object" &&
+    "detail" in record.error &&
+    typeof (record.error as { detail: unknown }).detail === "string"
+  ) {
+    return (record.error as { detail: string }).detail;
+  }
 
   for (const value of Object.values(record)) {
     if (Array.isArray(value) && typeof value[0] === "string") return value[0];

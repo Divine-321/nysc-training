@@ -39,6 +39,46 @@ type CourseEnrollment = {
   cohort_name: string;
 };
 
+function normalizeStaffNotificationLink(link: string) {
+  try {
+    const trimmedLink = link.trim();
+
+    if (!trimmedLink || trimmedLink.toLowerCase().startsWith("javascript:")) {
+      return "/staff/dashboard";
+    }
+
+    const parsedUrl = new URL(trimmedLink, window.location.origin);
+    const pathname = parsedUrl.pathname;
+    const suffix = `${parsedUrl.search}${parsedUrl.hash}`;
+
+    if (pathname.startsWith("/staff/")) {
+      const staffCoursePluralMatch = pathname.match(
+        /^\/staff\/courses\/(\d+)\/?$/,
+      );
+
+      if (staffCoursePluralMatch) {
+        return `/staff/course/${staffCoursePluralMatch[1]}${suffix}`;
+      }
+
+      return `${pathname}${suffix}`;
+    }
+
+    const courseMatch =
+      pathname.match(/^\/courses\/(\d+)\/?$/) ??
+      pathname.match(/^\/course\/(\d+)\/?$/) ??
+      pathname.match(/^\/training\/courses\/(\d+)\/?$/) ??
+      pathname.match(/^\/api\/training\/courses\/(\d+)\/?$/);
+
+    if (courseMatch) {
+      return `/staff/course/${courseMatch[1]}${suffix}`;
+    }
+
+    return `${pathname}${suffix}`;
+  } catch {
+    return link;
+  }
+}
+
 const navItems = [
   { label: "Dashboard", href: "/staff/dashboard", icon: LayoutDashboard },
   { label: "NYSC Books", href: "/staff/books", icon: Library },
@@ -47,6 +87,8 @@ const navItems = [
   { label: "Result", href: "/staff/result", icon: Monitor },
   { label: "Certifications", href: "/staff/certifications", icon: Award },
 ];
+
+const STAFF_ROLES = ["staff"] as const;
 
 export default function StaffLayout({
   children,
@@ -186,7 +228,7 @@ export default function StaffLayout({
     setIsNotificationsOpen(false);
 
     if (notification.link) {
-      router.push(notification.link);
+      router.push(normalizeStaffNotificationLink(notification.link));
     }
   };
 
@@ -231,11 +273,11 @@ export default function StaffLayout({
     user?.profile?.profile_picture_url ?? "/1-blank-profile.png";
 
   if (isFullScreenView) {
-    return <AuthGuard>{children}</AuthGuard>;
+    return <AuthGuard allowedRoles={STAFF_ROLES}>{children}</AuthGuard>;
   }
 
   return (
-    <AuthGuard>
+    <AuthGuard allowedRoles={STAFF_ROLES}>
       <div className="min-h-screen flex flex-col">
         <header className="h-16 bg-white flex items-center justify-between px-8 fixed top-0 left-60 right-0 z-40 border-b border-gray-100">
           <h1 className="text-xl font-bold text-gray-800">

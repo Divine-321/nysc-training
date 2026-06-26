@@ -68,7 +68,6 @@ export default function CourseLayout({
         label: module.title,
         href: `/staff/course/${courseId}/module/${module.id}`,
       })),
-      { label: "Live Sessions", href: `/staff/course/${courseId}/live` },
       ...(hasPostTest
         ? [
             {
@@ -77,6 +76,7 @@ export default function CourseLayout({
             },
           ]
         : []),
+      { label: "Live Sessions", href: `/staff/course/${courseId}/live` },
       { label: "Evaluation", href: `/staff/course/${courseId}/evaluation` },
     ];
   }, [assessments, courseId, staffCourse?.modules]);

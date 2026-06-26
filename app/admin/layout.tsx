@@ -17,6 +17,7 @@ import {
   Library,
   LogOut,
   Award,
+  UserCheck,
 } from "lucide-react";
 
 const navItems = [
@@ -49,6 +50,12 @@ const navItems = [
     label: "Certificates",
     href: "/admin/certificates",
     icon: Award,
+  },
+  {
+    label: "Trainers",
+    href: "/admin/trainers",
+    icon: UserCheck,
+    superadminOnly: true,
   },
   {
     label: "Invite Admin",

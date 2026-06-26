@@ -51,7 +51,14 @@ export default function LoginPage() {
   const check = async () => {
     const response = await fetch("/api/accounts/me", { cache: "no-store" });
     if (response.ok) {
-      router.replace("/staff/dashboard");
+      const payload = await response.json().catch(() => null);
+      const role = payload?.data?.role;
+
+      router.replace(
+        role === "admin" || role === "superadmin"
+          ? "/admin/dashboard"
+          : "/staff/dashboard",
+      );
     }
   };
 

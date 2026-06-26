@@ -5,3 +5,10 @@ export async function GET() {
     path: "/api/training/assessments/",
   });
 }
+
+export async function POST(request: Request) {
+  return proxyApi("POST", {
+    path: "/api/training/assessments/",
+    request,
+  });
+}

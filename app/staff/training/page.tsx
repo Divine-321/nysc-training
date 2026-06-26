@@ -9,6 +9,7 @@ import {
   Clock,
   PlayCircle,
   Search,
+  UserCheck,
 } from "lucide-react";
 import {
   loadStaffCourses,
@@ -17,7 +18,7 @@ import {
 } from "@/app/lib/staff-learning";
 
 function statusLabel(status: StaffCourse["enrollment"]["status"]) {
-  if (status === "COMPLETED") return "Completed";
+  if (status === "COMPLETED") return "Materials completed";
   if (status === "IN_PROGRESS") return "In progress";
   return "Not started";
 }
@@ -26,6 +27,14 @@ function statusClass(status: StaffCourse["enrollment"]["status"]) {
   if (status === "COMPLETED") return "bg-green-100 text-green-700";
   if (status === "IN_PROGRESS") return "bg-blue-100 text-blue-700";
   return "bg-amber-100 text-amber-700";
+}
+
+function trainerLabel(item: StaffCourse) {
+  const trainers = item.course?.trainers ?? [];
+
+  if (trainers.length === 0) return "Trainer not assigned";
+
+  return trainers.map((trainer) => trainer.full_name).join(", ");
 }
 
 export default function StaffTraining() {
@@ -65,7 +74,7 @@ export default function StaffTraining() {
         (tab === "inprogress" && item.enrollment.status !== "COMPLETED");
       const matchesSearch =
         !normalizedSearch ||
-        `${item.enrollment.course_title} ${item.enrollment.cohort_name}`
+        `${item.enrollment.course_title} ${item.enrollment.cohort_name} ${trainerLabel(item)}`
           .toLowerCase()
           .includes(normalizedSearch);
 
@@ -112,7 +121,11 @@ export default function StaffTraining() {
                   : "border-transparent text-gray-400"
               }`}
             >
-              {item === "inprogress" ? "In progress" : item}
+              {item === "completed"
+                ? "Materials completed"
+                : item === "inprogress"
+                  ? "In progress"
+                  : item}
             </button>
           ))}
         </div>
@@ -185,6 +198,21 @@ export default function StaffTraining() {
                       {item.enrollment.course_title}
                     </h3>
 
+                    <p className="mb-3 flex items-start gap-1.5 text-xs font-semibold text-gray-500">
+                      <UserCheck
+                        size={14}
+                        className="mt-0.5 shrink-0 text-[#1a6b3c]"
+                      />
+                      <span>
+                        <span className="text-gray-400">
+                          {item.course?.trainers?.length === 1
+                            ? "Trainer:"
+                            : "Trainers:"}
+                        </span>{" "}
+                        {trainerLabel(item)}
+                      </span>
+                    </p>
+
                     <p className="mb-4 line-clamp-2 flex-1 text-sm leading-relaxed text-gray-500">
                       {item.course?.description ||
                         "Open this course to view modules and materials."}
@@ -206,7 +234,7 @@ export default function StaffTraining() {
                       <span className="font-bold text-[#1a6b3c]">
                         {progress}%
                       </span>{" "}
-                      Course Completed
+                      Materials Complete
                     </p>
 
                     {courseId && (

@@ -7,6 +7,7 @@ import {
   Plus,
   MoreHorizontal,
   X,
+  Edit3,
   MapPin,
   Briefcase,
   BookOpen,
@@ -34,6 +35,25 @@ type StaffUser = {
   cohort: string;
   coursesAttended: number;
   status: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  isActive: boolean;
+  phoneNumber: string;
+  profilePictureUrl: string;
+  sex: string;
+  dateOfBirth: string;
+  employmentDate: string;
+  hasPosting: boolean;
+  stateId: string;
+  departmentId: string;
+  gradeLevelId: string;
+  rankId: string;
+  postingReasonId: string;
+  postingStartDate: string;
+  postingEndDate: string;
+  postingStatus: "active" | "retired";
+  postingRemarks: string;
 };
 
 type StaffListResponse = {
@@ -51,19 +71,30 @@ type Posting = {
     id: number;
   };
   state: {
+    id: number;
     name: string;
   } | null;
   department: {
+    id: number;
     name: string;
   } | null;
   grade_level: {
+    id: number;
     code: string;
   } | null;
   rank: {
+    id: number;
     title: string;
   } | null;
+  posting_reason?: {
+    id: number;
+    name: string;
+  } | null;
+  start_date?: string | null;
+  end_date?: string | null;
   is_current: boolean;
   status: "active" | "retired";
+  remarks?: string;
 };
 
 type CohortOption = {
@@ -88,8 +119,149 @@ type BulkUploadData = {
   errors: Array<Record<string, unknown>>;
 };
 
+type OrgOption = {
+  id: number;
+  name?: string;
+  title?: string;
+  code?: string;
+  level?: number;
+  short_form?: string;
+};
+
+type StaffEditForm = {
+  first_name: string;
+  middle_name: string;
+  last_name: string;
+  is_active: boolean;
+  profile: {
+    phone_number: string;
+    profile_picture_url: string;
+    sex: string;
+    date_of_birth: string;
+    employment_date: string;
+  };
+  posting: {
+    state: string;
+    department: string;
+    grade_level: string;
+    rank: string;
+    posting_reason: string;
+    start_date: string;
+    end_date: string;
+    status: "active" | "retired";
+    remarks: string;
+  };
+};
+
+type StaffRecordForm = {
+  file_number: string;
+  first_name: string;
+  middle_name: string;
+  last_name: string;
+  sex: "male" | "female" | "";
+  date_of_birth: string;
+  employment_date: string;
+  state: string;
+  department: string;
+  grade_level: string;
+  rank: string;
+};
+
+type OrgOptions = {
+  states: OrgOption[];
+  departments: OrgOption[];
+  gradeLevels: OrgOption[];
+  ranks: OrgOption[];
+  postingReasons: OrgOption[];
+};
+
+const emptyOrgOptions: OrgOptions = {
+  states: [],
+  departments: [],
+  gradeLevels: [],
+  ranks: [],
+  postingReasons: [],
+};
+
+const emptyStaffRecordForm: StaffRecordForm = {
+  file_number: "",
+  first_name: "",
+  middle_name: "",
+  last_name: "",
+  sex: "",
+  date_of_birth: "",
+  employment_date: "",
+  state: "",
+  department: "",
+  grade_level: "",
+  rank: "",
+};
+
+function optionLabel(option: OrgOption, fallbackPrefix: string) {
+  return (
+    option.name ||
+    option.title ||
+    option.code ||
+    option.short_form ||
+    (option.level ? `GL-${option.level}` : "") ||
+    `${fallbackPrefix} ${option.id}`
+  );
+}
+
+function buildEditForm(staff: StaffUser): StaffEditForm {
+  return {
+    first_name: staff.firstName,
+    middle_name: staff.middleName,
+    last_name: staff.lastName,
+    is_active: staff.isActive,
+    profile: {
+      phone_number: staff.phoneNumber,
+      profile_picture_url: staff.profilePictureUrl,
+      sex: staff.sex,
+      date_of_birth: staff.dateOfBirth,
+      employment_date: staff.employmentDate,
+    },
+    posting: {
+      state: staff.stateId,
+      department: staff.departmentId,
+      grade_level: staff.gradeLevelId,
+      rank: staff.rankId,
+      posting_reason: staff.postingReasonId,
+      start_date: staff.postingStartDate,
+      end_date: staff.postingEndDate,
+      status: staff.postingStatus,
+      remarks: staff.postingRemarks,
+    },
+  };
+}
+
+function formatCohortAssignmentError(message: string) {
+  const normalizedMessage = message.toLowerCase();
+
+  if (
+    normalizedMessage.includes("unique set") ||
+    (normalizedMessage.includes("cohort") &&
+      normalizedMessage.includes("staff") &&
+      normalizedMessage.includes("unique"))
+  ) {
+    return "This staff member is already assigned to the selected cohort.";
+  }
+
+  if (
+    normalizedMessage.includes("duplicate") ||
+    normalizedMessage.includes("already assigned") ||
+    normalizedMessage.includes("already exists")
+  ) {
+    return "This staff member is already assigned to the selected cohort.";
+  }
+
+  return message;
+}
+
 export default function AdminUsersPage() {
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
+  const [editingStaff, setEditingStaff] = useState<StaffUser | null>(null);
+  const [editForm, setEditForm] = useState<StaffEditForm | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
@@ -98,9 +270,21 @@ export default function AdminUsersPage() {
   const [staffError, setStaffError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [page, setPage] = useState(1);
+  const [staffReloadKey, setStaffReloadKey] = useState(0);
   const [totalStaff, setTotalStaff] = useState(0);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [hasPreviousPage, setHasPreviousPage] = useState(false);
+  const [orgOptions, setOrgOptions] =
+    useState<OrgOptions>(emptyOrgOptions);
+  const [loadingOrgOptions, setLoadingOrgOptions] = useState(true);
+  const [staffRecordForm, setStaffRecordForm] =
+    useState<StaffRecordForm>(emptyStaffRecordForm);
+  const [creatingStaffRecord, setCreatingStaffRecord] = useState(false);
+  const [addStaffError, setAddStaffError] = useState("");
+  const [addStaffNotice, setAddStaffNotice] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editNotice, setEditNotice] = useState("");
 
   const pageSize = 20;
 
@@ -230,6 +414,31 @@ export default function AdminUsersPage() {
                   : user.is_active
                     ? "Active"
                     : "Inactive",
+              firstName: user.first_name || "",
+              middleName: user.middle_name || "",
+              lastName: user.last_name || "",
+              isActive: user.is_active,
+              phoneNumber: user.profile?.phone_number || "",
+              profilePictureUrl: user.profile?.profile_picture_url || "",
+              sex: user.profile?.sex || "",
+              dateOfBirth: user.profile?.date_of_birth || "",
+              employmentDate: user.profile?.employment_date || "",
+              hasPosting: Boolean(posting),
+              stateId: posting?.state?.id ? String(posting.state.id) : "",
+              departmentId: posting?.department?.id
+                ? String(posting.department.id)
+                : "",
+              gradeLevelId: posting?.grade_level?.id
+                ? String(posting.grade_level.id)
+                : "",
+              rankId: posting?.rank?.id ? String(posting.rank.id) : "",
+              postingReasonId: posting?.posting_reason?.id
+                ? String(posting.posting_reason.id)
+                : "",
+              postingStartDate: posting?.start_date || "",
+              postingEndDate: posting?.end_date || "",
+              postingStatus: posting?.status || "active",
+              postingRemarks: posting?.remarks || "",
             };
           }),
         );
@@ -249,7 +458,61 @@ export default function AdminUsersPage() {
     };
 
     void loadStaff();
-  }, [page]);
+  }, [page, staffReloadKey]);
+
+  useEffect(() => {
+    const loadOrgOptions = async () => {
+      try {
+        const [
+          statesResponse,
+          departmentsResponse,
+          gradeLevelsResponse,
+          ranksResponse,
+          postingReasonsResponse,
+        ] = await Promise.all([
+          fetch("/api/organization/states", { cache: "no-store" }),
+          fetch("/api/organization/departments", { cache: "no-store" }),
+          fetch("/api/organization/grade-levels", { cache: "no-store" }),
+          fetch("/api/organization/ranks", { cache: "no-store" }),
+          fetch("/api/organization/posting-reasons", { cache: "no-store" }),
+        ]);
+
+        const [
+          statesPayload,
+          departmentsPayload,
+          gradeLevelsPayload,
+          ranksPayload,
+          postingReasonsPayload,
+        ] = await Promise.all([
+          statesResponse.json().catch(() => null),
+          departmentsResponse.json().catch(() => null),
+          gradeLevelsResponse.json().catch(() => null),
+          ranksResponse.json().catch(() => null),
+          postingReasonsResponse.json().catch(() => null),
+        ]);
+
+        setOrgOptions({
+          states: statesResponse.ok
+            ? readApiList<OrgOption>(statesPayload)
+            : [],
+          departments: departmentsResponse.ok
+            ? readApiList<OrgOption>(departmentsPayload)
+            : [],
+          gradeLevels: gradeLevelsResponse.ok
+            ? readApiList<OrgOption>(gradeLevelsPayload)
+            : [],
+          ranks: ranksResponse.ok ? readApiList<OrgOption>(ranksPayload) : [],
+          postingReasons: postingReasonsResponse.ok
+            ? readApiList<OrgOption>(postingReasonsPayload)
+            : [],
+        });
+      } finally {
+        setLoadingOrgOptions(false);
+      }
+    };
+
+    void loadOrgOptions();
+  }, []);
 
   useEffect(() => {
     const loadCohorts = async () => {
@@ -324,9 +587,11 @@ export default function AdminUsersPage() {
             ok: response.ok,
             message: response.ok
               ? ""
-              : extractErrorMessage(
-                  payload,
-                  "Could not assign this staff member.",
+              : formatCohortAssignmentError(
+                  extractErrorMessage(
+                    payload,
+                    "Could not assign this staff member.",
+                  ),
                 ),
           };
         } catch {
@@ -398,8 +663,13 @@ export default function AdminUsersPage() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
+        const rawMessage = extractErrorMessage(
+          payload,
+          "Could not import this CSV file.",
+        );
+
         throw new Error(
-          extractErrorMessage(payload, "Could not import this CSV file."),
+          formatCohortAssignmentError(rawMessage),
         );
       }
 
@@ -421,6 +691,190 @@ export default function AdminUsersPage() {
       );
     } finally {
       setBulkUploading(false);
+    }
+  };
+
+  const startEditStaff = (staff: StaffUser) => {
+    setEditingStaff(staff);
+    setEditForm(buildEditForm(staff));
+    setOpenDropdownId(null);
+    setSelectedStaff(null);
+    setEditError("");
+    setEditNotice("");
+  };
+
+  const closeEditModal = () => {
+    setEditingStaff(null);
+    setEditForm(null);
+    setEditError("");
+  };
+
+  const openAddStaffModal = () => {
+    setStaffRecordForm(emptyStaffRecordForm);
+    setAddStaffError("");
+    setAddStaffNotice("");
+    setShowAddModal(true);
+  };
+
+  const closeAddStaffModal = () => {
+    setShowAddModal(false);
+    setStaffRecordForm(emptyStaffRecordForm);
+    setAddStaffError("");
+  };
+
+  const handleCreateStaffRecord = async () => {
+    if (!staffRecordForm.file_number.trim()) {
+      setAddStaffError("File number is required.");
+      return;
+    }
+
+    if (!staffRecordForm.first_name.trim() || !staffRecordForm.last_name.trim()) {
+      setAddStaffError("First name and surname are required.");
+      return;
+    }
+
+    if (
+      !staffRecordForm.sex ||
+      !staffRecordForm.state ||
+      !staffRecordForm.department ||
+      !staffRecordForm.grade_level ||
+      !staffRecordForm.rank
+    ) {
+      setAddStaffError(
+        "Sex, state, department, grade level and rank are required.",
+      );
+      return;
+    }
+
+    setCreatingStaffRecord(true);
+    setAddStaffError("");
+    setAddStaffNotice("");
+
+    try {
+      const payload = {
+        file_number: staffRecordForm.file_number.trim(),
+        first_name: staffRecordForm.first_name.trim(),
+        middle_name: staffRecordForm.middle_name.trim(),
+        last_name: staffRecordForm.last_name.trim(),
+        sex: staffRecordForm.sex,
+        date_of_birth: staffRecordForm.date_of_birth || null,
+        ...(staffRecordForm.employment_date
+          ? { employment_date: staffRecordForm.employment_date }
+          : {}),
+        state: Number(staffRecordForm.state),
+        department: Number(staffRecordForm.department),
+        grade_level: Number(staffRecordForm.grade_level),
+        rank: Number(staffRecordForm.rank),
+      };
+
+      const response = await fetch("/api/accounts/staff-records", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const responsePayload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(
+            responsePayload,
+            "Could not create staff record.",
+          ),
+        );
+      }
+
+      setAddStaffNotice(
+        responsePayload?.message ||
+          "Staff record created. The staff can now register.",
+      );
+      setStaffRecordForm(emptyStaffRecordForm);
+      setStaffReloadKey((current) => current + 1);
+    } catch (error) {
+      setAddStaffError(
+        error instanceof Error
+          ? error.message
+          : "Could not create staff record.",
+      );
+    } finally {
+      setCreatingStaffRecord(false);
+    }
+  };
+
+  const handleSaveStaff = async () => {
+    if (!editingStaff || !editForm) return;
+
+    setSavingEdit(true);
+    setEditError("");
+    setEditNotice("");
+
+    try {
+      const payload = {
+        first_name: editForm.first_name.trim(),
+        middle_name: editForm.middle_name.trim(),
+        last_name: editForm.last_name.trim(),
+        is_active: editForm.is_active,
+        profile: {
+          phone_number: editForm.profile.phone_number.trim(),
+          profile_picture_url:
+            editForm.profile.profile_picture_url.trim() || null,
+          sex: editForm.profile.sex,
+          date_of_birth: editForm.profile.date_of_birth || null,
+          employment_date: editForm.profile.employment_date || null,
+        },
+        ...(editingStaff.hasPosting
+          ? {
+              posting: {
+                state: editForm.posting.state
+                  ? Number(editForm.posting.state)
+                  : undefined,
+                department: editForm.posting.department
+                  ? Number(editForm.posting.department)
+                  : null,
+                grade_level: editForm.posting.grade_level
+                  ? Number(editForm.posting.grade_level)
+                  : undefined,
+                rank: editForm.posting.rank
+                  ? Number(editForm.posting.rank)
+                  : undefined,
+                posting_reason: editForm.posting.posting_reason
+                  ? Number(editForm.posting.posting_reason)
+                  : null,
+                start_date: editForm.posting.start_date || undefined,
+                end_date: editForm.posting.end_date || null,
+                status: editForm.posting.status,
+                remarks: editForm.posting.remarks.trim(),
+              },
+            }
+          : {}),
+      };
+
+      const response = await fetch(`/api/accounts/staff/${editingStaff.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const responsePayload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(responsePayload, "Could not update staff."),
+        );
+      }
+
+      setEditNotice(responsePayload?.message || "Staff updated successfully.");
+      closeEditModal();
+      setStaffReloadKey((current) => current + 1);
+    } catch (error) {
+      setEditError(
+        error instanceof Error ? error.message : "Could not update staff.",
+      );
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -447,7 +901,7 @@ export default function AdminUsersPage() {
             Assign Cohort
           </button>
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={openAddStaffModal}
             className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm"
           >
             <Plus size={18} />
@@ -489,6 +943,12 @@ export default function AdminUsersPage() {
         {assignmentNotice && (
           <div className="rounded-xl bg-green-50 p-4 text-sm text-green-700">
             {assignmentNotice}
+          </div>
+        )}
+
+        {editNotice && (
+          <div className="rounded-xl bg-green-50 p-4 text-sm text-green-700">
+            {editNotice}
           </div>
         )}
 
@@ -616,7 +1076,11 @@ export default function AdminUsersPage() {
                     </button>
                     {openDropdownId === staff.id && (
                       <div className="absolute right-8 mt-2 w-32 bg-white rounded-lg shadow-lg z-10 border border-gray-100 py-1">
-                        <button className="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition">
+                        <button
+                          onClick={() => startEditStaff(staff)}
+                          className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition"
+                        >
+                          <Edit3 size={14} />
                           Edit
                         </button>
                         <button className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition">
@@ -771,7 +1235,10 @@ export default function AdminUsersPage() {
 
               <div className="pt-4 border-t border-gray-100">
                 <div className="flex gap-3">
-                  <button className="flex-1 bg-[#1a6b3c] hover:bg-[#145530] text-white py-2.5 rounded-xl text-sm font-bold transition shadow-sm">
+                  <button
+                    onClick={() => startEditStaff(selectedStaff)}
+                    className="flex-1 bg-[#1a6b3c] hover:bg-[#145530] text-white py-2.5 rounded-xl text-sm font-bold transition shadow-sm"
+                  >
                     Edit Record
                   </button>
                   <a
@@ -790,15 +1257,472 @@ export default function AdminUsersPage() {
         </div>
       )}
 
+      {/* Edit Staff Modal */}
+      {editingStaff && editForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-4xl flex flex-col overflow-hidden max-h-[90vh]">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50 shrink-0">
+              <div>
+                <h3 className="font-bold text-lg text-gray-800">
+                  Edit Staff Record
+                </h3>
+                <p className="text-xs text-gray-500">
+                  File number and email cannot be changed here.
+                </p>
+              </div>
+              <button
+                onClick={closeEditModal}
+                className="text-gray-400 hover:text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 rounded-full p-2 transition shadow-sm"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6 overflow-y-auto">
+              {editError && (
+                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                  {editError}
+                </div>
+              )}
+
+              <section className="space-y-4">
+                <div>
+                  <h4 className="font-bold text-gray-800">Staff details</h4>
+                  <p className="text-xs text-gray-500">
+                    Update the visible staff names and account status.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <label className="text-sm font-medium text-gray-700">
+                    First name
+                    <input
+                      value={editForm.first_name}
+                      onChange={(event) =>
+                        setEditForm({
+                          ...editForm,
+                          first_name: event.target.value,
+                        })
+                      }
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                    />
+                  </label>
+
+                  <label className="text-sm font-medium text-gray-700">
+                    Middle name
+                    <input
+                      value={editForm.middle_name}
+                      onChange={(event) =>
+                        setEditForm({
+                          ...editForm,
+                          middle_name: event.target.value,
+                        })
+                      }
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                    />
+                  </label>
+
+                  <label className="text-sm font-medium text-gray-700">
+                    Last name
+                    <input
+                      value={editForm.last_name}
+                      onChange={(event) =>
+                        setEditForm({
+                          ...editForm,
+                          last_name: event.target.value,
+                        })
+                      }
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                    />
+                  </label>
+                </div>
+
+                <label className="flex items-center gap-3 text-sm font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={editForm.is_active}
+                    onChange={(event) =>
+                      setEditForm({
+                        ...editForm,
+                        is_active: event.target.checked,
+                      })
+                    }
+                    className="h-4 w-4 accent-[#1a6b3c]"
+                  />
+                  Account is active
+                </label>
+              </section>
+
+              <section className="space-y-4 border-t border-gray-100 pt-6">
+                <div>
+                  <h4 className="font-bold text-gray-800">Profile</h4>
+                  <p className="text-xs text-gray-500">
+                    Admin can update profile information connected to the staff
+                    account.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="text-sm font-medium text-gray-700">
+                    Phone number
+                    <input
+                      value={editForm.profile.phone_number}
+                      onChange={(event) =>
+                        setEditForm({
+                          ...editForm,
+                          profile: {
+                            ...editForm.profile,
+                            phone_number: event.target.value,
+                          },
+                        })
+                      }
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                    />
+                  </label>
+
+                  <label className="text-sm font-medium text-gray-700">
+                    Profile picture URL
+                    <input
+                      type="url"
+                      value={editForm.profile.profile_picture_url}
+                      onChange={(event) =>
+                        setEditForm({
+                          ...editForm,
+                          profile: {
+                            ...editForm.profile,
+                            profile_picture_url: event.target.value,
+                          },
+                        })
+                      }
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                    />
+                  </label>
+
+                  <label className="text-sm font-medium text-gray-700">
+                    Sex
+                    <select
+                      value={editForm.profile.sex}
+                      onChange={(event) =>
+                        setEditForm({
+                          ...editForm,
+                          profile: {
+                            ...editForm.profile,
+                            sex: event.target.value,
+                          },
+                        })
+                      }
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                    >
+                      <option value="">Not set</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="M">M</option>
+                      <option value="F">F</option>
+                    </select>
+                  </label>
+
+                  <label className="text-sm font-medium text-gray-700">
+                    Date of birth
+                    <input
+                      type="date"
+                      value={editForm.profile.date_of_birth}
+                      onChange={(event) =>
+                        setEditForm({
+                          ...editForm,
+                          profile: {
+                            ...editForm.profile,
+                            date_of_birth: event.target.value,
+                          },
+                        })
+                      }
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                    />
+                  </label>
+
+                  <label className="text-sm font-medium text-gray-700">
+                    Employment date
+                    <input
+                      type="date"
+                      value={editForm.profile.employment_date}
+                      onChange={(event) =>
+                        setEditForm({
+                          ...editForm,
+                          profile: {
+                            ...editForm.profile,
+                            employment_date: event.target.value,
+                          },
+                        })
+                      }
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="space-y-4 border-t border-gray-100 pt-6">
+                <div>
+                  <h4 className="font-bold text-gray-800">Current posting</h4>
+                  <p className="text-xs text-gray-500">
+                    This updates the current posting in place. It does not
+                    create a transfer history record.
+                  </p>
+                </div>
+
+                {!editingStaff.hasPosting ? (
+                  <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-700">
+                    This staff member does not have a current posting yet, so
+                    posting fields cannot be updated here.
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="text-sm font-medium text-gray-700">
+                      State
+                      <select
+                        value={editForm.posting.state}
+                        disabled={loadingOrgOptions}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            posting: {
+                              ...editForm.posting,
+                              state: event.target.value,
+                            },
+                          })
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                      >
+                        <option value="">Select state</option>
+                        {orgOptions.states.map((option) => (
+                          <option key={option.id} value={String(option.id)}>
+                            {optionLabel(option, "State")}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="text-sm font-medium text-gray-700">
+                      Department
+                      <select
+                        value={editForm.posting.department}
+                        disabled={loadingOrgOptions}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            posting: {
+                              ...editForm.posting,
+                              department: event.target.value,
+                            },
+                          })
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                      >
+                        <option value="">No department</option>
+                        {orgOptions.departments.map((option) => (
+                          <option key={option.id} value={String(option.id)}>
+                            {option.short_form
+                              ? `${option.short_form} - ${optionLabel(
+                                  option,
+                                  "Department",
+                                )}`
+                              : optionLabel(option, "Department")}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="text-sm font-medium text-gray-700">
+                      Grade level
+                      <select
+                        value={editForm.posting.grade_level}
+                        disabled={loadingOrgOptions}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            posting: {
+                              ...editForm.posting,
+                              grade_level: event.target.value,
+                            },
+                          })
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                      >
+                        <option value="">Select grade level</option>
+                        {orgOptions.gradeLevels.map((option) => (
+                          <option key={option.id} value={String(option.id)}>
+                            {option.code ||
+                              (option.level ? `GL-${option.level}` : "") ||
+                              optionLabel(option, "Grade level")}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="text-sm font-medium text-gray-700">
+                      Rank
+                      <select
+                        value={editForm.posting.rank}
+                        disabled={loadingOrgOptions}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            posting: {
+                              ...editForm.posting,
+                              rank: event.target.value,
+                            },
+                          })
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                      >
+                        <option value="">Select rank</option>
+                        {orgOptions.ranks.map((option) => (
+                          <option key={option.id} value={String(option.id)}>
+                            {optionLabel(option, "Rank")}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="text-sm font-medium text-gray-700">
+                      Posting reason
+                      <select
+                        value={editForm.posting.posting_reason}
+                        disabled={loadingOrgOptions}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            posting: {
+                              ...editForm.posting,
+                              posting_reason: event.target.value,
+                            },
+                          })
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                      >
+                        <option value="">No posting reason</option>
+                        {orgOptions.postingReasons.map((option) => (
+                          <option key={option.id} value={String(option.id)}>
+                            {optionLabel(option, "Reason")}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="text-sm font-medium text-gray-700">
+                      Posting status
+                      <select
+                        value={editForm.posting.status}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            posting: {
+                              ...editForm.posting,
+                              status: event.target.value as "active" | "retired",
+                            },
+                          })
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                      >
+                        <option value="active">Active</option>
+                        <option value="retired">Retired</option>
+                      </select>
+                    </label>
+
+                    <label className="text-sm font-medium text-gray-700">
+                      Start date
+                      <input
+                        type="date"
+                        value={editForm.posting.start_date}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            posting: {
+                              ...editForm.posting,
+                              start_date: event.target.value,
+                            },
+                          })
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                      />
+                    </label>
+
+                    <label className="text-sm font-medium text-gray-700">
+                      End date
+                      <input
+                        type="date"
+                        value={editForm.posting.end_date}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            posting: {
+                              ...editForm.posting,
+                              end_date: event.target.value,
+                            },
+                          })
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                      />
+                    </label>
+
+                    <label className="text-sm font-medium text-gray-700 md:col-span-2">
+                      Remarks
+                      <textarea
+                        value={editForm.posting.remarks}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            posting: {
+                              ...editForm.posting,
+                              remarks: event.target.value,
+                            },
+                          })
+                        }
+                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                        rows={3}
+                      />
+                    </label>
+                  </div>
+                )}
+              </section>
+            </div>
+
+            <div className="p-6 border-t border-gray-100 flex gap-3 justify-end bg-gray-50/50 shrink-0">
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveStaff}
+                disabled={savingEdit}
+                className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#1a6b3c] hover:bg-[#145530] shadow-sm transition disabled:opacity-50"
+              >
+                {savingEdit ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add Staff Modal */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl shadow-xl w-full max-w-lg flex flex-col overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[90vh]">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
-              <h3 className="font-bold text-lg text-gray-800">Add New Staff</h3>
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50 shrink-0">
+              <div>
+                <h3 className="font-bold text-lg text-gray-800">
+                  Add Staff Record
+                </h3>
+                <p className="mt-1 text-xs text-gray-500">
+                  Create the staff record first. The staff can register later
+                  with their file number.
+                </p>
+              </div>
               <button
-                onClick={() => setShowAddModal(false)}
+                onClick={closeAddStaffModal}
                 className="text-gray-400 hover:text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 rounded-full p-2 transition shadow-sm"
               >
                 <X size={20} />
@@ -806,100 +1730,249 @@ export default function AdminUsersPage() {
             </div>
 
             {/* Modal Body (Form) */}
-            <div className="p-6 space-y-5">
+            <div className="p-6 space-y-5 overflow-y-auto flex-1">
+              {addStaffError && (
+                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                  {addStaffError}
+                </div>
+              )}
+
+              {addStaffNotice && (
+                <div className="rounded-lg bg-green-50 p-3 text-sm text-green-700">
+                  {addStaffNotice}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-5">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    File Number
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={staffRecordForm.file_number}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        file_number: event.target.value,
+                      })
+                    }
+                    placeholder="e.g. TS0012"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] uppercase"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Backend currently allows a maximum of 6 characters.
+                  </p>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    value={staffRecordForm.first_name}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        first_name: event.target.value,
+                      })
+                    }
+                    placeholder="e.g. Sulaiman"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] capitalize"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Middle Name
+                  </label>
+                  <input
+                    type="text"
+                    value={staffRecordForm.middle_name}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        middle_name: event.target.value,
+                      })
+                    }
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  />
+                </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Surname
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. ABBA"
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] uppercase"
-                  />
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Other Names
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Sulaiman Nasir"
+                    value={staffRecordForm.last_name}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        last_name: event.target.value,
+                      })
+                    }
+                    placeholder="e.g. Abba"
                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] capitalize"
                   />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    File No
+                    Sex
+                  </label>
+                  <select
+                    value={staffRecordForm.sex}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        sex: event.target.value as StaffRecordForm["sex"],
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  >
+                    <option value="">Select sex...</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date of Birth
                   </label>
                   <input
-                    type="text"
-                    placeholder="e.g. NYSC/STF/..."
+                    type="date"
+                    value={staffRecordForm.date_of_birth}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        date_of_birth: event.target.value,
+                      })
+                    }
                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
                   />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Rank
+                    Employment Date
                   </label>
                   <input
-                    type="text"
-                    placeholder="e.g. Senior Inspector"
+                    type="date"
+                    value={staffRecordForm.employment_date}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        employment_date: event.target.value,
+                      })
+                    }
                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
                   />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    State
+                  </label>
+                  <select
+                    value={staffRecordForm.state}
+                    disabled={loadingOrgOptions}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        state: event.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  >
+                    <option value="">Select state...</option>
+                    {orgOptions.states.map((option) => (
+                      <option key={option.id} value={String(option.id)}>
+                        {optionLabel(option, "State")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
+                  <select
+                    value={staffRecordForm.department}
+                    disabled={loadingOrgOptions}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        department: event.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  >
+                    <option value="">Select department...</option>
+                    {orgOptions.departments.map((option) => (
+                      <option key={option.id} value={String(option.id)}>
+                        {optionLabel(option, "Department")}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Grade Level
                   </label>
-                  <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
-                    <option value="">Select GL...</option>
-                    <option value="GL 07">GL 07</option>
-                    <option value="GL 08">GL 08</option>
-                    <option value="GL 09">GL 09</option>
-                    <option value="GL 10">GL 10</option>
-                    <option value="GL 12">GL 12</option>
-                    <option value="GL 13">GL 13</option>
-                    <option value="GL 14">GL 14</option>
-                    <option value="GL 15">GL 15</option>
-                    <option value="GL 16">GL 16</option>
-                    <option value="GL 17">GL 17</option>
+                  <select
+                    value={staffRecordForm.grade_level}
+                    disabled={loadingOrgOptions}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        grade_level: event.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  >
+                    <option value="">Select grade level...</option>
+                    {orgOptions.gradeLevels.map((option) => (
+                      <option key={option.id} value={String(option.id)}>
+                        {optionLabel(option, "Grade")}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Status
+                    Rank
                   </label>
-                  <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
-                    <option value="Active">Active</option>
-                    <option value="On Leave">On Leave</option>
-                    <option value="Suspended">Suspended</option>
-                    <option value="Retired">Retired</option>
-                  </select>
-                </div>
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Location
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. NDHQ, Abuja"
+                  <select
+                    value={staffRecordForm.rank}
+                    disabled={loadingOrgOptions}
+                    onChange={(event) =>
+                      setStaffRecordForm({
+                        ...staffRecordForm,
+                        rank: event.target.value,
+                      })
+                    }
                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                  />
+                  >
+                    <option value="">Select rank...</option>
+                    {orgOptions.ranks.map((option) => (
+                      <option key={option.id} value={String(option.id)}>
+                        {optionLabel(option, "Rank")}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="pt-4 border-t border-gray-100 flex gap-3 justify-end">
                 <button
-                  onClick={() => setShowAddModal(false)}
+                  onClick={closeAddStaffModal}
                   className="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => setShowAddModal(false)}
-                  className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#1a6b3c] hover:bg-[#145530] shadow-sm transition"
+                  onClick={handleCreateStaffRecord}
+                  disabled={creatingStaffRecord}
+                  className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#1a6b3c] hover:bg-[#145530] shadow-sm transition disabled:opacity-50"
                 >
-                  Save Staff Member
+                  {creatingStaffRecord ? "Saving..." : "Save Staff Record"}
                 </button>
               </div>
             </div>

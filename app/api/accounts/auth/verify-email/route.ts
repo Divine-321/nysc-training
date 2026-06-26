@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { proxyApi } from "@/app/lib/api-proxy";
 
 const isProduction = process.env.NODE_ENV === "production";
+const ACCESS_TOKEN_MAX_AGE = 60 * 20;
+const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24;
 
 export async function POST(request: Request) {
   const response = await proxyApi("POST", {
@@ -19,14 +21,14 @@ export async function POST(request: Request) {
       sameSite: "lax",
       secure: isProduction,
       path: "/",
-      maxAge: 60 * 60 * 24,
+      maxAge: ACCESS_TOKEN_MAX_AGE,
     });
     nextResponse.cookies.set("nysc_refresh_token", payload.data.tokens.refresh, {
       httpOnly: true,
       sameSite: "lax",
       secure: isProduction,
       path: "/",
-      maxAge: 60 * 60 * 24 * 7,
+      maxAge: REFRESH_TOKEN_MAX_AGE,
     });
   }
 

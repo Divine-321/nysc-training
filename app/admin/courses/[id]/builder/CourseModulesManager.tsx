@@ -38,6 +38,12 @@ const emptyForm = {
   notes: "",
 };
 
+function getNextModuleOrder(modules: CourseModule[]) {
+  if (modules.length === 0) return 0;
+
+  return Math.max(...modules.map((module) => module.order)) + 1;
+}
+
 export default function CourseModulesManager({
   courseId,
 }: {
@@ -120,7 +126,7 @@ export default function CourseModulesManager({
           notes: form.notes || null,
           order: isEditing
             ? modules.find((module) => module.id === editingId)?.order ?? 0
-            : modules.length,
+            : getNextModuleOrder(modules),
         }),
       });
 

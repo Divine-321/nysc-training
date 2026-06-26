@@ -11,6 +11,7 @@ import {
   Edit3,
   ExternalLink,
   FileText,
+  ImageUp,
   MoreHorizontal,
   Plus,
   Search,
@@ -20,12 +21,16 @@ import {
   extractErrorMessage,
   readApiList,
 } from "@/app/lib/portal-api";
+import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 
 type NYSCBook = {
   id: number;
   title: string;
   description: string | null;
   file_url: string;
+  cloudinary_public_id: string | null;
+  cover_image_url: string | null;
+  cover_cloudinary_public_id: string | null;
   uploaded_at: string;
 };
 
@@ -33,6 +38,8 @@ const emptyForm = {
   title: "",
   description: "",
   file_url: "",
+  cover_image_url: "",
+  cover_cloudinary_public_id: "",
 };
 
 function formatDate(value: string) {
@@ -50,6 +57,11 @@ export default function AdminBooksPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
+  const [selectedCover, setSelectedCover] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [coverUploadProgress, setCoverUploadProgress] =
+    useState<number | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -101,6 +113,10 @@ export default function AdminBooksPage() {
 
   const resetForm = () => {
     setForm(emptyForm);
+    setSelectedPdf(null);
+    setSelectedCover(null);
+    setUploadProgress(null);
+    setCoverUploadProgress(null);
     setEditingBookId(null);
     setShowForm(false);
   };
@@ -112,6 +128,35 @@ export default function AdminBooksPage() {
     setSuccess("");
 
     try {
+      let fileUrl = form.file_url.trim();
+      let coverImageUrl = form.cover_image_url.trim();
+      let coverPublicId = form.cover_cloudinary_public_id.trim();
+
+      if (selectedPdf) {
+        setUploadProgress(0);
+        const uploadResult = await uploadFileToCloudinary(
+          selectedPdf,
+          setUploadProgress,
+          "book_pdf"
+        );
+        fileUrl = uploadResult.secure_url;
+      }
+
+      if (selectedCover) {
+        setCoverUploadProgress(0);
+        const coverUploadResult = await uploadFileToCloudinary(
+          selectedCover,
+          setCoverUploadProgress,
+          "book_cover",
+        );
+        coverImageUrl = coverUploadResult.secure_url;
+        coverPublicId = coverUploadResult.public_id;
+      }
+
+      if (!fileUrl) {
+        throw new Error("Please upload a PDF file or paste a PDF URL.");
+      }
+
       const response = await fetch(
         editingBookId
           ? `/api/learning/books/${editingBookId}`
@@ -121,7 +166,12 @@ export default function AdminBooksPage() {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(form),
+          body: JSON.stringify({
+            ...form,
+            file_url: fileUrl,
+            cover_image_url: coverImageUrl || null,
+            cover_cloudinary_public_id: coverPublicId || null,
+          }),
         }
       );
       const payload = response.status === 204 ? null : await response.json();
@@ -155,7 +205,13 @@ export default function AdminBooksPage() {
       title: book.title,
       description: book.description ?? "",
       file_url: book.file_url,
+      cover_image_url: book.cover_image_url ?? "",
+      cover_cloudinary_public_id: book.cover_cloudinary_public_id ?? "",
     });
+    setSelectedPdf(null);
+    setSelectedCover(null);
+    setUploadProgress(null);
+    setCoverUploadProgress(null);
     setEditingBookId(book.id);
     setShowForm(true);
     setOpenDropdownId(null);
@@ -260,15 +316,91 @@ export default function AdminBooksPage() {
             />
 
             <input
-              required
               type="url"
-              placeholder="PDF file URL"
+              placeholder="PDF file URL, optional if you upload below"
               value={form.file_url}
               onChange={(event) =>
                 setForm({ ...form, file_url: event.target.value })
               }
               className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
             />
+
+            <input
+              type="url"
+              placeholder="Cover image URL, optional if you upload below"
+              value={form.cover_image_url}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  cover_image_url: event.target.value,
+                  cover_cloudinary_public_id: "",
+                })
+              }
+              className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] md:col-span-2"
+            />
+
+            <label className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-600 md:col-span-2">
+              <span className="block font-semibold text-gray-800">
+                Upload PDF book
+              </span>
+              <span className="mb-3 block text-xs text-gray-500">
+                Choose a PDF from your computer. It will upload to Cloudinary,
+                then the book record will save automatically with the returned
+                URL.
+              </span>
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  setSelectedPdf(file);
+                  setUploadProgress(null);
+                }}
+                className="block w-full text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-[#1a6b3c] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-[#145530]"
+              />
+              {selectedPdf && (
+                <span className="mt-2 block text-xs text-gray-500">
+                  Selected: {selectedPdf.name}
+                </span>
+              )}
+            </label>
+
+            <label className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-3 text-sm text-gray-600 md:col-span-2">
+              <span className="flex items-center gap-2 font-semibold text-gray-800">
+                <ImageUp size={18} />
+                Upload cover image optional
+              </span>
+              <span className="mb-3 block text-xs text-gray-500">
+                Choose a cover image for the book card. If you skip this, a PDF
+                icon will be shown instead.
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  setSelectedCover(file);
+                  setCoverUploadProgress(null);
+                }}
+                className="block w-full text-sm file:mr-4 file:rounded-lg file:border-0 file:bg-[#1a6b3c] file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-[#145530]"
+              />
+              {selectedCover && (
+                <span className="mt-2 block text-xs text-gray-500">
+                  Selected: {selectedCover.name}
+                </span>
+              )}
+            </label>
+
+            {form.cover_image_url && !selectedCover && (
+              <div className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50 md:col-span-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={form.cover_image_url}
+                  alt="Book cover preview"
+                  className="h-44 w-full object-cover"
+                />
+              </div>
+            )}
 
             <textarea
               placeholder="Short description"
@@ -280,9 +412,37 @@ export default function AdminBooksPage() {
             />
           </div>
 
+          {uploadProgress !== null && (
+            <div className="space-y-2">
+              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className="h-full rounded-full bg-[#1a6b3c] transition-all"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                Uploading PDF: {uploadProgress}%
+              </p>
+            </div>
+          )}
+
+          {coverUploadProgress !== null && (
+            <div className="space-y-2">
+              <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className="h-full rounded-full bg-[#1a6b3c] transition-all"
+                  style={{ width: `${coverUploadProgress}%` }}
+                />
+              </div>
+              <p className="text-xs text-gray-500">
+                Uploading cover: {coverUploadProgress}%
+              </p>
+            </div>
+          )}
+
           <p className="text-xs text-gray-500">
-            Swagger currently accepts a file URL, not a direct PDF upload. Paste
-            the Cloudinary or backend-generated PDF URL here.
+            Direct PDF upload is now supported. The URL field is still available
+            as a fallback if the file already lives somewhere safe.
           </p>
 
           <button
@@ -322,6 +482,7 @@ export default function AdminBooksPage() {
             <table className="w-full whitespace-nowrap text-left text-sm">
               <thead className="bg-gray-50 text-gray-500">
                 <tr>
+                  <th className="px-6 py-4 font-medium">Cover</th>
                   <th className="px-6 py-4 font-medium">Title</th>
                   <th className="px-6 py-4 font-medium">Description</th>
                   <th className="px-6 py-4 font-medium">Uploaded</th>
@@ -331,9 +492,41 @@ export default function AdminBooksPage() {
               <tbody className="divide-y divide-gray-100">
                 {filteredBooks.map((book) => (
                   <tr key={book.id} className="transition hover:bg-gray-50">
-                    <td className="flex items-center gap-2 px-6 py-4 font-semibold text-gray-800">
-                      <FileText size={16} className="shrink-0 text-red-500" />
-                      {book.title}
+                    <td className="px-6 py-4">
+                      <a
+                        href={book.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex h-16 w-12 items-center justify-center overflow-hidden rounded-lg border border-green-100 bg-[#f0f7f3]"
+                        title={`Open ${book.title}`}
+                      >
+                        {book.cover_image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={book.cover_image_url}
+                            alt={`${book.title} cover`}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <FileText
+                            size={22}
+                            className="text-[#1a6b3c]"
+                            strokeWidth={1.5}
+                          />
+                        )}
+                      </a>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-gray-800">
+                      <a
+                        href={book.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-2 transition hover:text-[#1a6b3c] hover:underline"
+                        title={`Open ${book.title}`}
+                      >
+                        <FileText size={16} className="shrink-0 text-red-500" />
+                        {book.title}
+                      </a>
                     </td>
                     <td className="max-w-md truncate px-6 py-4 text-gray-600">
                       {book.description || "No description"}
@@ -342,6 +535,16 @@ export default function AdminBooksPage() {
                       {formatDate(book.uploaded_at)}
                     </td>
                     <td className="relative px-6 py-4 text-right">
+                      <a
+                        href={book.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mr-2 inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-[#1a6b3c] hover:text-[#1a6b3c]"
+                      >
+                        <ExternalLink size={14} />
+                        Read
+                      </a>
+
                       <button
                         onClick={() =>
                           setOpenDropdownId(

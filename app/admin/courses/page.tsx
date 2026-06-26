@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import {
   extractErrorMessage,
+  readApiItem,
   readApiList,
   type Course,
 } from "@/app/lib/portal-api";
@@ -17,6 +18,57 @@ type CourseModule = {
   id: number;
   course: number;
 };
+
+async function readJsonResponse(response: Response) {
+  return response.json().catch(() => null);
+}
+
+async function loadCourseDetails(course: Course) {
+  try {
+    const response = await fetch(`/api/training/courses/${course.id}`, {
+      cache: "no-store",
+    });
+    const payload = await readJsonResponse(response);
+
+    if (!response.ok) return course;
+
+    return readApiItem<Course>(payload) ?? course;
+  } catch {
+    return course;
+  }
+}
+
+async function loadModulesForCourse(course: Course) {
+  try {
+    const modulesResponse = await fetch(
+      `/api/training/modules?course=${course.id}`,
+      { cache: "no-store" },
+    );
+    const modulesPayload = await readJsonResponse(modulesResponse);
+
+    if (!modulesResponse.ok) {
+      throw new Error(
+        extractErrorMessage(
+          modulesPayload,
+          `Could not load modules for ${course.title}.`,
+        ),
+      );
+    }
+
+    return readApiList<CourseModule>(modulesPayload);
+  } catch {
+    const modulesResponse = await fetch("/api/training/modules", {
+      cache: "no-store",
+    });
+    const modulesPayload = await readJsonResponse(modulesResponse);
+
+    if (!modulesResponse.ok) return [];
+
+    return readApiList<CourseModule>(modulesPayload).filter(
+      (module) => module.course === course.id,
+    );
+  }
+}
 
 export default function AdminCoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
@@ -27,21 +79,11 @@ export default function AdminCoursesPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [coursesResponse, modulesResponse] =
-          await Promise.all([
-            fetch("/api/training/courses", {
-              cache: "no-store",
-            }),
-            fetch("/api/training/modules", {
-              cache: "no-store",
-            }),
-          ]);
+        const coursesResponse = await fetch("/api/training/courses", {
+          cache: "no-store",
+        });
 
-        const coursesPayload =
-          await coursesResponse.json().catch(() => null);
-
-        const modulesPayload =
-          await modulesResponse.json().catch(() => null);
+        const coursesPayload = await readJsonResponse(coursesResponse);
 
         if (!coursesResponse.ok) {
           throw new Error(
@@ -52,17 +94,23 @@ export default function AdminCoursesPage() {
           );
         }
 
-        if (!modulesResponse.ok) {
-          throw new Error(
-            extractErrorMessage(
-              modulesPayload,
-              "Could not load modules."
-            )
-          );
-        }
+        const courseList = readApiList<Course>(coursesPayload);
+        const detailedCourses = await Promise.all(
+          courseList.map((course) => loadCourseDetails(course)),
+        );
 
-        setCourses(readApiList<Course>(coursesPayload));
-        setModules(readApiList<CourseModule>(modulesPayload));
+        setCourses(detailedCourses);
+
+        try {
+          const moduleLists = await Promise.all(
+            detailedCourses.map((course) => loadModulesForCourse(course)),
+          );
+
+          setModules(moduleLists.flat());
+        } catch (moduleError) {
+          console.error("Could not load course module counts.", moduleError);
+          setModules([]);
+        }
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -159,7 +207,7 @@ export default function AdminCoursesPage() {
                 ).length;
 
                 const trainerNames =
-                  course.trainers
+                  (course.trainers ?? [])
                     .map((trainer) => trainer.full_name)
                     .join(", ") || "Unassigned";
 

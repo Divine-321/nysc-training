@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   FileText,
   PlayCircle,
+  UserCheck,
 } from "lucide-react";
 import {
   documentIsComplete,
@@ -19,6 +20,44 @@ import {
   type Assessment,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
+
+function trainerLabel(staffCourse: StaffCourse) {
+  const trainers = staffCourse.course?.trainers ?? [];
+
+  if (trainers.length === 0) return "Trainer not assigned";
+
+  return trainers.map((trainer) => trainer.full_name).join(", ");
+}
+
+function AssessmentCard({
+  assessment,
+  courseId,
+  type,
+}: {
+  assessment: Assessment;
+  courseId: number;
+  type: "pre-test" | "post-test";
+}) {
+  const isPreTest = type === "pre-test";
+
+  return (
+    <Link
+      href={`/staff/course/${courseId}/assessment/${type}`}
+      className="block rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition hover:border-[#1a6b3c]"
+    >
+      <ClipboardCheck className="mb-3 text-[#1a6b3c]" size={28} />
+      <p className="text-xs font-semibold uppercase tracking-wide text-[#1a6b3c]">
+        {isPreTest ? "Before modules" : "After modules"}
+      </p>
+      <h3 className="mt-1 font-bold text-gray-800">{assessment.title}</h3>
+      <p className="mt-1 text-sm text-gray-500">
+        {isPreTest
+          ? "Attempt the pre-course assessment before starting the modules."
+          : "Attempt the post-course assessment after completing the modules."}
+      </p>
+    </Link>
+  );
+}
 
 export default function CourseOverviewPage() {
   const params = useParams();
@@ -92,6 +131,7 @@ export default function CourseOverviewPage() {
   const postTest = assessments.find(
     (assessment) => assessment.type === "POST_TEST",
   );
+  const trainers = staffCourse.course?.trainers ?? [];
 
   return (
     <div className="space-y-6 p-6">
@@ -114,6 +154,11 @@ export default function CourseOverviewPage() {
           <h2 className="mt-3 text-2xl font-bold text-white">
             {staffCourse.enrollment.course_title}
           </h2>
+          <p className="mt-2 flex items-center gap-2 text-sm font-medium text-green-50">
+            <UserCheck size={16} />
+            {trainers.length === 1 ? "Trainer:" : "Trainers:"}{" "}
+            {trainerLabel(staffCourse)}
+          </p>
 
           <div className="mt-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap gap-3 text-xs font-semibold text-white">
@@ -124,7 +169,7 @@ export default function CourseOverviewPage() {
                 {totalDocuments} material(s)
               </span>
               <span className="rounded-full bg-white/20 px-3 py-1">
-                {progress}% complete
+                {progress}% materials complete
               </span>
             </div>
 
@@ -146,39 +191,42 @@ export default function CourseOverviewPage() {
           {staffCourse.course?.description ||
             "Complete the uploaded module materials, take the tests, and submit your course evaluation."}
         </p>
+        <div className="mb-3 rounded-lg bg-white/70 p-4">
+          <p className="mb-2 flex items-center gap-2 font-bold text-gray-800">
+            <UserCheck size={17} className="text-[#1a6b3c]" />
+            Course {trainers.length === 1 ? "Trainer" : "Trainers"}
+          </p>
+          {trainers.length === 0 ? (
+            <p className="text-gray-500">Trainer not assigned yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {trainers.map((trainer) => (
+                <div key={trainer.id}>
+                  <p className="font-semibold text-gray-800">
+                    {trainer.full_name}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {trainer.designation}
+                    {trainer.organization ? ` • ${trainer.organization}` : ""}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
         <p>
-          Your progress updates when you mark uploaded documents as completed.
+          Material progress updates when you mark uploaded documents as
+          completed. Tests and evaluation may still be required before your
+          certificate is issued.
         </p>
       </div>
 
-      {(preTest || postTest) && (
-        <div className="grid gap-4 md:grid-cols-2">
-          {preTest && (
-            <Link
-              href={`/staff/course/${courseId}/assessment/pre-test`}
-              className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition hover:border-[#1a6b3c]"
-            >
-              <ClipboardCheck className="mb-3 text-[#1a6b3c]" size={28} />
-              <h3 className="font-bold text-gray-800">{preTest.title}</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Attempt the pre-course assessment.
-              </p>
-            </Link>
-          )}
-
-          {postTest && (
-            <Link
-              href={`/staff/course/${courseId}/assessment/post-test`}
-              className="rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition hover:border-[#1a6b3c]"
-            >
-              <ClipboardCheck className="mb-3 text-[#1a6b3c]" size={28} />
-              <h3 className="font-bold text-gray-800">{postTest.title}</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                Attempt the post-course assessment.
-              </p>
-            </Link>
-          )}
-        </div>
+      {preTest && (
+        <AssessmentCard
+          assessment={preTest}
+          courseId={courseId}
+          type="pre-test"
+        />
       )}
 
       <div className="rounded-xl bg-white p-6 shadow-sm">
@@ -244,6 +292,14 @@ export default function CourseOverviewPage() {
           </div>
         )}
       </div>
+
+      {postTest && (
+        <AssessmentCard
+          assessment={postTest}
+          courseId={courseId}
+          type="post-test"
+        />
+      )}
     </div>
   );
 }
