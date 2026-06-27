@@ -149,7 +149,7 @@ export default function AdminLayout({
   return (
     <AuthGuard allowedRoles={ADMIN_ROLES}>
       <div className="min-h-screen flex flex-col">
-        <header className="h-16 bg-white flex items-center justify-between px-8 fixed top-0 left-64 right-0 z-40 border-b border-gray-100">
+        <header className="h-16 bg-white flex items-center justify-between px-8 fixed top-0 left-64 right-0 z-40 border-b border-gray-100 print:hidden">
           <h1 className="text-xl font-bold text-gray-800">Admin Portal</h1>
 
           <div className="flex items-center gap-4">
@@ -203,8 +203,8 @@ export default function AdminLayout({
           </div>
         </header>
 
-        <div className="flex pt-16 min-h-screen">
-          <aside className="fixed left-0 top-0 bottom-0 w-64 bg-[#1a6b3c] px-4 py-6 flex flex-col justify-between z-50 shadow-xl">
+        <div className="flex pt-16 min-h-screen print:pt-0 print:min-h-0">
+          <aside className="fixed left-0 top-0 bottom-0 w-64 bg-[#1a6b3c] px-4 py-6 flex flex-col justify-between z-50 shadow-xl print:hidden">
             <div>
               <div className="mb-6 px-2 flex flex-col items-center text-center gap-4">
                 <Image
@@ -260,7 +260,7 @@ export default function AdminLayout({
             </button>
           </aside>
 
-          <main className="ml-64 flex-1 bg-gray-100 min-h-screen p-8">
+          <main className="ml-64 flex-1 bg-gray-100 min-h-screen p-8 print:ml-0 print:min-h-0 print:bg-white print:p-0">
             {children}
           </main>
         </div>
