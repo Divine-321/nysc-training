@@ -17,6 +17,7 @@ const emptyForm = {
 
 export default function AdminTrainersPage() {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -250,14 +251,44 @@ export default function AdminTrainersPage() {
         </form>
       )}
 
+      <div className="rounded-2xl bg-white p-4 shadow-sm">
+        <input
+          value={searchTerm}
+          onChange={(event) => setSearchTerm(event.target.value)}
+          placeholder="Search trainers by name..."
+          className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+        />
+      </div>
+
       <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
-        {loading ? (
-          <p className="p-6 text-sm text-gray-500">Loading trainers...</p>
-        ) : trainers.length === 0 ? (
-          <p className="p-6 text-sm text-gray-500">
-            No trainers have been added yet.
-          </p>
-        ) : (
+        {(() => {
+          const filteredTrainers = trainers.filter((trainer) =>
+            trainer.full_name
+              .toLowerCase()
+              .includes(searchTerm.trim().toLowerCase()),
+          );
+
+          if (loading) {
+            return <p className="p-6 text-sm text-gray-500">Loading trainers...</p>;
+          }
+
+          if (trainers.length === 0) {
+            return (
+              <p className="p-6 text-sm text-gray-500">
+                No trainers have been added yet.
+              </p>
+            );
+          }
+
+          if (filteredTrainers.length === 0) {
+            return (
+              <p className="p-6 text-sm text-gray-500">
+                No trainers match &quot;{searchTerm}&quot;.
+              </p>
+            );
+          }
+
+          return (
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-gray-500">
               <tr>
@@ -270,16 +301,21 @@ export default function AdminTrainersPage() {
             </thead>
 
             <tbody>
-              {trainers.map((trainer) => (
+              {filteredTrainers.map((trainer) => (
                 <tr key={trainer.id} className="border-t">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
                       <div className="rounded-full bg-green-50 p-2 text-[#1a6b3c]">
                         <UserCheck size={18} />
                       </div>
-                      <span className="font-semibold text-gray-800">
-                        {trainer.full_name}
-                      </span>
+                      <div>
+                        <span className="font-semibold text-gray-800">
+                          {trainer.full_name}
+                        </span>
+                        <span className="ml-2 text-xs text-gray-400">
+                          #{trainer.id}
+                        </span>
+                      </div>
                     </div>
                   </td>
                   <td className="p-4 text-gray-600">{trainer.designation}</td>
@@ -311,7 +347,8 @@ export default function AdminTrainersPage() {
               ))}
             </tbody>
           </table>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

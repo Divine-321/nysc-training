@@ -13,7 +13,6 @@ import {
   readApiItem,
   readApiList,
   type Course,
-  type CourseCategory,
   type Trainer,
 } from "@/app/lib/portal-api";
 
@@ -23,7 +22,6 @@ export default function CourseBuilderPage() {
 
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
-  const [categories, setCategories] = useState<CourseCategory[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -31,10 +29,12 @@ export default function CourseBuilderPage() {
   const [thumbnailPublicId, setThumbnailPublicId] = useState("");
   const [thumbnailProgress, setThumbnailProgress] = useState(0);
   const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
-  const [category, setCategory] = useState("");
   const [status, setStatus] =
     useState<"DRAFT" | "PUBLISHED" | "ARCHIVED">("DRAFT");
   const [trainerIds, setTrainerIds] = useState<number[]>([]);
+  const [selectedTrainerId, setSelectedTrainerId] = useState("");
+  const [manualResourcePersonName, setManualResourcePersonName] = useState("");
+  const [isAddingResourcePerson, setIsAddingResourcePerson] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -42,19 +42,17 @@ export default function CourseBuilderPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [courseResponse, categoryResponse, trainerResponse] =
+        const [courseResponse, trainerResponse] =
           await Promise.all([
             fetch(`/api/training/courses/${courseId}`, {
               cache: "no-store",
             }),
-            fetch("/api/training/categories", { cache: "no-store" }),
             fetch("/api/training/trainers", { cache: "no-store" }),
           ]);
 
-        const [coursePayload, categoryPayload, trainerPayload] =
+        const [coursePayload, trainerPayload] =
           await Promise.all([
             courseResponse.json().catch(() => null),
-            categoryResponse.json().catch(() => null),
             trainerResponse.json().catch(() => null),
           ]);
 
@@ -75,17 +73,10 @@ export default function CourseBuilderPage() {
         setDescription(loadedCourse.description);
         setThumbnailUrl(loadedCourse.thumbnail_url ?? "");
         setThumbnailPublicId(loadedCourse.cloudinary_public_id ?? "");
-        setCategory(
-          loadedCourse.category ? String(loadedCourse.category) : "",
-        );
         setStatus(loadedCourse.status);
         setTrainerIds(
           loadedCourse.trainers.map((trainer) => trainer.id),
         );
-
-        if (categoryResponse.ok) {
-          setCategories(readApiList<CourseCategory>(categoryPayload));
-        }
 
         if (trainerResponse.ok) {
           setTrainers(readApiList<Trainer>(trainerPayload));
@@ -143,6 +134,66 @@ export default function CourseBuilderPage() {
     }
   };
 
+  const handleAddExistingResourcePerson = () => {
+    if (!selectedTrainerId) return;
+
+    const id = Number(selectedTrainerId);
+
+    setTrainerIds((current) =>
+      current.includes(id) ? current : [...current, id],
+    );
+    setSelectedTrainerId("");
+  };
+
+  const handleAddManualResourcePerson = async () => {
+    const name = manualResourcePersonName.trim();
+    if (!name) return;
+
+    setError("");
+    setIsAddingResourcePerson(true);
+
+    try {
+      const response = await fetch("/api/training/trainers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: name,
+          designation: "Resource Person",
+          organization: "NYSC",
+          bio: null,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not add resource person."),
+        );
+      }
+
+      const newTrainer = readApiItem<Trainer>(payload);
+
+      if (newTrainer) {
+        setTrainers((current) => [...current, newTrainer]);
+        setTrainerIds((current) => [...current, newTrainer.id]);
+      }
+
+      setManualResourcePersonName("");
+    } catch (addError) {
+      setError(
+        addError instanceof Error
+          ? addError.message
+          : "Could not add resource person.",
+      );
+    } finally {
+      setIsAddingResourcePerson(false);
+    }
+  };
+
+  const handleRemoveResourcePerson = (id: number) => {
+    setTrainerIds((current) => current.filter((trainerId) => trainerId !== id));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError("");
@@ -158,7 +209,6 @@ export default function CourseBuilderPage() {
           thumbnail_url: thumbnailUrl.trim() || null,
           cloudinary_public_id: thumbnailPublicId || null,
           status,
-          category: category ? Number(category) : null,
           trainer_ids: trainerIds,
         }),
       });
@@ -251,32 +301,19 @@ export default function CourseBuilderPage() {
           <label className="mb-1 block text-sm font-medium text-gray-700">
             Course Thumbnail
           </label>
-          <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+          <label className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50 md:w-auto">
+            <ImageUp size={18} />
+            {isUploadingThumbnail ? "Uploading..." : "Upload image"}
             <input
-              type="url"
-              value={thumbnailUrl}
-              onChange={(event) => {
-                setThumbnailUrl(event.target.value);
-                setThumbnailPublicId("");
-              }}
-              placeholder="https://res.cloudinary.com/... or another image URL"
-              className="w-full rounded-lg border px-4 py-2.5 text-sm"
+              type="file"
+              accept="image/*"
+              disabled={isUploadingThumbnail}
+              onChange={handleThumbnailUpload}
+              className="sr-only"
             />
-
-            <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50">
-              <ImageUp size={18} />
-              {isUploadingThumbnail ? "Uploading..." : "Upload image"}
-              <input
-                type="file"
-                accept="image/*"
-                disabled={isUploadingThumbnail}
-                onChange={handleThumbnailUpload}
-                className="sr-only"
-              />
-            </label>
-          </div>
+          </label>
           <p className="mt-1 text-xs text-gray-500">
-            Upload an image or paste an image URL. This image appears on the staff course card and course overview.
+            Upload an image. This image appears on the staff course card and course overview.
           </p>
           {isUploadingThumbnail && (
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
@@ -298,60 +335,45 @@ export default function CourseBuilderPage() {
           )}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Category
-            </label>
-            <select
-              value={category}
-              onChange={(event) => setCategory(event.target.value)}
-              className="w-full rounded-lg border px-4 py-2.5 text-sm"
-            >
-              <option value="">No category</option>
-              {categories.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Status
-            </label>
-            <select
-              value={status}
-              onChange={(event) =>
-                setStatus(
-                  event.target.value as
-                    | "DRAFT"
-                    | "PUBLISHED"
-                    | "ARCHIVED",
-                )
-              }
-              className="w-full rounded-lg border px-4 py-2.5 text-sm"
-            >
-              <option value="DRAFT">Draft</option>
-              <option value="PUBLISHED">Published</option>
-              <option value="ARCHIVED">Archived</option>
-            </select>
-          </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Status
+          </label>
+          <select
+            value={status}
+            onChange={(event) =>
+              setStatus(
+                event.target.value as
+                  | "DRAFT"
+                  | "PUBLISHED"
+                  | "ARCHIVED",
+              )
+            }
+            className="w-full rounded-lg border px-4 py-2.5 text-sm md:w-1/2"
+          >
+            <option value="DRAFT">Draft</option>
+            <option value="PUBLISHED">Published</option>
+            <option value="ARCHIVED">Archived</option>
+          </select>
         </div>
 
         <button
           type="button"
           onClick={handleSave}
           disabled={saving || !title.trim()}
-          className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-6 py-2.5 font-semibold text-white disabled:opacity-50"
+          className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-6 py-2.5 font-semibold text-white"
         >
           <Save size={18} />
           {saving ? "Updating..." : "Update Course"}
         </button>
-      </section>
 
-      <CourseModulesManager courseId={Number(courseId)} />
+        <div className="border-t border-gray-100 pt-5">
+          <h3 className="mb-4 text-lg font-bold text-[#1a6b3c]">
+            Modules
+          </h3>
+          <CourseModulesManager courseId={Number(courseId)} />
+        </div>
+      </section>
 
       <CourseAssessmentsManager courseId={Number(courseId)} />
 
@@ -359,38 +381,81 @@ export default function CourseBuilderPage() {
         <div className="flex items-center gap-2">
           <UserCheck className="text-[#1a6b3c]" size={22} />
           <h3 className="text-lg font-bold text-[#1a6b3c]">
-            Assign Trainers
+            Resource Persons
           </h3>
         </div>
 
-        <div className="space-y-3">
-          {trainers.length === 0 ? (
-            <p className="text-sm text-gray-500">No trainers available.</p>
-          ) : (
-            trainers.map((trainer) => (
-              <label
-                key={trainer.id}
-                className="flex cursor-pointer items-center gap-3 rounded-lg border p-3 hover:bg-gray-50"
-              >
-                <input
-                  type="checkbox"
-                  checked={trainerIds.includes(trainer.id)}
-                  onChange={(event) => {
-                    setTrainerIds((current) =>
-                      event.target.checked
-                        ? [...current, trainer.id]
-                        : current.filter((id) => id !== trainer.id),
-                    );
-                  }}
-                  className="h-4 w-4 accent-[#1a6b3c]"
-                />
-                <span className="font-semibold text-gray-800">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+          <select
+            value={selectedTrainerId}
+            onChange={(event) => setSelectedTrainerId(event.target.value)}
+            className="w-full rounded-lg border px-4 py-2.5 text-sm"
+          >
+            <option value="">Select an existing resource person</option>
+            {trainers
+              .filter((trainer) => !trainerIds.includes(trainer.id))
+              .map((trainer) => (
+                <option key={trainer.id} value={trainer.id}>
                   {trainer.full_name}
-                </span>
-              </label>
-            ))
-          )}
+                </option>
+              ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleAddExistingResourcePerson}
+            disabled={!selectedTrainerId}
+            className="rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530]"
+          >
+            + Add
+          </button>
         </div>
+
+        <p className="mb-1 text-xs font-medium text-gray-500">
+          Or type a name manually:
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+          <input
+            value={manualResourcePersonName}
+            onChange={(event) => setManualResourcePersonName(event.target.value)}
+            placeholder="Full name"
+            className="w-full rounded-lg border px-4 py-2.5 text-sm"
+          />
+          <button
+            type="button"
+            onClick={handleAddManualResourcePerson}
+            disabled={!manualResourcePersonName.trim() || isAddingResourcePerson}
+            className="rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530]"
+          >
+            {isAddingResourcePerson ? "Adding..." : "+ Add"}
+          </button>
+        </div>
+
+        {trainerIds.length === 0 ? (
+          <p className="text-sm text-gray-500">No resource persons assigned.</p>
+        ) : (
+          <ul className="space-y-2">
+            {trainerIds.map((id) => {
+              const trainer = trainers.find((item) => item.id === id);
+              return (
+                <li
+                  key={id}
+                  className="flex items-center justify-between rounded-lg border px-4 py-2.5"
+                >
+                  <span className="font-semibold text-gray-800">
+                    {trainer?.full_name ?? `Resource person #${id}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveResourcePerson(id)}
+                    className="text-xs font-semibold text-red-600 hover:text-red-700"
+                  >
+                    Remove
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
 
         <button
           type="button"
@@ -398,7 +463,7 @@ export default function CourseBuilderPage() {
           disabled={saving}
           className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-6 py-2.5 font-semibold text-white disabled:opacity-50"
         >
-          <Save size={18} /> Save Trainers
+          <Save size={18} /> Save Resource Persons
         </button>
       </section>
 
