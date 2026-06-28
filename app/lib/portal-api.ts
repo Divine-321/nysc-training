@@ -96,6 +96,8 @@ export type Course = {
   created_by: number;
   trainers: Trainer[];
   created_at: string;
+  is_locked?: boolean;
+  lock_reason?: string | null;
 };
 
 export type Department = {

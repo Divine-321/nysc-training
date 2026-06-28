@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import AuthGuard from "@/app/components/AuthGuard";
@@ -18,6 +18,8 @@ import {
   LogOut,
   Award,
   UserCheck,
+  Menu,
+  X,
 } from "lucide-react";
 
 const navItems = [
@@ -83,8 +85,33 @@ export default function AdminLayout({
   const isInviteAcceptancePage = pathname === "/admin/accept-invite";
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isProfileOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        profileRef.current &&
+        !profileRef.current.contains(event.target as Node)
+      ) {
+        setIsProfileOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isProfileOpen]);
 
   useEffect(() => {
     if (isInviteAcceptancePage) return;
@@ -149,11 +176,24 @@ export default function AdminLayout({
   return (
     <AuthGuard allowedRoles={ADMIN_ROLES}>
       <div className="min-h-screen flex flex-col">
-        <header className="h-16 bg-white flex items-center justify-between px-8 fixed top-0 left-64 right-0 z-40 border-b border-gray-100 print:hidden">
-          <h1 className="text-xl font-bold text-gray-800">Admin Portal</h1>
+        <header className="h-16 bg-white flex items-center justify-between px-4 sm:px-8 fixed top-0 left-0 lg:left-64 right-0 z-40 border-b border-gray-100 print:hidden">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              aria-label={isSidebarOpen ? "Close menu" : "Open menu"}
+              onClick={() => setIsSidebarOpen((current) => !current)}
+              className="rounded-lg p-2 text-gray-600 transition hover:bg-green-50 hover:text-[#1a6b3c] lg:hidden"
+            >
+              {isSidebarOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
 
-          <div className="flex items-center gap-4">
-            <div className="relative">
+            <h1 className="truncate text-base font-bold text-gray-800 sm:text-xl">
+              Admin Portal
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="relative" ref={profileRef}>
               <div
                 className="flex items-center gap-2 cursor-pointer"
                 onClick={() => setIsProfileOpen(!isProfileOpen)}
@@ -166,7 +206,7 @@ export default function AdminLayout({
                   className="rounded-full object-cover"
                 />
 
-                <span className="text-sm font-medium text-gray-700">
+                <span className="hidden text-sm font-medium text-gray-700 sm:inline">
                   {loadingUser ? "Loading…" : `${displayName} ▾`}
                 </span>
               </div>
@@ -204,8 +244,30 @@ export default function AdminLayout({
         </header>
 
         <div className="flex pt-16 min-h-screen print:pt-0 print:min-h-0">
-          <aside className="fixed left-0 top-0 bottom-0 w-64 bg-[#1a6b3c] px-4 py-6 flex flex-col justify-between z-50 shadow-xl print:hidden">
+          {isSidebarOpen && (
+            <div
+              onClick={() => setIsSidebarOpen(false)}
+              className="fixed inset-0 z-40 bg-black/40 transition-opacity lg:hidden"
+            />
+          )}
+
+          <aside
+            className={`fixed left-0 top-0 bottom-0 w-64 bg-[#1a6b3c] px-4 py-6 flex flex-col justify-between z-50 shadow-xl transition-transform duration-300 ease-in-out lg:translate-x-0 print:hidden ${
+              isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
+          >
             <div>
+              <div className="mb-2 flex items-center justify-end lg:hidden">
+                <button
+                  type="button"
+                  aria-label="Close menu"
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="rounded-lg p-1.5 text-green-100 transition hover:bg-white/10 hover:text-white"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
               <div className="mb-6 px-2 flex flex-col items-center text-center gap-4">
                 <Image
                   src="/images/nysc-logo.png"
@@ -260,7 +322,7 @@ export default function AdminLayout({
             </button>
           </aside>
 
-          <main className="ml-64 flex-1 bg-gray-100 min-h-screen p-8 print:ml-0 print:min-h-0 print:bg-white print:p-0">
+          <main className="ml-0 lg:ml-64 flex-1 bg-gray-100 min-h-screen p-4 sm:p-8 print:ml-0 print:min-h-0 print:bg-white print:p-0">
             {children}
           </main>
         </div>

@@ -7,6 +7,7 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
+  Lock,
   PlayCircle,
   Search,
   UserCheck,
@@ -154,6 +155,8 @@ export default function StaffTraining() {
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
             {visibleCourses.map((item) => {
               const courseId = item.course?.id ?? item.cohortCourse?.course;
+              const isLocked = item.course?.is_locked ?? false;
+              const lockReason = item.course?.lock_reason ?? null;
               const progress = toPercentage(
                 item.enrollment.completion_percentage,
               );
@@ -177,8 +180,15 @@ export default function StaffTraining() {
                       alt={item.enrollment.course_title}
                       width={400}
                       height={200}
-                      className="h-40 w-full object-cover"
+                      className={`h-40 w-full object-cover ${
+                        isLocked ? "opacity-50" : ""
+                      }`}
                     />
+                    {isLocked && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                        <Lock size={32} className="text-white" />
+                      </div>
+                    )}
                     <span
                       className={`absolute bottom-2 left-2 rounded-full px-3 py-1 text-xs font-bold ${statusClass(
                         item.enrollment.status,
@@ -237,7 +247,14 @@ export default function StaffTraining() {
                       Materials Complete
                     </p>
 
-                    {courseId && (
+                    {isLocked && lockReason && (
+                      <p className="mb-3 flex items-start gap-1.5 text-xs font-semibold text-amber-700">
+                        <Lock size={14} className="mt-0.5 shrink-0" />
+                        {lockReason}
+                      </p>
+                    )}
+
+                    {courseId && !isLocked && (
                       <Link
                         href={`/staff/course/${courseId}`}
                         className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl border-2 border-[#1a6b3c] py-2.5 text-sm font-bold text-[#1a6b3c] transition hover:bg-green-50"
@@ -249,6 +266,13 @@ export default function StaffTraining() {
                         )}
                         {progress > 0 ? "Resume Course" : "Start Course"}
                       </Link>
+                    )}
+
+                    {isLocked && (
+                      <div className="mt-auto flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-gray-50 py-2.5 text-sm font-bold text-gray-400">
+                        <Lock size={18} />
+                        Locked
+                      </div>
                     )}
                   </div>
                 </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -14,6 +14,8 @@ import {
   FileQuestion,
   Bell,
   CheckCheck,
+  Menu,
+  X,
 } from "lucide-react";
 import {
   readApiList,
@@ -55,21 +57,11 @@ function normalizeStaffNotificationLink(link: string) {
     const pathname = parsedUrl.pathname;
     const suffix = `${parsedUrl.search}${parsedUrl.hash}`;
 
-    if (pathname.startsWith("/staff/")) {
-      const staffCoursePluralMatch = pathname.match(
-        /^\/staff\/courses\/(\d+)\/?$/,
-      );
-
-      if (staffCoursePluralMatch) {
-        return `/staff/course/${staffCoursePluralMatch[1]}${suffix}`;
-      }
-
-      return `${pathname}${suffix}`;
-    }
-
+    // Course-related links (e.g. course assigned to cohort) point straight
+    // at the course overview page.
     const courseMatch =
-      pathname.match(/^\/courses\/(\d+)\/?$/) ??
-      pathname.match(/^\/course\/(\d+)\/?$/) ??
+      pathname.match(/^\/staff\/courses?\/(\d+)\/?$/) ??
+      pathname.match(/^\/courses?\/(\d+)\/?$/) ??
       pathname.match(/^\/training\/courses\/(\d+)\/?$/) ??
       pathname.match(/^\/api\/training\/courses\/(\d+)\/?$/);
 
@@ -77,9 +69,44 @@ function normalizeStaffNotificationLink(link: string) {
       return `/staff/course/${courseMatch[1]}${suffix}`;
     }
 
-    return `${pathname}${suffix}`;
+    // Other notification categories use backend-only paths that don't have
+    // a 1:1 frontend route, so map each known category to the closest
+    // staff page instead of following the raw (404-prone) backend path.
+    if (/^\/postings?\//.test(pathname)) {
+      return "/staff/profile";
+    }
+
+    if (/^\/cohorts?\//.test(pathname)) {
+      return "/staff/training";
+    }
+
+    if (/^\/assessments?\//.test(pathname)) {
+      return "/staff/result";
+    }
+
+    if (/^\/certificates?\//.test(pathname)) {
+      return "/staff/certifications";
+    }
+
+    if (/^\/(live-sessions?|sessions?)\//.test(pathname)) {
+      return "/staff/training";
+    }
+
+    if (
+      pathname.startsWith("/staff/") &&
+      KNOWN_STAFF_ROUTES.has(pathname)
+    ) {
+      return `${pathname}${suffix}`;
+    }
+
+    if (pathname.startsWith("/staff/course/")) {
+      return `${pathname}${suffix}`;
+    }
+
+    // Unknown/unmapped link shape — land somewhere safe instead of 404.
+    return "/staff/dashboard";
   } catch {
-    return link;
+    return "/staff/dashboard";
   }
 }
 
@@ -92,6 +119,8 @@ const navItems = [
   { label: "Certifications", href: "/staff/certifications", icon: Award },
 ];
 
+const KNOWN_STAFF_ROUTES = new Set(navItems.map((item) => item.href));
+
 const STAFF_ROLES = ["staff"] as const;
 
 export default function StaffLayout({
@@ -103,6 +132,7 @@ export default function StaffLayout({
   const router = useRouter();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [userCohorts, setUserCohorts] = useState<string[]>([]);
   const [loadingUser, setLoadingUser] = useState(true);
@@ -110,6 +140,38 @@ export default function StaffLayout({
   const [unreadCount, setUnreadCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const profileRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isNotificationsOpen && !isProfileOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+
+      if (
+        isNotificationsOpen &&
+        notificationsRef.current &&
+        !notificationsRef.current.contains(target)
+      ) {
+        setIsNotificationsOpen(false);
+      }
+
+      if (
+        isProfileOpen &&
+        profileRef.current &&
+        !profileRef.current.contains(target)
+      ) {
+        setIsProfileOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isNotificationsOpen, isProfileOpen]);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -271,6 +333,10 @@ export default function StaffLayout({
     router.replace("/login");
   };
 
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [pathname]);
+
   const isFullScreenView =
     pathname.includes("/staff/course/") ||
     (pathname.includes("/staff/cbt/") && pathname !== "/staff/cbt");
@@ -292,17 +358,28 @@ export default function StaffLayout({
   return (
     <AuthGuard allowedRoles={STAFF_ROLES}>
       <div className="min-h-screen flex flex-col">
-        <header className="h-16 bg-white flex items-center justify-between px-8 fixed top-0 left-60 right-0 z-40 border-b border-gray-100">
-          <h1 className="text-xl font-bold text-gray-800">
-            {loadingUser ? "Welcome..." : `Welcome, ${firstName}`}
-          </h1>
+        <header className="h-16 bg-white flex items-center justify-between px-4 sm:px-8 fixed top-0 left-0 lg:left-60 right-0 z-40 border-b border-gray-100">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              type="button"
+              aria-label={isSidebarOpen ? "Close menu" : "Open menu"}
+              onClick={() => setIsSidebarOpen((current) => !current)}
+              className="rounded-lg p-2 text-gray-600 transition hover:bg-green-50 hover:text-[#1a6b3c] lg:hidden"
+            >
+              {isSidebarOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
 
-          <div className="flex items-center gap-4">
+            <h1 className="truncate text-base font-bold text-gray-800 sm:text-xl">
+              {loadingUser ? "Welcome..." : `Welcome, ${firstName}`}
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-4">
             <div className="hidden rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-[#1a6b3c] md:block">
               Cohort: {loadingUser ? "Loading..." : cohortLabel}
             </div>
 
-            <div className="relative">
+            <div className="relative" ref={notificationsRef}>
               <button
                 type="button"
                 aria-label="Open notifications"
@@ -397,7 +474,7 @@ export default function StaffLayout({
               )}
             </div>
 
-            <div className="relative">
+            <div className="relative" ref={profileRef}>
               <div
                 className="flex items-center gap-2 cursor-pointer"
                 onClick={() => {
@@ -413,7 +490,7 @@ export default function StaffLayout({
                   className="rounded-full object-cover"
                 />
 
-                <span className="text-sm font-medium text-gray-700">
+                <span className="hidden text-sm font-medium text-gray-700 sm:inline">
                   {loadingUser ? "Loading..." : `${displayName} ▾`}
                 </span>
               </div>
@@ -451,8 +528,30 @@ export default function StaffLayout({
         </header>
 
         <div className="flex pt-16 min-h-screen">
-          <aside className="w-60 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col justify-between py-6 px-4 z-50 shadow-xl overflow-y-auto">
+          {isSidebarOpen && (
+            <div
+              onClick={() => setIsSidebarOpen(false)}
+              className="fixed inset-0 z-40 bg-black/40 transition-opacity lg:hidden"
+            />
+          )}
+
+          <aside
+            className={`w-64 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col justify-between py-6 px-4 z-50 shadow-xl overflow-y-auto transition-transform duration-300 ease-in-out lg:w-60 lg:translate-x-0 ${
+              isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
+          >
             <div>
+              <div className="mb-2 flex items-center justify-end lg:hidden">
+                <button
+                  type="button"
+                  aria-label="Close menu"
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="rounded-lg p-1.5 text-green-100 transition hover:bg-white/10 hover:text-white"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
               <div className="mb-6 px-2 flex flex-col items-center text-center gap-4">
                 <Image
                   src="/images/nysc-logo.png"
@@ -520,7 +619,7 @@ export default function StaffLayout({
             </div>
           </aside>
 
-          <main className="ml-60 flex-1 bg-gray-100 min-h-screen p-6">
+          <main className="ml-0 lg:ml-60 flex-1 bg-gray-100 min-h-screen p-4 sm:p-6">
             {children}
           </main>
         </div>

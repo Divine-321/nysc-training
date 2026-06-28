@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Bell } from "lucide-react";
+import { ArrowLeft, Bell, Menu, X } from "lucide-react";
 import {
   loadAssessments,
   loadStaffCourse,
@@ -24,9 +24,14 @@ export default function CourseLayout({
   const [staffCourse, setStaffCourse] = useState<StaffCourse | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const isLiveSession = Boolean(params.sessionId);
   const isAssessment = pathname?.includes("/assessment/") ?? false;
   const hideSidebar = isLiveSession || isAssessment;
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -108,19 +113,30 @@ export default function CourseLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="fixed left-0 right-0 top-0 z-50 flex h-16 items-center justify-between bg-[#1a6b3c] px-6">
-        <div className="flex items-center gap-4">
+      <header className="fixed left-0 right-0 top-0 z-50 flex h-16 items-center justify-between bg-[#1a6b3c] px-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-4">
+          {!hideSidebar && (
+            <button
+              type="button"
+              aria-label={isSidebarOpen ? "Close course menu" : "Open course menu"}
+              onClick={() => setIsSidebarOpen((current) => !current)}
+              className="rounded-lg p-2 text-white transition hover:bg-white/10 lg:hidden"
+            >
+              {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+          )}
+
           <button
             onClick={() => router.push("/staff/training")}
             className="flex items-center gap-2 text-white transition hover:text-green-200"
           >
             <ArrowLeft size={20} />
-            <span className="text-sm font-medium">Back</span>
+            <span className="hidden text-sm font-medium sm:inline">Back</span>
           </button>
 
-          <div className="h-6 w-px bg-green-500" />
+          <div className="hidden h-6 w-px bg-green-500 sm:block" />
 
-          <div className="flex items-center gap-2">
+          <div className="hidden items-center gap-2 sm:flex">
             <Image
               src="/images/nysc-logo.png"
               alt="NYSC"
@@ -134,10 +150,10 @@ export default function CourseLayout({
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <Bell size={20} className="text-white" />
-          <div className="hidden text-right sm:block">
-            <p className="text-sm font-medium text-white">
+        <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+          <Bell size={20} className="shrink-0 text-white" />
+          <div className="hidden min-w-0 text-right sm:block">
+            <p className="truncate text-sm font-medium text-white">
               {staffCourse.enrollment.course_title}
             </p>
             <p className="text-xs text-green-200">
@@ -149,35 +165,48 @@ export default function CourseLayout({
 
       <div className="flex min-h-screen pt-16">
         {!hideSidebar && (
-          <aside className="fixed bottom-0 left-0 top-16 w-56 overflow-y-auto bg-white">
-            <div className="sticky top-0 border-b bg-white px-4 py-3">
-              <p className="text-sm font-bold text-gray-800">Course Menu</p>
-            </div>
+          <>
+            {isSidebarOpen && (
+              <div
+                onClick={() => setIsSidebarOpen(false)}
+                className="fixed inset-0 top-16 z-40 bg-black/40 transition-opacity lg:hidden"
+              />
+            )}
 
-            <nav>
-              {menuItems.map((item) => {
-                const active = pathname === item.href;
+            <aside
+              className={`fixed bottom-0 left-0 top-16 z-50 w-64 overflow-y-auto bg-white shadow-xl transition-transform duration-300 ease-in-out lg:w-56 lg:translate-x-0 lg:shadow-none ${
+                isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+              }`}
+            >
+              <div className="sticky top-0 border-b bg-white px-4 py-3">
+                <p className="text-sm font-bold text-gray-800">Course Menu</p>
+              </div>
 
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`block border-b border-gray-100 px-4 py-3 text-xs font-medium transition ${
-                      active
-                        ? "bg-[#1a6b3c] text-white"
-                        : "text-gray-700 hover:bg-gray-50"
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          </aside>
+              <nav>
+                {menuItems.map((item) => {
+                  const active = pathname === item.href;
+
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`block border-b border-gray-100 px-4 py-3 text-xs font-medium transition ${
+                        active
+                          ? "bg-[#1a6b3c] text-white"
+                          : "text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </aside>
+          </>
         )}
 
         <main
-          className={`${hideSidebar ? "" : "ml-56"} min-h-screen flex-1 bg-gray-50`}
+          className={`${hideSidebar ? "" : "lg:ml-56"} min-h-screen flex-1 bg-gray-50`}
         >
           {children}
         </main>
