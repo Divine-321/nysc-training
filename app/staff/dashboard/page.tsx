@@ -6,8 +6,10 @@ import {
   ArrowRight,
   BookOpen,
   CheckCircle2,
+  Lock,
   PlayCircle,
   Target,
+  X,
 } from "lucide-react";
 import {
   loadStaffCourses,
@@ -19,6 +21,7 @@ export default function StaffDashboard() {
   const [courses, setCourses] = useState<StaffCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [lockedNotice, setLockedNotice] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -137,6 +140,7 @@ export default function StaffDashboard() {
             <div className="space-y-4">
               {activeCourses.map((item) => {
                 const courseId = item.course?.id ?? item.cohortCourse?.course;
+                const isLocked = item.course?.is_locked ?? false;
                 const progress = toPercentage(
                   item.enrollment.completion_percentage,
                 );
@@ -156,7 +160,22 @@ export default function StaffDashboard() {
                         </p>
                       </div>
 
-                      {courseId && (
+                      {courseId && isLocked && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLockedNotice(
+                              item.course?.lock_reason ||
+                                "You need to complete this course's prerequisites first.",
+                            )
+                          }
+                          className="flex shrink-0 items-center justify-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-5 py-2.5 text-sm font-medium text-gray-400"
+                        >
+                          <Lock size={16} /> Locked
+                        </button>
+                      )}
+
+                      {courseId && !isLocked && (
                         <Link
                           href={`/staff/course/${courseId}`}
                           className="flex shrink-0 items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:border-[#1a6b3c] hover:text-[#1a6b3c]"
@@ -233,6 +252,27 @@ export default function StaffDashboard() {
           </p>
         </div>
       </div>
+
+      {lockedNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+              <Lock size={22} className="text-amber-700" />
+            </div>
+            <h3 className="mb-2 text-lg font-bold text-gray-800">
+              Course Locked
+            </h3>
+            <p className="mb-5 text-sm text-gray-600">{lockedNotice}</p>
+            <button
+              type="button"
+              onClick={() => setLockedNotice(null)}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] px-6 py-2.5 text-sm font-bold text-white"
+            >
+              <X size={16} /> Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

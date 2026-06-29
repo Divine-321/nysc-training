@@ -6,6 +6,7 @@ import {
   extractErrorMessage,
   readApiList,
 } from "@/app/lib/portal-api";
+import { formatDateTime } from "@/app/lib/format";
 
 type AuditLog = {
   id: number;
@@ -71,12 +72,6 @@ export default function AuditTrailPage() {
     )
   );
 
-  const formatDate = (value: string) =>
-    new Intl.DateTimeFormat("en-NG", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(new Date(value));
-
   return (
     <div className="space-y-6">
       <div>
@@ -135,7 +130,7 @@ export default function AuditTrailPage() {
                 {filteredLogs.map((log) => (
                   <tr key={log.id} className="border-t">
                     <td className="p-4">
-                      {formatDate(log.created_at)}
+                      {formatDateTime(log.created_at)}
                     </td>
 
                     <td className="p-4">

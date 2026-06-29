@@ -17,6 +17,7 @@ import {
   extractErrorMessage,
   readApiItem,
 } from "@/app/lib/portal-api";
+import { formatDate, formatTime } from "@/app/lib/format";
 
 type UpcomingLiveClass = {
   id: number;
@@ -131,17 +132,6 @@ export default function AdminDashboardPage() {
       value: analytics?.totalUpcomingLiveSessionsWithinMonth,
     },
   ];
-
-  const formatDate = (value: string) =>
-    new Intl.DateTimeFormat("en-NG", {
-      dateStyle: "medium",
-    }).format(new Date(value));
-
-  const formatTime = (value: string) =>
-    new Intl.DateTimeFormat("en-NG", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }).format(new Date(value));
 
   return (
     <div className="mx-auto max-w-7xl space-y-8">

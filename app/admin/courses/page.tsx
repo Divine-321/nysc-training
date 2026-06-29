@@ -8,11 +8,12 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  dedupeById,
   extractErrorMessage,
-  readApiItem,
   readApiList,
   type Course,
 } from "@/app/lib/portal-api";
+import { useConfirm } from "@/app/components/useConfirm";
 
 type CourseModule = {
   id: number;
@@ -23,54 +24,8 @@ async function readJsonResponse(response: Response) {
   return response.json().catch(() => null);
 }
 
-async function loadCourseDetails(course: Course) {
-  try {
-    const response = await fetch(`/api/training/courses/${course.id}`, {
-      cache: "no-store",
-    });
-    const payload = await readJsonResponse(response);
-
-    if (!response.ok) return course;
-
-    return readApiItem<Course>(payload) ?? course;
-  } catch {
-    return course;
-  }
-}
-
-async function loadModulesForCourse(course: Course) {
-  try {
-    const modulesResponse = await fetch(
-      `/api/training/modules?course=${course.id}`,
-      { cache: "no-store" },
-    );
-    const modulesPayload = await readJsonResponse(modulesResponse);
-
-    if (!modulesResponse.ok) {
-      throw new Error(
-        extractErrorMessage(
-          modulesPayload,
-          `Could not load modules for ${course.title}.`,
-        ),
-      );
-    }
-
-    return readApiList<CourseModule>(modulesPayload);
-  } catch {
-    const modulesResponse = await fetch("/api/training/modules", {
-      cache: "no-store",
-    });
-    const modulesPayload = await readJsonResponse(modulesResponse);
-
-    if (!modulesResponse.ok) return [];
-
-    return readApiList<CourseModule>(modulesPayload).filter(
-      (module) => module.course === course.id,
-    );
-  }
-}
-
 export default function AdminCoursesPage() {
+  const { confirm, dialog } = useConfirm();
   const [courses, setCourses] = useState<Course[]>([]);
   const [modules, setModules] = useState<CourseModule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,18 +50,24 @@ export default function AdminCoursesPage() {
         }
 
         const courseList = readApiList<Course>(coursesPayload);
-        const detailedCourses = await Promise.all(
-          courseList.map((course) => loadCourseDetails(course)),
-        );
-
-        setCourses(detailedCourses);
+        setCourses(courseList);
 
         try {
-          const moduleLists = await Promise.all(
-            detailedCourses.map((course) => loadModulesForCourse(course)),
-          );
+          const modulesResponse = await fetch("/api/training/modules", {
+            cache: "no-store",
+          });
+          const modulesPayload = await readJsonResponse(modulesResponse);
 
-          setModules(moduleLists.flat());
+          if (!modulesResponse.ok) {
+            throw new Error(
+              extractErrorMessage(
+                modulesPayload,
+                "Could not load course modules.",
+              ),
+            );
+          }
+
+          setModules(dedupeById(readApiList<CourseModule>(modulesPayload)));
         } catch (moduleError) {
           console.error("Could not load course module counts.", moduleError);
           setModules([]);
@@ -126,9 +87,9 @@ export default function AdminCoursesPage() {
   }, []);
 
   const handleDelete = async (course: Course) => {
-    const confirmed = window.confirm(
-      `Delete "${course.title}"?`
-    );
+    const confirmed = await confirm(`Delete "${course.title}"?`, {
+      danger: true,
+    });
 
     if (!confirmed) return;
 
@@ -269,6 +230,8 @@ export default function AdminCoursesPage() {
           </table>
         )}
       </div>
+
+      {dialog}
     </div>
   );
 }

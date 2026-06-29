@@ -18,6 +18,7 @@ import {
   LogOut,
   Award,
   UserCheck,
+  Settings2,
   Menu,
   X,
 } from "lucide-react";
@@ -42,6 +43,12 @@ const navItems = [
     label: "Staff",
     href: "/admin/users",
     icon: Users,
+  },
+  {
+    label: "Organization Data",
+    href: "/admin/organization-data",
+    icon: Settings2,
+    superadminOnly: true,
   },
   {
     label: "NYSC Books",
@@ -90,9 +97,11 @@ export default function AdminLayout({
   const [loadingUser, setLoadingUser] = useState(true);
   const profileRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const [previousPathname, setPreviousPathname] = useState(pathname);
+  if (pathname !== previousPathname) {
+    setPreviousPathname(pathname);
     setIsSidebarOpen(false);
-  }, [pathname]);
+  }
 
   useEffect(() => {
     if (!isProfileOpen) return;
@@ -322,7 +331,7 @@ export default function AdminLayout({
             </button>
           </aside>
 
-          <main className="ml-0 lg:ml-64 flex-1 bg-gray-100 min-h-screen p-4 sm:p-8 print:ml-0 print:min-h-0 print:bg-white print:p-0">
+          <main className="ml-0 lg:ml-64 flex-1 min-w-0 bg-gray-100 min-h-screen p-4 sm:p-8 print:ml-0 print:min-h-0 print:bg-white print:p-0">
             {children}
           </main>
         </div>

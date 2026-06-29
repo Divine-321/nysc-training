@@ -333,9 +333,11 @@ export default function StaffLayout({
     router.replace("/login");
   };
 
-  useEffect(() => {
+  const [previousPathname, setPreviousPathname] = useState(pathname);
+  if (pathname !== previousPathname) {
+    setPreviousPathname(pathname);
     setIsSidebarOpen(false);
-  }, [pathname]);
+  }
 
   const isFullScreenView =
     pathname.includes("/staff/course/") ||

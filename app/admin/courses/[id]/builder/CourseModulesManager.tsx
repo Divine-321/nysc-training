@@ -14,11 +14,13 @@ import {
   Trash2,
 } from "lucide-react";
 import {
+  dedupeById,
   extractErrorMessage,
   readApiList,
 } from "@/app/lib/portal-api";
 import ModuleDocumentsManager from "./ModuleDocumentsManager";
 import type { ModuleDocument } from "./ModuleDocumentsManager";
+import { useConfirm } from "@/app/components/useConfirm";
 
 type CourseModule = {
   id: number;
@@ -49,6 +51,7 @@ export default function CourseModulesManager({
 }: {
   courseId: number;
 }) {
+  const { confirm, dialog } = useConfirm();
   const [modules, setModules] = useState<CourseModule[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -73,8 +76,7 @@ export default function CourseModulesManager({
       const allModules = readApiList<CourseModule>(payload);
 
       setModules(
-        allModules
-          .filter((module) => module.course === courseId)
+        dedupeById(allModules.filter((module) => module.course === courseId))
           .sort((first, second) => first.order - second.order)
       );
 
@@ -162,8 +164,9 @@ export default function CourseModulesManager({
   };
 
   const handleDelete = async (id: number) => {
-    const confirmed = window.confirm(
-      "Delete this module and its materials?"
+    const confirmed = await confirm(
+      "Delete this module and its materials?",
+      { danger: true },
     );
 
     if (!confirmed) return;
@@ -377,6 +380,8 @@ export default function CourseModulesManager({
           </div>
         )}
       </div>
+
+      {dialog}
     </div>
   );
 }

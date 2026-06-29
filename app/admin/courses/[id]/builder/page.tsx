@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   ArrowLeft,
-  CalendarClock,
   ClipboardList,
   ImageUp,
   Layers,
@@ -15,7 +14,6 @@ import {
 } from "lucide-react";
 import CourseModulesManager from "./CourseModulesManager";
 import CourseAssessmentsManager from "./CourseAssessmentsManager";
-import CourseDeliveryManager from "./CourseDeliveryManager";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import {
   extractErrorMessage,
@@ -30,7 +28,6 @@ const TABS = [
   { id: "modules", label: "Modules", icon: Layers },
   { id: "assessments", label: "Assessments", icon: ClipboardList },
   { id: "people", label: "Resource Persons", icon: UserCheck },
-  { id: "delivery", label: "Delivery", icon: CalendarClock },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -60,6 +57,9 @@ export default function CourseBuilderPage() {
   const [trainerIds, setTrainerIds] = useState<number[]>([]);
   const [savedTrainerIds, setSavedTrainerIds] = useState<number[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState("");
+  const [prerequisiteIds, setPrerequisiteIds] = useState<number[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedPrerequisiteId, setSelectedPrerequisiteId] = useState("");
   const [manualResourcePersonName, setManualResourcePersonName] = useState("");
   const [isAddingResourcePerson, setIsAddingResourcePerson] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -69,18 +69,20 @@ export default function CourseBuilderPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [courseResponse, trainerResponse] =
+        const [courseResponse, trainerResponse, coursesListResponse] =
           await Promise.all([
             fetch(`/api/training/courses/${courseId}`, {
               cache: "no-store",
             }),
             fetch("/api/training/trainers", { cache: "no-store" }),
+            fetch("/api/training/courses", { cache: "no-store" }),
           ]);
 
-        const [coursePayload, trainerPayload] =
+        const [coursePayload, trainerPayload, coursesListPayload] =
           await Promise.all([
             courseResponse.json().catch(() => null),
             trainerResponse.json().catch(() => null),
+            coursesListResponse.json().catch(() => null),
           ]);
 
         if (!courseResponse.ok) {
@@ -107,9 +109,20 @@ export default function CourseBuilderPage() {
         setSavedTrainerIds(
           loadedCourse.trainers.map((trainer) => trainer.id),
         );
+        setPrerequisiteIds(
+          loadedCourse.prerequisites_data?.map((prereq) => prereq.id) ?? [],
+        );
 
         if (trainerResponse.ok) {
           setTrainers(readApiList<Trainer>(trainerPayload));
+        }
+
+        if (coursesListResponse.ok) {
+          setCourses(
+            readApiList<Course>(coursesListPayload).filter(
+              (courseOption) => String(courseOption.id) !== courseId,
+            ),
+          );
         }
       } catch (loadError) {
         setError(
@@ -224,6 +237,21 @@ export default function CourseBuilderPage() {
     setTrainerIds((current) => current.filter((trainerId) => trainerId !== id));
   };
 
+  const handleAddPrerequisite = () => {
+    if (!selectedPrerequisiteId) return;
+
+    const id = Number(selectedPrerequisiteId);
+
+    setPrerequisiteIds((current) =>
+      current.includes(id) ? current : [...current, id],
+    );
+    setSelectedPrerequisiteId("");
+  };
+
+  const handleRemovePrerequisite = (id: number) => {
+    setPrerequisiteIds((current) => current.filter((courseId) => courseId !== id));
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError("");
@@ -240,6 +268,7 @@ export default function CourseBuilderPage() {
           cloudinary_public_id: thumbnailPublicId || null,
           status,
           trainer_ids: trainerIds,
+          prerequisite_ids: prerequisiteIds,
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -419,6 +448,65 @@ export default function CourseBuilderPage() {
             </select>
           </div>
 
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Prerequisites
+            </label>
+            <p className="mb-2 text-xs text-gray-500">
+              Trainees must complete these courses before this one unlocks.
+            </p>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+              <select
+                value={selectedPrerequisiteId}
+                onChange={(event) => setSelectedPrerequisiteId(event.target.value)}
+                className="w-full rounded-lg border px-4 py-2.5 text-sm"
+              >
+                <option value="">Select a prerequisite course</option>
+                {courses
+                  .filter((courseOption) => !prerequisiteIds.includes(courseOption.id))
+                  .map((courseOption) => (
+                    <option key={courseOption.id} value={courseOption.id}>
+                      {courseOption.title}
+                    </option>
+                  ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleAddPrerequisite}
+                disabled={!selectedPrerequisiteId}
+                className="rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530]"
+              >
+                + Add
+              </button>
+            </div>
+
+            {prerequisiteIds.length > 0 && (
+              <ul className="mt-4 space-y-2">
+                {prerequisiteIds.map((id) => {
+                  const courseOption = courses.find((item) => item.id === id);
+                  return (
+                    <li
+                      key={id}
+                      className="flex items-center justify-between rounded-lg border px-4 py-2.5"
+                    >
+                      <span className="text-sm font-semibold text-gray-800">
+                        {courseOption?.title ?? `Course #${id}`}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePrerequisite(id)}
+                        className="text-xs font-semibold text-red-600 hover:text-red-700"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
           <button
             type="button"
             onClick={handleSave}
@@ -531,9 +619,6 @@ export default function CourseBuilderPage() {
         </section>
       )}
 
-      {activeTab === "delivery" && (
-        <CourseDeliveryManager courseId={Number(courseId)} />
-      )}
     </div>
   );
 }

@@ -29,9 +29,11 @@ export default function CourseLayout({
   const isAssessment = pathname?.includes("/assessment/") ?? false;
   const hideSidebar = isLiveSession || isAssessment;
 
-  useEffect(() => {
+  const [previousPathname, setPreviousPathname] = useState(pathname);
+  if (pathname !== previousPathname) {
+    setPreviousPathname(pathname);
     setIsSidebarOpen(false);
-  }, [pathname]);
+  }
 
   useEffect(() => {
     const fetchData = async () => {

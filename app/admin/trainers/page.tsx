@@ -7,6 +7,7 @@ import {
   readApiList,
   type Trainer,
 } from "@/app/lib/portal-api";
+import { useConfirm } from "@/app/components/useConfirm";
 
 const emptyForm = {
   full_name: "",
@@ -16,6 +17,7 @@ const emptyForm = {
 };
 
 export default function AdminTrainersPage() {
+  const { confirm, dialog } = useConfirm();
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [form, setForm] = useState(emptyForm);
@@ -122,7 +124,9 @@ export default function AdminTrainersPage() {
   };
 
   const handleDelete = async (trainer: Trainer) => {
-    const confirmed = window.confirm(`Delete ${trainer.full_name}?`);
+    const confirmed = await confirm(`Delete ${trainer.full_name}?`, {
+      danger: true,
+    });
 
     if (!confirmed) return;
 
@@ -350,6 +354,8 @@ export default function AdminTrainersPage() {
           );
         })()}
       </div>
+
+      {dialog}
     </div>
   );
 }

@@ -25,6 +25,9 @@ export default function CreateCoursePage() {
   const [trainerIds, setTrainerIds] = useState<number[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState("");
+  const [prerequisiteIds, setPrerequisiteIds] = useState<number[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedPrerequisiteId, setSelectedPrerequisiteId] = useState("");
   const [manualResourcePersonName, setManualResourcePersonName] = useState("");
   const [isAddingResourcePerson, setIsAddingResourcePerson] = useState(false);
   const [error, setError] = useState("");
@@ -32,12 +35,17 @@ export default function CreateCoursePage() {
 
   useEffect(() => {
     const loadOptions = async () => {
-      const trainerResponse = await fetch("/api/training/trainers", {
-        cache: "no-store",
-      });
+      const [trainerResponse, courseResponse] = await Promise.all([
+        fetch("/api/training/trainers", { cache: "no-store" }),
+        fetch("/api/training/courses", { cache: "no-store" }),
+      ]);
 
       if (trainerResponse.ok) {
         setTrainers(readApiList<Trainer>(await trainerResponse.json()));
+      }
+
+      if (courseResponse.ok) {
+        setCourses(readApiList<Course>(await courseResponse.json()));
       }
     };
 
@@ -141,6 +149,21 @@ export default function CreateCoursePage() {
     setTrainerIds((current) => current.filter((trainerId) => trainerId !== id));
   };
 
+  const handleAddPrerequisite = () => {
+    if (!selectedPrerequisiteId) return;
+
+    const id = Number(selectedPrerequisiteId);
+
+    setPrerequisiteIds((current) =>
+      current.includes(id) ? current : [...current, id],
+    );
+    setSelectedPrerequisiteId("");
+  };
+
+  const handleRemovePrerequisite = (id: number) => {
+    setPrerequisiteIds((current) => current.filter((courseId) => courseId !== id));
+  };
+
   const handleSave = async () => {
     setError("");
     setIsSaving(true);
@@ -156,6 +179,7 @@ export default function CreateCoursePage() {
           cloudinary_public_id: thumbnailPublicId || null,
           status,
           trainer_ids: trainerIds,
+          prerequisite_ids: prerequisiteIds,
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -265,6 +289,65 @@ router.push(
             <option value="PUBLISHED">Published</option>
             <option value="ARCHIVED">Archived</option>
           </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Prerequisites
+          </label>
+          <p className="mb-2 text-xs text-gray-500">
+            Trainees must complete these courses before this one unlocks.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
+            <select
+              value={selectedPrerequisiteId}
+              onChange={(event) => setSelectedPrerequisiteId(event.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+            >
+              <option value="">Select a prerequisite course</option>
+              {courses
+                .filter((courseOption) => !prerequisiteIds.includes(courseOption.id))
+                .map((courseOption) => (
+                  <option key={courseOption.id} value={courseOption.id}>
+                    {courseOption.title}
+                  </option>
+                ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleAddPrerequisite}
+              disabled={!selectedPrerequisiteId}
+              className="rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530]"
+            >
+              + Add
+            </button>
+          </div>
+
+          {prerequisiteIds.length > 0 && (
+            <ul className="mt-4 space-y-2">
+              {prerequisiteIds.map((id) => {
+                const courseOption = courses.find((item) => item.id === id);
+                return (
+                  <li
+                    key={id}
+                    className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2.5"
+                  >
+                    <span className="text-sm font-semibold text-gray-800">
+                      {courseOption?.title ?? `Course #${id}`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePrerequisite(id)}
+                      className="text-xs font-semibold text-red-600 hover:text-red-700"
+                    >
+                      Remove
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </div>
 
         <div>

@@ -13,6 +13,7 @@ import {
   extractErrorMessage,
   readApiList,
 } from "@/app/lib/portal-api";
+import { useConfirm } from "@/app/components/useConfirm";
 
 type AssessmentType = "PRE_TEST" | "POST_TEST";
 
@@ -49,6 +50,7 @@ export default function CourseAssessmentsManager({
 }: {
   courseId: number;
 }) {
+  const { confirm, dialog } = useConfirm();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -190,8 +192,9 @@ export default function CourseAssessmentsManager({
   };
 
   const handleDelete = async (assessment: Assessment) => {
-    const confirmed = window.confirm(
+    const confirmed = await confirm(
       `Delete "${assessment.title}" and its questions?`,
+      { danger: true },
     );
 
     if (!confirmed) return;
@@ -428,6 +431,8 @@ export default function CourseAssessmentsManager({
           What does NYSC stand for?,1,National Youth Service Corps,National Youth Safety Corps,Nigerian Youth Staff Council,National Young Service Club,A
         </code>
       </div>
+
+      {dialog}
     </section>
   );
 }

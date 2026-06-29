@@ -5,6 +5,7 @@ import type { FormEvent } from "react";
 import { ExternalLink, FileUp, Trash2 } from "lucide-react";
 import { extractErrorMessage } from "@/app/lib/portal-api";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
+import { useConfirm } from "@/app/components/useConfirm";
 
 export type ModuleDocument = {
   id: number;
@@ -46,6 +47,7 @@ export default function ModuleDocumentsManager({
   documents,
   onChanged,
 }: ModuleDocumentsManagerProps) {
+  const { confirm, dialog } = useConfirm();
   const [title, setTitle] = useState("");
   const [documentType, setDocumentType] =
     useState<ModuleDocument["doc_type"]>("VIDEO");
@@ -122,8 +124,9 @@ export default function ModuleDocumentsManager({
   };
 
   const handleDelete = async (document: ModuleDocument) => {
-    const confirmed = window.confirm(
-      `Delete “${document.title}” from this module and Cloudinary?`,
+    const confirmed = await confirm(
+      `Delete "${document.title}" from this module and Cloudinary?`,
+      { danger: true },
     );
 
     if (!confirmed) return;
@@ -288,6 +291,8 @@ export default function ModuleDocumentsManager({
           {uploading ? "Uploading..." : "Upload material"}
         </button>
       </form>
+
+      {dialog}
     </div>
   );
 }

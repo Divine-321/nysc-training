@@ -128,6 +128,15 @@ function readList(payload: unknown): Array<Record<string, unknown>> {
   return [];
 }
 
+const BATCH_SIZE = 10;
+
+async function runBatched<T>(items: T[], task: (item: T) => Promise<void>) {
+  for (let start = 0; start < items.length; start += BATCH_SIZE) {
+    const batch = items.slice(start, start + BATCH_SIZE);
+    await Promise.all(batch.map(task));
+  }
+}
+
 function generateCode(name: string, existingCodes: Set<string>) {
   const words = name.trim().toUpperCase().split(/\s+/).filter(Boolean);
   const base =
@@ -167,10 +176,10 @@ export default function BulkImportPage() {
     let skipped = 0;
     let failed = 0;
 
-    for (const value of values) {
+    await runBatched(values, async (value) => {
       if (existing.has(value.trim().toLowerCase())) {
         skipped += 1;
-        continue;
+        return;
       }
 
       const res = await fetch(path, {
@@ -184,7 +193,7 @@ export default function BulkImportPage() {
       } else {
         failed += 1;
       }
-    }
+    });
 
     appendLog(
       `${path} -> created ${created}, skipped ${skipped} (already existed), failed ${failed}`,
@@ -206,6 +215,10 @@ export default function BulkImportPage() {
     let skipped = 0;
     let failed = 0;
 
+    // Codes must be assigned sequentially (each one depends on the codes
+    // already claimed), but the actual POST requests don't, so batch those.
+    const toCreate: { name: string; code: string }[] = [];
+
     for (const name of values) {
       if (existingNames.has(name.trim().toLowerCase())) {
         skipped += 1;
@@ -214,7 +227,10 @@ export default function BulkImportPage() {
 
       const code = generateCode(name, existingCodes);
       existingCodes.add(code);
+      toCreate.push({ name, code });
+    }
 
+    await runBatched(toCreate, async ({ name, code }) => {
       const res = await fetch(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -226,7 +242,7 @@ export default function BulkImportPage() {
       } else {
         failed += 1;
       }
-    }
+    });
 
     appendLog(
       `${path} -> created ${created}, skipped ${skipped} (already existed), failed ${failed}`,
@@ -263,41 +279,45 @@ export default function BulkImportPage() {
     let created = 0;
     let failed = 0;
 
-    for (let i = 0; i < count; i += 1) {
-      const sex = i % 2 === 0 ? "male" : "female";
-      const fileNumber = `NYSC/STAFF/2026/${String(i + 1).padStart(4, "0")}`;
+    await runBatched(
+      Array.from({ length: count }, (_, i) => i),
+      async (i) => {
+        const sex = i % 2 === 0 ? "male" : "female";
+        const fileNumber = `NYSC/STAFF/2026/${String(i + 1).padStart(4, "0")}`;
 
-      const payload = {
-        file_number: fileNumber,
-        first_name: firstNames[i % firstNames.length],
-        middle_name: middleNames[i % middleNames.length],
-        last_name: lastNames[i % lastNames.length],
-        sex,
-        state: (statesData[i % statesData.length] as { id: number }).id,
-        department: (departmentsData[i % departmentsData.length] as { id: number })
-          .id,
-        grade_level: (gradeLevelsData[i % gradeLevelsData.length] as {
-          id: number;
-        }).id,
-        rank: (ranksData[i % ranksData.length] as { id: number }).id,
-      };
+        const payload = {
+          file_number: fileNumber,
+          first_name: firstNames[i % firstNames.length],
+          middle_name: middleNames[i % middleNames.length],
+          last_name: lastNames[i % lastNames.length],
+          sex,
+          state: (statesData[i % statesData.length] as { id: number }).id,
+          department: (departmentsData[i % departmentsData.length] as {
+            id: number;
+          }).id,
+          grade_level: (gradeLevelsData[i % gradeLevelsData.length] as {
+            id: number;
+          }).id,
+          rank: (ranksData[i % ranksData.length] as { id: number }).id,
+        };
 
-      const res = await fetch("/api/accounts/staff-records", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+        const res = await fetch("/api/accounts/staff-records", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-      if (res.ok) {
-        created += 1;
-      } else {
-        failed += 1;
-        const errorPayload = await res.json().catch(() => null);
-        appendLog(
-          `Failed "${fileNumber}": ${JSON.stringify(errorPayload)}`,
-        );
-      }
-    }
+        if (res.ok) {
+          created += 1;
+        } else {
+          failed += 1;
+          const errorPayload = await res.json().catch(() => null);
+          appendLog(
+            `Failed "${fileNumber}": ${JSON.stringify(errorPayload)}`,
+          );
+        }
+      },
+    );
 
     appendLog(`Staff creation -> created ${created}, failed ${failed}`);
   };

@@ -1,4 +1,5 @@
 import {
+  dedupeById,
   extractErrorMessage,
   readApiItem,
   readApiList,
@@ -161,13 +162,15 @@ async function loadModulesForCourse(courseId: number) {
       `/api/training/modules?course=${courseId}`,
     );
 
-    return readApiList<CourseModule>(modulePayload);
+    return dedupeById(readApiList<CourseModule>(modulePayload));
   } catch (filteredError) {
     try {
       const modulePayload = await getJson("/api/training/modules");
 
-      return readApiList<CourseModule>(modulePayload).filter(
-        (module) => module.course === courseId,
+      return dedupeById(
+        readApiList<CourseModule>(modulePayload).filter(
+          (module) => module.course === courseId,
+        ),
       );
     } catch (listError) {
       console.error(
@@ -196,8 +199,8 @@ export async function loadStaffCourses() {
         .map((enrollment) =>
           cohortCourses.find((item) => item.id === enrollment.cohort_course),
         )
-        .map((cohortCourse) => cohortCourse?.course)
-        .filter((courseId): courseId is number => typeof courseId === "number"),
+        .map((cohortCourse) => Number(cohortCourse?.course))
+        .filter((courseId) => Number.isFinite(courseId)),
     ),
   );
 
@@ -217,9 +220,9 @@ export async function loadStaffCourses() {
       enrollment,
       cohortCourse,
       course,
-      modules: modules
-        .filter((module) => module.course === cohortCourse?.course)
-        .sort((first, second) => first.order - second.order),
+      modules: dedupeById(
+        modules.filter((module) => module.course === cohortCourse?.course),
+      ).sort((first, second) => first.order - second.order),
     };
   });
 }

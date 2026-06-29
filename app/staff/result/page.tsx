@@ -12,13 +12,7 @@ import {
   readStoredAssessmentResults,
   type AssessmentResult,
 } from "@/app/lib/staff-learning";
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-NG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
+import { formatDateTime as formatDate } from "@/app/lib/format";
 
 export default function ResultPage() {
   const [results, setResults] = useState<AssessmentResult[]>([]);

@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import Link from "next/link";
 
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   extractErrorMessage,
   readApiList,
 } from "@/app/lib/portal-api";
+import { useConfirm } from "@/app/components/useConfirm";
 
 type Cohort = {
   id: number;
@@ -44,6 +46,7 @@ async function readResponsePayload(response: Response): Promise<unknown> {
 }
 
 export default function CohortsPage() {
+  const { confirm, dialog } = useConfirm();
   const [cohorts, setCohorts] = useState<Cohort[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
@@ -164,8 +167,9 @@ export default function CohortsPage() {
   };
 
   const handleDelete = async (id: number) => {
-    const shouldDelete = window.confirm(
-      "Are you sure you want to delete this cohort?"
+    const shouldDelete = await confirm(
+      "Are you sure you want to delete this cohort?",
+      { danger: true },
     );
 
     if (!shouldDelete) return;
@@ -382,6 +386,14 @@ export default function CohortsPage() {
 
                   <td className="p-4">
                     <div className="flex items-center gap-3">
+                      <Link
+                        href={`/admin/cohorts/${cohort.id}`}
+                        className="text-[#1a6b3c]"
+                        aria-label={`Manage courses and live sessions for ${cohort.name}`}
+                      >
+                        <CalendarClock size={18} />
+                      </Link>
+
                       <button
                         onClick={() => startEditing(cohort)}
                         className="text-[#1a6b3c]"
@@ -406,6 +418,8 @@ export default function CohortsPage() {
           </table>
         )}
       </div>
+
+      {dialog}
     </div>
   );
 }

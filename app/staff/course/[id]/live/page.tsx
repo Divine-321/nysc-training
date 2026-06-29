@@ -11,13 +11,7 @@ import {
   type StaffCourse,
 } from "@/app/lib/staff-learning";
 import { extractErrorMessage } from "@/app/lib/portal-api";
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat("en-NG", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
+import { formatDateTime } from "@/app/lib/format";
 
 function sessionButtonLabel(session: LiveSession) {
   if (session.status === "ONGOING") return "Join Live Now";

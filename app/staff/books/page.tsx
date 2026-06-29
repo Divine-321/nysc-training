@@ -11,6 +11,7 @@ import {
   extractErrorMessage,
   readApiList,
 } from "@/app/lib/portal-api";
+import { formatDate } from "@/app/lib/format";
 
 type NYSCBook = {
   id: number;
@@ -20,12 +21,6 @@ type NYSCBook = {
   cover_image_url: string | null;
   uploaded_at: string;
 };
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-NG", {
-    dateStyle: "medium",
-  }).format(new Date(value));
-}
 
 export default function LibraryPage() {
   const [books, setBooks] = useState<NYSCBook[]>([]);

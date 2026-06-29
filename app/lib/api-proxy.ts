@@ -18,7 +18,7 @@ const isProduction = process.env.NODE_ENV === "production";
 const ACCESS_TOKEN_MAX_AGE = 60 * 20;
 const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24;
 
-export async function getAccessToken() {
+async function getAccessToken() {
   const cookieStore = await cookies();
   return cookieStore.get("nysc_access_token")?.value ?? null;
 }
@@ -204,8 +204,4 @@ export async function proxyApi(method: string, options: ProxyOptions) {
   }
 
   return NextResponse.json(payload, { status: response.status });
-}
-
-export function withTrailingSlash(path: string) {
-  return path.endsWith("/") ? path : `${path}/`;
 }

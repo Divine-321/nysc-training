@@ -61,21 +61,6 @@ export type LoginCredentials = {
   password: string;
 };
 
-export type ApiSession = {
-  accessToken: string;
-  refreshToken: string;
-  user: AuthUser;
-};
-
-export type ApiListResponse<T> = T[];
-
-export type CourseCategory = {
-  id: number;
-  name: string;
-  description: string;
-  created_at: string;
-};
-
 export type Trainer = {
   id: number;
   full_name: string;
@@ -98,12 +83,8 @@ export type Course = {
   created_at: string;
   is_locked?: boolean;
   lock_reason?: string | null;
-};
-
-export type Department = {
-  id: number;
-  name: string;
-  description?: string;
+  prerequisite_ids?: number[];
+  prerequisites_data?: { id: number; title: string }[];
 };
 
 const SESSION_STORAGE_KEY = "nysc-auth-session";
@@ -140,43 +121,6 @@ export async function loginUser(credentials: LoginCredentials) {
   });
 }
 
-export async function fetchCurrentUser(token: string) {
-  return apiFetch<ApiEnvelope<AuthUser>>("/api/accounts/me/", {
-    method: "GET",
-  }, token);
-}
-
-export async function fetchCourses() {
-  return apiFetch<ApiListResponse<Course>>("/api/training/courses/");
-}
-
-export async function fetchCategories() {
-  return apiFetch<ApiListResponse<CourseCategory>>("/api/training/categories/");
-}
-
-export async function fetchDepartments() {
-  return apiFetch<ApiListResponse<Department>>("/api/organization/departments/");
-}
-
-export function saveSession(session: ApiSession) {
-  if (typeof window === "undefined") return;
-
-  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
-}
-
-export function readSession() {
-  if (typeof window === "undefined") return null;
-
-  const rawSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
-  if (!rawSession) return null;
-
-  try {
-    return JSON.parse(rawSession) as ApiSession;
-  } catch {
-    return null;
-  }
-}
-
 export function clearSession() {
   if (typeof window === "undefined") return;
 
@@ -196,6 +140,10 @@ export function readApiList<T>(payload: unknown): T[] {
   }
 
   return [];
+}
+
+export function dedupeById<T extends { id: number }>(items: T[]): T[] {
+  return Array.from(new Map(items.map((item) => [item.id, item])).values());
 }
 
 export function extractErrorMessage(payload: unknown, fallback: string): string {

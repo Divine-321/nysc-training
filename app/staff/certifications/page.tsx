@@ -7,6 +7,7 @@ import {
   extractErrorMessage,
   readApiList,
 } from "@/app/lib/portal-api";
+import { formatDate as formatDateMedium } from "@/app/lib/format";
 
 type Certificate = {
   id: number;
@@ -19,9 +20,7 @@ type Certificate = {
 };
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-NG", {
-    dateStyle: "long",
-  }).format(new Date(value));
+  return formatDateMedium(value, "long");
 }
 
 export default function CertificationsPage() {

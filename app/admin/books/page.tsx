@@ -21,7 +21,9 @@ import {
   extractErrorMessage,
   readApiList,
 } from "@/app/lib/portal-api";
+import { formatDate } from "@/app/lib/format";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
+import { useConfirm } from "@/app/components/useConfirm";
 
 type NYSCBook = {
   id: number;
@@ -42,13 +44,8 @@ const emptyForm = {
   cover_cloudinary_public_id: "",
 };
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-NG", {
-    dateStyle: "medium",
-  }).format(new Date(value));
-}
-
 export default function AdminBooksPage() {
+  const { confirm, dialog } = useConfirm();
   const [books, setBooks] = useState<NYSCBook[]>([]);
   const [form, setForm] = useState(emptyForm);
   const [editingBookId, setEditingBookId] = useState<number | null>(null);
@@ -220,7 +217,9 @@ export default function AdminBooksPage() {
   };
 
   const handleDelete = async (book: NYSCBook) => {
-    const shouldDelete = window.confirm(`Delete "${book.title}"?`);
+    const shouldDelete = await confirm(`Delete "${book.title}"?`, {
+      danger: true,
+    });
 
     if (!shouldDelete) return;
 
@@ -591,6 +590,8 @@ export default function AdminBooksPage() {
           )}
         </div>
       </div>
+
+      {dialog}
     </div>
   );
 }
