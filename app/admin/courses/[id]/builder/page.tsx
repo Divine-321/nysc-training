@@ -58,6 +58,7 @@ export default function CourseBuilderPage() {
   const [status, setStatus] =
     useState<"DRAFT" | "PUBLISHED" | "ARCHIVED">("DRAFT");
   const [trainerIds, setTrainerIds] = useState<number[]>([]);
+  const [savedTrainerIds, setSavedTrainerIds] = useState<number[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState("");
   const [manualResourcePersonName, setManualResourcePersonName] = useState("");
   const [isAddingResourcePerson, setIsAddingResourcePerson] = useState(false);
@@ -101,6 +102,9 @@ export default function CourseBuilderPage() {
         setThumbnailPublicId(loadedCourse.cloudinary_public_id ?? "");
         setStatus(loadedCourse.status);
         setTrainerIds(
+          loadedCourse.trainers.map((trainer) => trainer.id),
+        );
+        setSavedTrainerIds(
           loadedCourse.trainers.map((trainer) => trainer.id),
         );
 
@@ -248,6 +252,7 @@ export default function CourseBuilderPage() {
 
       const updatedCourse = readApiItem<Course>(payload);
       if (updatedCourse) setCourse(updatedCourse);
+      setSavedTrainerIds(trainerIds);
       setNotice("Course updated successfully.");
     } catch (saveError) {
       setError(
@@ -451,7 +456,7 @@ export default function CourseBuilderPage() {
             >
               <option value="">Select an existing resource person</option>
               {trainers
-                .filter((trainer) => !trainerIds.includes(trainer.id))
+                .filter((trainer) => !savedTrainerIds.includes(trainer.id))
                 .map((trainer) => (
                   <option key={trainer.id} value={trainer.id}>
                     {trainer.full_name}
@@ -519,7 +524,7 @@ export default function CourseBuilderPage() {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-6 py-2.5 font-semibold text-white disabled:opacity-50 sm:w-auto"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-6 py-2.5 font-semibold text-white disabled:cursor-not-allowed sm:w-auto"
           >
             <Save size={18} /> Save Resource Persons
           </button>

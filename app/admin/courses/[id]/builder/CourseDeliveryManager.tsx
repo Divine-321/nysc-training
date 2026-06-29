@@ -347,7 +347,7 @@ export default function CourseDeliveryManager({
             type="button"
             onClick={handleAssignCourse}
             disabled={savingAssignment || !selectedCohort}
-            className="rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+            className="rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white"
           >
             {savingAssignment ? "Assigning..." : "Assign Course"}
           </button>
@@ -371,7 +371,7 @@ export default function CourseDeliveryManager({
                   type="button"
                   onClick={() => handleRemoveAssignment(assignment)}
                   disabled={deletingId === assignment.id}
-                  className="text-red-600 disabled:opacity-50"
+                  className="text-red-600"
                   aria-label={`Remove ${assignment.cohort_name}`}
                 >
                   <Trash2 size={17} />
@@ -474,7 +474,7 @@ export default function CourseDeliveryManager({
 
           <button
             disabled={savingSession || assignments.length === 0}
-            className="flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 font-semibold text-white disabled:opacity-50 md:col-span-2"
+            className="flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 font-semibold text-white md:col-span-2"
           >
             <Video size={18} />
             {savingSession ? "Scheduling..." : "Schedule Session"}
@@ -505,7 +505,7 @@ export default function CourseDeliveryManager({
                   type="button"
                   onClick={() => handleDeleteSession(session)}
                   disabled={deletingId === session.id}
-                  className="text-red-600 disabled:opacity-50"
+                  className="text-red-600"
                   aria-label={`Delete ${session.title}`}
                 >
                   <Trash2 size={17} />

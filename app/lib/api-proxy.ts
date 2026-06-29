@@ -192,6 +192,13 @@ export async function proxyApi(method: string, options: ProxyOptions) {
 
   const payload = await readResponsePayload(response);
 
+  if (!response.ok) {
+    console.log(
+      `[proxyApi DEBUG] ${method} ${options.path} -> ${response.status}:`,
+      JSON.stringify(payload),
+    );
+  }
+
   if (response.status === 204) {
     return new NextResponse(null, { status: 204 });
   }

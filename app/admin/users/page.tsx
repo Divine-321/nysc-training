@@ -14,6 +14,7 @@ import {
   Hash,
   Layers,
   Mail,
+  Users,
 } from "lucide-react";
 
 import {
@@ -32,6 +33,7 @@ type StaffUser = {
   rank: string;
   gradeLevel: string;
   location: string;
+  department: string;
   cohort: string;
   coursesAttended: number;
   status: string;
@@ -286,6 +288,34 @@ export default function AdminUsersPage() {
   const [editError, setEditError] = useState("");
   const [editNotice, setEditNotice] = useState("");
 
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+  const [inlineForm, setInlineForm] = useState<{
+    first_name: string;
+    middle_name: string;
+    last_name: string;
+    file_number: string;
+    rank: string;
+    grade_level: string;
+    department: string;
+    state: string;
+    is_active: boolean;
+  } | null>(null);
+  const [inlineSaving, setInlineSaving] = useState(false);
+  const [inlineError, setInlineError] = useState("");
+  const [addingOptionFor, setAddingOptionFor] = useState<
+    "rank" | "gradeLevel" | "department" | "location" | null
+  >(null);
+  const [newOptionName, setNewOptionName] = useState("");
+  const [newOptionLevel, setNewOptionLevel] = useState("");
+
+  const [showAllStaffModal, setShowAllStaffModal] = useState(false);
+  const [loadingAllStaff, setLoadingAllStaff] = useState(false);
+  const [allStaffError, setAllStaffError] = useState("");
+  const [unregisteredStaff, setUnregisteredStaff] = useState<
+    Array<{ file_number: string; first_name?: string; last_name?: string }>
+  >([]);
+  const [unregisteredSupported, setUnregisteredSupported] = useState(true);
+
   const pageSize = 20;
 
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
@@ -386,10 +416,8 @@ export default function AdminUsersPage() {
           users.map((user) => {
             const posting = postingByStaffId.get(user.id);
 
-            const location =
-              [posting?.state?.name, posting?.department?.name]
-                .filter(Boolean)
-                .join(" / ") || "Not assigned";
+            const location = posting?.state?.name || "Not assigned";
+            const department = posting?.department?.name || "Not assigned";
 
             return {
               id: String(user.id),
@@ -404,6 +432,7 @@ export default function AdminUsersPage() {
               rank: posting?.rank?.title || "Not assigned",
               gradeLevel: posting?.grade_level?.code || "Not assigned",
               location,
+              department,
               cohort:
                 cohortNamesByStaffId.get(user.id)?.join(", ") ||
                 "Not assigned",
@@ -709,6 +738,278 @@ export default function AdminUsersPage() {
     setEditError("");
   };
 
+  const openAllStaffModal = async () => {
+    setShowAllStaffModal(true);
+    setLoadingAllStaff(true);
+    setAllStaffError("");
+
+    try {
+      const response = await fetch("/api/accounts/staff-records", {
+        cache: "no-store",
+      });
+
+      if (response.status === 404 || response.status === 405) {
+        setUnregisteredSupported(false);
+        setUnregisteredStaff([]);
+        return;
+      }
+
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(
+            payload,
+            "Could not load unregistered staff records.",
+          ),
+        );
+      }
+
+      const records = readApiList<{
+        file_number: string;
+        first_name?: string;
+        last_name?: string;
+      }>(payload);
+
+      const registeredFileNumbers = new Set(
+        staffList.map((staff) => staff.fileNo),
+      );
+
+      setUnregisteredSupported(true);
+      setUnregisteredStaff(
+        records.filter(
+          (record) => !registeredFileNumbers.has(record.file_number),
+        ),
+      );
+    } catch (loadError) {
+      setAllStaffError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Could not load unregistered staff records.",
+      );
+    } finally {
+      setLoadingAllStaff(false);
+    }
+  };
+
+  const startInlineEdit = (staff: StaffUser) => {
+    setInlineEditingId(staff.id);
+    setInlineForm({
+      first_name: staff.firstName,
+      middle_name: staff.middleName,
+      last_name: staff.lastName,
+      file_number: staff.fileNo === "Not assigned" ? "" : staff.fileNo,
+      rank: staff.rankId,
+      grade_level: staff.gradeLevelId,
+      department: staff.departmentId,
+      state: staff.stateId,
+      is_active: staff.isActive,
+    });
+    setInlineError("");
+    setOpenDropdownId(null);
+    setSelectedStaff(null);
+    setAddingOptionFor(null);
+    setNewOptionName("");
+    setNewOptionLevel("");
+  };
+
+  const cancelInlineEdit = () => {
+    setInlineEditingId(null);
+    setInlineForm(null);
+    setInlineError("");
+    setAddingOptionFor(null);
+    setNewOptionName("");
+    setNewOptionLevel("");
+  };
+
+  const handleAddNewOption = async (
+    kind: "rank" | "gradeLevel" | "department" | "location",
+  ) => {
+    const labels: Record<typeof kind, string> = {
+      rank: "rank",
+      gradeLevel: "grade level code",
+      department: "department",
+      location: "location",
+    };
+
+    const trimmedName = newOptionName.trim();
+    if (!trimmedName) {
+      setInlineError(`Enter a name for the new ${labels[kind]}.`);
+      return;
+    }
+
+    try {
+      let path = "";
+      let body: Record<string, unknown> = {};
+
+      if (kind === "rank") {
+        path = "/api/organization/ranks";
+        body = { title: trimmedName };
+      } else if (kind === "department") {
+        path = "/api/organization/departments";
+        body = { name: trimmedName };
+      } else if (kind === "gradeLevel") {
+        const level = Number(newOptionLevel);
+
+        if (!newOptionLevel.trim() || Number.isNaN(level)) {
+          setInlineError("A numeric level is required for a new grade level.");
+          return;
+        }
+
+        path = "/api/organization/grade-levels";
+        body = { code: trimmedName, level };
+      } else {
+        const existingCodes = new Set(
+          orgOptions.states.map((option) =>
+            (option.code || "").toUpperCase(),
+          ),
+        );
+        const words = trimmedName.toUpperCase().split(/\s+/).filter(Boolean);
+        let code =
+          words.length > 1
+            ? words.map((word) => word[0]).join("").slice(0, 8)
+            : (words[0] || "LOC").slice(0, 8);
+        let suffix = 2;
+
+        while (existingCodes.has(code)) {
+          code = `${code}${suffix}`;
+          suffix += 1;
+        }
+
+        path = "/api/organization/states";
+        body = { name: trimmedName, code };
+      }
+
+      const response = await fetch(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const message = extractErrorMessage(payload, "");
+        throw new Error(
+          message ||
+            (payload
+              ? JSON.stringify(payload)
+              : `Could not add new ${labels[kind]} (HTTP ${response.status}).`),
+        );
+      }
+
+      const created = (payload?.data ?? payload) as OrgOption;
+      const key =
+        kind === "rank"
+          ? "ranks"
+          : kind === "department"
+            ? "departments"
+            : kind === "gradeLevel"
+              ? "gradeLevels"
+              : "states";
+
+      setOrgOptions((current) => ({
+        ...current,
+        [key]: [...current[key], created],
+      }));
+
+      setInlineForm((current) =>
+        current
+          ? {
+              ...current,
+              [kind === "rank"
+                ? "rank"
+                : kind === "department"
+                  ? "department"
+                  : kind === "gradeLevel"
+                    ? "grade_level"
+                    : "state"]: String(created.id),
+            }
+          : current,
+      );
+      setAddingOptionFor(null);
+      setNewOptionName("");
+      setNewOptionLevel("");
+    } catch (addError) {
+      setInlineError(
+        addError instanceof Error
+          ? addError.message
+          : "Could not add new option.",
+      );
+    }
+  };
+
+  const saveInlineEdit = async (staff: StaffUser) => {
+    if (!inlineForm) return;
+
+    setInlineSaving(true);
+    setInlineError("");
+
+    try {
+      const payload = {
+        first_name: inlineForm.first_name.trim(),
+        middle_name: inlineForm.middle_name.trim(),
+        last_name: inlineForm.last_name.trim(),
+        is_active: inlineForm.is_active,
+        file_number: inlineForm.file_number.trim(),
+        profile: {
+          phone_number: staff.phoneNumber,
+          sex: staff.sex,
+          date_of_birth: staff.dateOfBirth || null,
+          employment_date: staff.employmentDate || null,
+        },
+        ...(staff.hasPosting
+          ? {
+              posting: {
+                state: inlineForm.state ? Number(inlineForm.state) : undefined,
+                department: inlineForm.department
+                  ? Number(inlineForm.department)
+                  : null,
+                grade_level: inlineForm.grade_level
+                  ? Number(inlineForm.grade_level)
+                  : undefined,
+                rank: inlineForm.rank ? Number(inlineForm.rank) : undefined,
+                posting_reason: staff.postingReasonId
+                  ? Number(staff.postingReasonId)
+                  : null,
+                start_date: staff.postingStartDate || undefined,
+                end_date: staff.postingEndDate || null,
+                status: staff.postingStatus,
+                remarks: staff.postingRemarks,
+              },
+            }
+          : {}),
+      };
+
+      const response = await fetch(`/api/accounts/staff/${staff.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const responsePayload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const message = extractErrorMessage(responsePayload, "");
+        throw new Error(
+          message ||
+            (responsePayload
+              ? JSON.stringify(responsePayload)
+              : `Could not update staff (HTTP ${response.status}).`),
+        );
+      }
+
+      cancelInlineEdit();
+      setStaffReloadKey((current) => current + 1);
+    } catch (saveError) {
+      setInlineError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Could not update staff.",
+      );
+    } finally {
+      setInlineSaving(false);
+    }
+  };
+
   const openAddStaffModal = () => {
     setStaffRecordForm(emptyStaffRecordForm);
     setAddStaffError("");
@@ -817,8 +1118,6 @@ export default function AdminUsersPage() {
         is_active: editForm.is_active,
         profile: {
           phone_number: editForm.profile.phone_number.trim(),
-          profile_picture_url:
-            editForm.profile.profile_picture_url.trim() || null,
           sex: editForm.profile.sex,
           date_of_birth: editForm.profile.date_of_birth || null,
           employment_date: editForm.profile.employment_date || null,
@@ -878,6 +1177,52 @@ export default function AdminUsersPage() {
     }
   };
 
+  const renderAddNewOptionBox = (
+    kind: "rank" | "gradeLevel" | "department" | "location",
+  ) => (
+    <div className="mt-1 space-y-1 rounded border border-gray-200 bg-gray-50 p-2">
+      {inlineError && (
+        <p className="text-xs text-red-600">{inlineError}</p>
+      )}
+      <input
+        autoFocus
+        value={newOptionName}
+        onChange={(event) => setNewOptionName(event.target.value)}
+        placeholder={kind === "gradeLevel" ? "Code, e.g. GL-08" : "Name"}
+        className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+      />
+      {kind === "gradeLevel" && (
+        <input
+          type="number"
+          value={newOptionLevel}
+          onChange={(event) => setNewOptionLevel(event.target.value)}
+          placeholder="Level, e.g. 8"
+          className="w-full rounded border border-gray-300 px-2 py-1 text-xs"
+        />
+      )}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setAddingOptionFor(null);
+            setNewOptionName("");
+            setNewOptionLevel("");
+          }}
+          className="text-xs font-semibold text-gray-500 hover:underline"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleAddNewOption(kind)}
+          className="text-xs font-semibold text-[#1a6b3c] hover:underline"
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -889,6 +1234,13 @@ export default function AdminUsersPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => void openAllStaffModal()}
+            className="bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 px-4 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm"
+          >
+            <Users size={18} className="text-gray-500" />
+            View All Staff
+          </button>
           <button
             onClick={() => {
               setAssignmentError("");
@@ -959,10 +1311,10 @@ export default function AdminUsersPage() {
         )}
 
         {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm whitespace-nowrap">
+        <div className="overflow-x-auto border-t border-gray-100">
+          <table className="w-full text-center text-sm whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-500">
-              <tr>
+              <tr className="divide-x divide-gray-200 border-b border-gray-200">
                 <th className="px-6 py-4 font-medium w-12">
                   <input
                     type="checkbox"
@@ -976,20 +1328,25 @@ export default function AdminUsersPage() {
                 </th>
                 <th className="px-6 py-4 font-medium">Staff Member</th>
                 <th className="px-6 py-4 font-medium">File No</th>
-                <th className="px-6 py-4 font-medium">Rank & GL</th>
+                <th className="px-6 py-4 font-medium">Rank</th>
+                <th className="px-6 py-4 font-medium">GL</th>
                 <th className="px-6 py-4 font-medium">Location</th>
+                <th className="px-6 py-4 font-medium">Department</th>
                 <th className="px-6 py-4 font-medium">Cohort</th>
                 <th className="px-6 py-4 font-medium">Courses</th>
                 <th className="px-6 py-4 font-medium">Status</th>
-                <th className="px-6 py-4 font-medium text-right">Actions</th>
+                <th className="px-6 py-4 font-medium">Actions</th>
               </tr>
             </thead>
 
             <tbody className="divide-y divide-gray-100">
-              {filteredStaff.map((staff) => (
+              {filteredStaff.map((staff) => {
+                const isInlineEditing = inlineEditingId === staff.id;
+
+                return (
                 <tr
                   key={staff.id}
-                  className="hover:bg-gray-50 transition group"
+                  className="hover:bg-gray-50 transition group divide-x divide-gray-100"
                 >
                   <td className="px-6 py-4">
                     <input
@@ -1009,35 +1366,211 @@ export default function AdminUsersPage() {
                     />
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <Image
-                        src={staff.photo}
-                        alt={staff.surname}
-                        width={36}
-                        height={36}
-                        className="rounded-full bg-gray-100 object-cover"
-                      />
-                      <div>
-                        <p className="font-semibold text-gray-800 uppercase tracking-tight">
-                          {staff.surname}
-                        </p>
-                        <p className="text-xs text-gray-500 font-medium mt-0.5">
-                          {staff.otherNames}
-                        </p>
+                    {isInlineEditing && inlineForm ? (
+                      <div className="flex flex-col items-center gap-2">
+                        <input
+                          value={inlineForm.first_name}
+                          onChange={(event) =>
+                            setInlineForm({
+                              ...inlineForm,
+                              first_name: event.target.value,
+                            })
+                          }
+                          placeholder="First name"
+                          className="w-full min-w-[130px] rounded border border-gray-300 px-2 py-1.5 text-left text-sm"
+                        />
+                        <input
+                          value={inlineForm.last_name}
+                          onChange={(event) =>
+                            setInlineForm({
+                              ...inlineForm,
+                              last_name: event.target.value,
+                            })
+                          }
+                          placeholder="Last name"
+                          className="w-full min-w-[130px] rounded border border-gray-300 px-2 py-1.5 text-left text-sm"
+                        />
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex items-center justify-center gap-3">
+                        <Image
+                          src={staff.photo}
+                          alt={staff.surname}
+                          width={36}
+                          height={36}
+                          className="rounded-full bg-gray-100 object-cover"
+                        />
+                        <div>
+                          <p className="font-semibold text-gray-800 uppercase tracking-tight">
+                            {staff.surname}
+                          </p>
+                          <p className="text-xs text-gray-500 font-medium mt-0.5">
+                            {staff.otherNames}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-gray-600 font-medium">
-                    {staff.fileNo}
+                    {isInlineEditing && inlineForm ? (
+                      <input
+                        value={inlineForm.file_number}
+                        onChange={(event) =>
+                          setInlineForm({
+                            ...inlineForm,
+                            file_number: event.target.value,
+                          })
+                        }
+                        className="w-full min-w-[130px] rounded border border-gray-300 px-2 py-1.5 text-left text-sm"
+                      />
+                    ) : (
+                      staff.fileNo
+                    )}
                   </td>
-                  <td className="px-6 py-4">
-                    <p className="font-medium text-gray-800">{staff.rank}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {staff.gradeLevel}
-                    </p>
+                  <td className="px-6 py-4 font-medium text-gray-800">
+                    {isInlineEditing && inlineForm ? (
+                      <>
+                        <select
+                          value={inlineForm.rank}
+                          onChange={(event) => {
+                            if (event.target.value === "__add_new__") {
+                              setAddingOptionFor("rank");
+                              setNewOptionName("");
+                              return;
+                            }
+                            setInlineForm({
+                              ...inlineForm,
+                              rank: event.target.value,
+                            });
+                          }}
+                          className="w-full min-w-[130px] rounded border border-gray-300 px-2 py-1.5 text-left text-sm"
+                        >
+                          <option value="">Select rank</option>
+                          {orgOptions.ranks.map((option) => (
+                            <option key={option.id} value={String(option.id)}>
+                              {optionLabel(option, "Rank")}
+                            </option>
+                          ))}
+                          <option value="__add_new__">+ Add new...</option>
+                        </select>
+                        {addingOptionFor === "rank" &&
+                          renderAddNewOptionBox("rank")}
+                      </>
+                    ) : (
+                      staff.rank
+                    )}
                   </td>
-                  <td className="px-6 py-4 text-gray-600 truncate max-w-[12rem]">
-                    {staff.location}
+                  <td className="px-6 py-4 text-gray-600">
+                    {isInlineEditing && inlineForm ? (
+                      <>
+                        <select
+                          value={inlineForm.grade_level}
+                          onChange={(event) => {
+                            if (event.target.value === "__add_new__") {
+                              setAddingOptionFor("gradeLevel");
+                              setNewOptionName("");
+                              setNewOptionLevel("");
+                              return;
+                            }
+                            setInlineForm({
+                              ...inlineForm,
+                              grade_level: event.target.value,
+                            });
+                          }}
+                          className="w-full min-w-[130px] rounded border border-gray-300 px-2 py-1.5 text-left text-sm"
+                        >
+                          <option value="">Select GL</option>
+                          {orgOptions.gradeLevels.map((option) => (
+                            <option key={option.id} value={String(option.id)}>
+                              {optionLabel(option, "GL")}
+                            </option>
+                          ))}
+                          <option value="__add_new__">+ Add new...</option>
+                        </select>
+                        {addingOptionFor === "gradeLevel" &&
+                          renderAddNewOptionBox("gradeLevel")}
+                      </>
+                    ) : (
+                      staff.gradeLevel
+                    )}
+                  </td>
+                  <td
+                    className={
+                      isInlineEditing
+                        ? "px-6 py-4 text-gray-600"
+                        : "px-6 py-4 text-gray-600 truncate max-w-[12rem]"
+                    }
+                  >
+                    {isInlineEditing && inlineForm ? (
+                      <>
+                        <select
+                          value={inlineForm.state}
+                          onChange={(event) => {
+                            if (event.target.value === "__add_new__") {
+                              setAddingOptionFor("location");
+                              setNewOptionName("");
+                              return;
+                            }
+                            setInlineForm({
+                              ...inlineForm,
+                              state: event.target.value,
+                            });
+                          }}
+                          className="w-full min-w-[130px] rounded border border-gray-300 px-2 py-1.5 text-left text-sm"
+                        >
+                          <option value="">Select location</option>
+                          {orgOptions.states.map((option) => (
+                            <option key={option.id} value={String(option.id)}>
+                              {optionLabel(option, "Location")}
+                            </option>
+                          ))}
+                          <option value="__add_new__">+ Add new...</option>
+                        </select>
+                        {addingOptionFor === "location" &&
+                          renderAddNewOptionBox("location")}
+                      </>
+                    ) : (
+                      staff.location
+                    )}
+                  </td>
+                  <td
+                    className={
+                      isInlineEditing
+                        ? "px-6 py-4 text-gray-600 min-w-[200px]"
+                        : "px-6 py-4 text-gray-600 truncate max-w-[12rem]"
+                    }
+                  >
+                    {isInlineEditing && inlineForm ? (
+                      <>
+                        <select
+                          value={inlineForm.department}
+                          onChange={(event) => {
+                            if (event.target.value === "__add_new__") {
+                              setAddingOptionFor("department");
+                              setNewOptionName("");
+                              return;
+                            }
+                            setInlineForm({
+                              ...inlineForm,
+                              department: event.target.value,
+                            });
+                          }}
+                          className="block w-full min-w-[200px] rounded border border-gray-300 px-3 py-2 text-left text-sm"
+                        >
+                          <option value="">Select department</option>
+                          {orgOptions.departments.map((option) => (
+                            <option key={option.id} value={String(option.id)}>
+                              {optionLabel(option, "Department")}
+                            </option>
+                          ))}
+                          <option value="__add_new__">+ Add new...</option>
+                        </select>
+                        {addingOptionFor === "department" &&
+                          renderAddNewOptionBox("department")}
+                      </>
+                    ) : (
+                      staff.department
+                    )}
                   </td>
                   <td className="px-6 py-4 text-gray-600 truncate max-w-[12rem]">
                     {staff.cohort}
@@ -1046,51 +1579,101 @@ export default function AdminUsersPage() {
                     {staff.coursesAttended}
                   </td>
                   <td className="px-6 py-4">
-                    <span
-                      className={`px-3 py-1 rounded-full text-xs font-medium ${
-                        staff.status === "Active"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-gray-100 text-gray-600"
-                      }`}
-                    >
-                      {staff.status}
-                    </span>
+                    {isInlineEditing && inlineForm ? (
+                      <select
+                        value={inlineForm.is_active ? "active" : "inactive"}
+                        onChange={(event) =>
+                          setInlineForm({
+                            ...inlineForm,
+                            is_active: event.target.value === "active",
+                          })
+                        }
+                        className="w-full min-w-[130px] rounded border border-gray-300 px-2 py-1.5 text-left text-sm"
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    ) : (
+                      <span
+                        className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          staff.status === "Active"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {staff.status}
+                      </span>
+                    )}
                   </td>
-                  <td className="px-6 py-4 text-right relative">
-                    <button
-                      onClick={() => setSelectedStaff(staff)}
-                      className="text-sm text-[#1a6b3c] font-semibold hover:underline"
-                    >
-                      View Details
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenDropdownId(
-                          openDropdownId === staff.id ? null : staff.id,
-                        );
-                      }}
-                      className="text-gray-400 group-hover:text-[#1a6b3c] transition p-1 rounded-full hover:bg-gray-100 ml-2"
-                    >
-                      <MoreHorizontal size={18} />
-                    </button>
-                    {openDropdownId === staff.id && (
-                      <div className="absolute right-8 mt-2 w-32 bg-white rounded-lg shadow-lg z-10 border border-gray-100 py-1">
-                        <button
-                          onClick={() => startEditStaff(staff)}
-                          className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition"
-                        >
-                          <Edit3 size={14} />
-                          Edit
-                        </button>
-                        <button className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition">
-                          Delete
-                        </button>
+                  <td className="px-6 py-4 relative">
+                    {isInlineEditing ? (
+                      <div className="flex flex-col gap-2">
+                        {inlineError && (
+                          <p className="text-xs text-red-600">{inlineError}</p>
+                        )}
+                        <div className="flex items-center justify-center gap-3">
+                          <button
+                            onClick={() => void saveInlineEdit(staff)}
+                            disabled={inlineSaving}
+                            className="text-sm font-semibold text-[#1a6b3c] hover:underline"
+                          >
+                            {inlineSaving ? "Saving..." : "Save"}
+                          </button>
+                          <button
+                            onClick={cancelInlineEdit}
+                            disabled={inlineSaving}
+                            className="text-sm font-semibold text-gray-500 hover:underline"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => setSelectedStaff(staff)}
+                          className="text-sm text-[#1a6b3c] font-semibold hover:underline"
+                        >
+                          View Details
+                        </button>
+                        <button
+                          onClick={() => startInlineEdit(staff)}
+                          aria-label={`Edit ${staff.surname}`}
+                          className="text-gray-400 group-hover:text-[#1a6b3c] transition p-1 rounded-full hover:bg-gray-100 ml-2"
+                        >
+                          <Edit3 size={16} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenDropdownId(
+                              openDropdownId === staff.id ? null : staff.id,
+                            );
+                          }}
+                          className="text-gray-400 group-hover:text-[#1a6b3c] transition p-1 rounded-full hover:bg-gray-100 ml-1"
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+                        {openDropdownId === staff.id && (
+                          <div className="absolute right-8 mt-2 w-40 bg-white rounded-lg shadow-lg z-10 border border-gray-100 py-1">
+                            <button
+                              onClick={() => startEditStaff(staff)}
+                              className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition"
+                            >
+                              <Edit3 size={14} />
+                              Advanced edit
+                            </button>
+                            <button className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition">
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1197,6 +1780,15 @@ export default function AdminUsersPage() {
                   <p className="font-semibold text-gray-800 flex items-center gap-1.5">
                     <MapPin size={14} className="text-[#1a6b3c]" />{" "}
                     {selectedStaff.location}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Department
+                  </p>
+                  <p className="font-semibold text-gray-800 flex items-center gap-1.5">
+                    <Briefcase size={14} className="text-[#1a6b3c]" />{" "}
+                    {selectedStaff.department}
                   </p>
                 </div>
                 <div className="col-span-2">
@@ -1476,7 +2068,7 @@ export default function AdminUsersPage() {
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
                     <label className="text-sm font-medium text-gray-700">
-                      State
+                      Location
                       <select
                         value={editForm.posting.state}
                         disabled={loadingOrgOptions}
@@ -1491,10 +2083,10 @@ export default function AdminUsersPage() {
                         }
                         className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
                       >
-                        <option value="">Select state</option>
+                        <option value="">Select location</option>
                         {orgOptions.states.map((option) => (
                           <option key={option.id} value={String(option.id)}>
-                            {optionLabel(option, "State")}
+                            {optionLabel(option, "Location")}
                           </option>
                         ))}
                       </select>
@@ -1837,22 +2429,6 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Date of Birth
-                  </label>
-                  <input
-                    type="date"
-                    value={staffRecordForm.date_of_birth}
-                    onChange={(event) =>
-                      setStaffRecordForm({
-                        ...staffRecordForm,
-                        date_of_birth: event.target.value,
-                      })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                  />
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Employment Date
                   </label>
                   <input
@@ -1869,7 +2445,7 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    State
+                    Location
                   </label>
                   <select
                     value={staffRecordForm.state}
@@ -1882,10 +2458,10 @@ export default function AdminUsersPage() {
                     }
                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
                   >
-                    <option value="">Select state...</option>
+                    <option value="">Select location...</option>
                     {orgOptions.states.map((option) => (
                       <option key={option.id} value={String(option.id)}>
-                        {optionLabel(option, "State")}
+                        {optionLabel(option, "Location")}
                       </option>
                     ))}
                   </select>
@@ -1974,6 +2550,98 @@ export default function AdminUsersPage() {
                 >
                   {creatingStaffRecord ? "Saving..." : "Save Staff Record"}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View All Staff Modal */}
+      {showAllStaffModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-3xl flex flex-col overflow-hidden max-h-[90vh]">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50 shrink-0">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">
+                  All Staff
+                </h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Registered staff and staff records still awaiting
+                  registration.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAllStaffModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {allStaffError && (
+                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                  {allStaffError}
+                </div>
+              )}
+
+              <div>
+                <h4 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-2">
+                  Registered ({staffList.length})
+                </h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {staffList.map((staff) => (
+                    <div
+                      key={staff.id}
+                      className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2"
+                    >
+                      <span className="text-sm font-semibold text-gray-800">
+                        {staff.surname} {staff.otherNames}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {staff.fileNo}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold uppercase tracking-wide text-gray-500 mb-2">
+                  Not Yet Registered ({unregisteredStaff.length})
+                </h4>
+
+                {loadingAllStaff ? (
+                  <p className="text-sm text-gray-500">Loading...</p>
+                ) : !unregisteredSupported ? (
+                  <p className="text-sm text-gray-500">
+                    The backend doesn&apos;t support listing unregistered
+                    staff records yet, so this section can&apos;t show
+                    anyone until that&apos;s added.
+                  </p>
+                ) : unregisteredStaff.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    Everyone who has a staff record has also registered.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {unregisteredStaff.map((record) => (
+                      <div
+                        key={record.file_number}
+                        className="flex items-center justify-between rounded-lg border border-amber-100 bg-amber-50 px-3 py-2"
+                      >
+                        <span className="text-sm font-semibold text-gray-800">
+                          {[record.first_name, record.last_name]
+                            .filter(Boolean)
+                            .join(" ") || "Not registered"}
+                        </span>
+                        <span className="text-xs text-gray-500">
+                          {record.file_number}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
