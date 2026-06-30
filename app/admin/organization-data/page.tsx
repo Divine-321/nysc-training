@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import { Edit3, Plus, Trash2 } from "lucide-react";
+import { Edit3, Plus, Trash2, Users, X } from "lucide-react";
 import { extractErrorMessage, readApiList } from "@/app/lib/portal-api";
 import { useConfirm } from "@/app/components/useConfirm";
 
@@ -13,8 +13,40 @@ type Item = {
   code?: string;
   level?: number;
   name?: string;
+  short_form?: string;
   description?: string;
 };
+
+type BlockingStaffEntry = {
+  file_number?: string;
+  first_name?: string;
+  last_name?: string;
+  name?: string;
+};
+
+type BlockingStaffNotice = {
+  itemLabel: string;
+  staff: BlockingStaffEntry[];
+};
+
+function extractBlockingStaff(payload: unknown): BlockingStaffEntry[] | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const data = (payload as { data?: unknown }).data;
+  if (!data || typeof data !== "object") return null;
+
+  const list = (data as { blocking_staff?: unknown }).blocking_staff;
+  return Array.isArray(list) ? (list as BlockingStaffEntry[]) : null;
+}
+
+function blockingStaffLabel(entry: BlockingStaffEntry) {
+  return (
+    entry.name ||
+    [entry.first_name, entry.last_name].filter(Boolean).join(" ") ||
+    entry.file_number ||
+    "Unknown staff"
+  );
+}
 
 const RESOURCES: { key: ResourceKey; label: string }[] = [
   { key: "ranks", label: "Ranks" },
@@ -39,6 +71,7 @@ const FIELD_CONFIG: Record<ResourceKey, { name: keyof Item; placeholder: string;
   ],
   departments: [
     { name: "name", placeholder: "Department name" },
+    { name: "short_form", placeholder: "Short form, e.g. ICT" },
     { name: "description", placeholder: "Description (optional)" },
   ],
 };
@@ -56,6 +89,9 @@ export default function OrganizationDataPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [blockingStaff, setBlockingStaff] = useState<BlockingStaffNotice | null>(
+    null,
+  );
 
   const loadItems = useCallback(async (key: ResourceKey) => {
     try {
@@ -153,6 +189,7 @@ export default function OrganizationDataPage() {
 
     setError("");
     setNotice("");
+    setBlockingStaff(null);
 
     try {
       const response = await fetch(`/api/organization/${resource}/${item.id}`, {
@@ -161,6 +198,22 @@ export default function OrganizationDataPage() {
       const payload = response.status === 204 ? null : await response.json().catch(() => null);
 
       if (!response.ok) {
+        const blockingList = extractBlockingStaff(payload);
+
+        if (blockingList && blockingList.length > 0) {
+          setBlockingStaff({
+            itemLabel: String(item.title ?? item.name ?? item.code ?? "this item"),
+            staff: blockingList,
+          });
+          return;
+        }
+
+        if (response.status === 500) {
+          throw new Error(
+            `Could not delete "${item.title ?? item.name ?? item.code}" — it's likely still assigned to one or more staff records. Remove it from those staff first, then try again.`,
+          );
+        }
+
         throw new Error(extractErrorMessage(payload, "Could not delete."));
       }
 
@@ -251,6 +304,7 @@ export default function OrganizationDataPage() {
                   <td className="p-4 text-gray-700">
                     {item.title ?? item.name}
                     {item.code ? ` (${item.code})` : ""}
+                    {item.short_form ? ` (${item.short_form})` : ""}
                     {item.level !== undefined ? ` — level ${item.level}` : ""}
                   </td>
                   <td className="p-4">
@@ -269,6 +323,66 @@ export default function OrganizationDataPage() {
           </table>
         )}
       </div>
+
+      {blockingStaff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                  <Users size={18} className="text-amber-700" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-800">Can&apos;t delete</h3>
+                  <p className="text-xs text-gray-500">
+                    &quot;{blockingStaff.itemLabel}&quot; is still assigned to{" "}
+                    {blockingStaff.staff.length} staff member
+                    {blockingStaff.staff.length === 1 ? "" : "s"}.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBlockingStaff(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border p-2">
+              {blockingStaff.staff.map((entry, index) => (
+                <div
+                  key={entry.file_number ?? index}
+                  className="flex items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-gray-50"
+                >
+                  <span className="font-medium text-gray-700">
+                    {blockingStaffLabel(entry)}
+                  </span>
+                  {entry.file_number && (
+                    <span className="text-xs text-gray-400">
+                      {entry.file_number}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-4 text-xs text-gray-500">
+              Reassign or remove these staff from &quot;{blockingStaff.itemLabel}
+              &quot; first, then try deleting it again.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setBlockingStaff(null)}
+              className="mt-4 w-full rounded-xl bg-[#1a6b3c] px-5 py-2.5 text-sm font-bold text-white"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {dialog}
     </div>

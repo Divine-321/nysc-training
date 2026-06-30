@@ -14,6 +14,7 @@ import {
   Hash,
   Layers,
   Mail,
+  Trash2,
   Users,
 } from "lucide-react";
 
@@ -22,6 +23,7 @@ import {
   readApiList,
   type AuthUser,
 } from "@/app/lib/portal-api";
+import { useConfirm } from "@/app/components/useConfirm";
 
 type StaffUser = {
   id: string;
@@ -170,6 +172,7 @@ type StaffRecordForm = {
 };
 
 type UnregisteredStaffRecord = {
+  id: number;
   file_number: string;
   first_name?: string;
   middle_name?: string;
@@ -213,6 +216,13 @@ const emptyStaffRecordForm: StaffRecordForm = {
   grade_level: "",
   rank: "",
 };
+
+const HQ_LOCATION_NAME = "NATIONAL DIRECTORATE HEADQUARTERS";
+
+function isHqLocation(stateId: string, states: OrgOption[]) {
+  const selected = states.find((option) => String(option.id) === stateId);
+  return (selected?.name ?? "").trim().toUpperCase() === HQ_LOCATION_NAME;
+}
 
 function optionLabel(option: OrgOption, fallbackPrefix: string) {
   return (
@@ -276,6 +286,7 @@ function formatCohortAssignmentError(message: string) {
 }
 
 export default function AdminUsersPage() {
+  const { confirm, dialog } = useConfirm();
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
   const [editingStaff, setEditingStaff] = useState<StaffUser | null>(null);
   const [editForm, setEditForm] = useState<StaffEditForm | null>(null);
@@ -309,6 +320,16 @@ export default function AdminUsersPage() {
     UnregisteredStaffRecord[]
   >([]);
   const [unregisteredSupported, setUnregisteredSupported] = useState(true);
+  const [editingUnregisteredId, setEditingUnregisteredId] = useState<
+    number | null
+  >(null);
+  const [unregisteredEditForm, setUnregisteredEditForm] =
+    useState<StaffRecordForm>(emptyStaffRecordForm);
+  const [savingUnregisteredEdit, setSavingUnregisteredEdit] = useState(false);
+  const [unregisteredEditError, setUnregisteredEditError] = useState("");
+  const [deletingUnregisteredId, setDeletingUnregisteredId] = useState<
+    number | null
+  >(null);
 
   const pageSize = 20;
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -832,6 +853,39 @@ export default function AdminUsersPage() {
     setEditError("");
   };
 
+  const handleDeleteStaff = async (staff: StaffUser) => {
+    const confirmed = await confirm(
+      `Delete ${staff.surname} ${staff.otherNames}? This permanently removes their account.`,
+      { danger: true },
+    );
+
+    if (!confirmed) return;
+
+    setOpenDropdownId(null);
+    setStaffError("");
+
+    try {
+      const response = await fetch(`/api/accounts/staff/${staff.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok && response.status !== 204) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          extractErrorMessage(payload, "Could not delete this staff member."),
+        );
+      }
+
+      setLiveStaff((current) => current.filter((item) => item.id !== staff.id));
+    } catch (deleteError) {
+      setStaffError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Could not delete this staff member.",
+      );
+    }
+  };
+
   const openAddStaffModal = () => {
     setStaffRecordForm(emptyStaffRecordForm);
     setAddStaffError("");
@@ -856,15 +910,19 @@ export default function AdminUsersPage() {
       return;
     }
 
+    const isHq = isHqLocation(staffRecordForm.state, orgOptions.states);
+
     if (
       !staffRecordForm.sex ||
       !staffRecordForm.state ||
-      !staffRecordForm.department ||
       !staffRecordForm.grade_level ||
-      !staffRecordForm.rank
+      !staffRecordForm.rank ||
+      (isHq && !staffRecordForm.department)
     ) {
       setAddStaffError(
-        "Sex, state, department, grade level and rank are required.",
+        isHq
+          ? "Sex, state, department, grade level and rank are required."
+          : "Sex, state, grade level and rank are required.",
       );
       return;
     }
@@ -885,7 +943,7 @@ export default function AdminUsersPage() {
           ? { employment_date: staffRecordForm.employment_date }
           : {}),
         state: Number(staffRecordForm.state),
-        department: Number(staffRecordForm.department),
+        department: isHq ? Number(staffRecordForm.department) : null,
         grade_level: Number(staffRecordForm.grade_level),
         rank: Number(staffRecordForm.rank),
       };
@@ -922,6 +980,141 @@ export default function AdminUsersPage() {
       );
     } finally {
       setCreatingStaffRecord(false);
+    }
+  };
+
+  const startEditUnregisteredStaff = (record: UnregisteredStaffRecord) => {
+    setEditingUnregisteredId(record.id);
+    setUnregisteredEditForm({
+      file_number: record.file_number,
+      first_name: record.first_name ?? "",
+      middle_name: record.middle_name ?? "",
+      last_name: record.last_name ?? "",
+      sex: record.sex === "male" || record.sex === "female" ? record.sex : "",
+      date_of_birth: record.date_of_birth ?? "",
+      employment_date: record.employment_date ?? "",
+      state: record.state?.id ? String(record.state.id) : "",
+      department: record.department?.id ? String(record.department.id) : "",
+      grade_level: record.grade_level?.id ? String(record.grade_level.id) : "",
+      rank: record.rank?.id ? String(record.rank.id) : "",
+    });
+    setUnregisteredEditError("");
+  };
+
+  const closeUnregisteredEditModal = () => {
+    setEditingUnregisteredId(null);
+    setUnregisteredEditForm(emptyStaffRecordForm);
+    setUnregisteredEditError("");
+  };
+
+  const handleSaveUnregisteredStaff = async () => {
+    if (editingUnregisteredId === null) return;
+
+    if (
+      !unregisteredEditForm.first_name.trim() ||
+      !unregisteredEditForm.last_name.trim()
+    ) {
+      setUnregisteredEditError("First name and surname are required.");
+      return;
+    }
+
+    const isHq = isHqLocation(unregisteredEditForm.state, orgOptions.states);
+
+    setSavingUnregisteredEdit(true);
+    setUnregisteredEditError("");
+
+    try {
+      const payload = {
+        first_name: unregisteredEditForm.first_name.trim(),
+        middle_name: unregisteredEditForm.middle_name.trim(),
+        last_name: unregisteredEditForm.last_name.trim(),
+        sex: unregisteredEditForm.sex || undefined,
+        date_of_birth: unregisteredEditForm.date_of_birth || null,
+        employment_date: unregisteredEditForm.employment_date || null,
+        state: unregisteredEditForm.state
+          ? Number(unregisteredEditForm.state)
+          : undefined,
+        department: isHq ? Number(unregisteredEditForm.department) : null,
+        grade_level: unregisteredEditForm.grade_level
+          ? Number(unregisteredEditForm.grade_level)
+          : undefined,
+        rank: unregisteredEditForm.rank
+          ? Number(unregisteredEditForm.rank)
+          : undefined,
+      };
+
+      const response = await fetch(
+        `/api/accounts/staff-records/${editingUnregisteredId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const responsePayload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(
+            responsePayload,
+            "Could not update this staff record.",
+          ),
+        );
+      }
+
+      closeUnregisteredEditModal();
+      setStaffReloadKey((current) => current + 1);
+    } catch (saveError) {
+      setUnregisteredEditError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Could not update this staff record.",
+      );
+    } finally {
+      setSavingUnregisteredEdit(false);
+    }
+  };
+
+  const handleDeleteUnregisteredStaff = async (
+    record: UnregisteredStaffRecord,
+  ) => {
+    const confirmed = await confirm(
+      `Delete the staff record for ${
+        [record.first_name, record.last_name].filter(Boolean).join(" ") ||
+        record.file_number
+      }? This staff member will no longer be able to register.`,
+      { danger: true },
+    );
+
+    if (!confirmed) return;
+
+    setDeletingUnregisteredId(record.id);
+    setUnregisteredError("");
+
+    try {
+      const response = await fetch(
+        `/api/accounts/staff-records/${record.id}`,
+        { method: "DELETE" },
+      );
+
+      if (!response.ok && response.status !== 204) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          extractErrorMessage(payload, "Could not delete this staff record."),
+        );
+      }
+
+      setUnregisteredStaff((current) =>
+        current.filter((item) => item.id !== record.id),
+      );
+    } catch (deleteError) {
+      setUnregisteredError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Could not delete this staff record.",
+      );
+    } finally {
+      setDeletingUnregisteredId(null);
     }
   };
 
@@ -1214,7 +1407,10 @@ export default function AdminUsersPage() {
                     </button>
                     {openDropdownId === staff.id && (
                       <div className="absolute right-8 mt-2 w-40 bg-white rounded-lg shadow-lg z-10 border border-gray-100 py-1">
-                        <button className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition">
+                        <button
+                          onClick={() => void handleDeleteStaff(staff)}
+                          className="w-full text-left block px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition"
+                        >
                           Delete
                         </button>
                       </div>
@@ -1314,11 +1510,12 @@ export default function AdminUsersPage() {
                   <th className="px-5 py-3 font-medium">Grade Level</th>
                   <th className="px-5 py-3 font-medium">Department</th>
                   <th className="px-5 py-3 font-medium">Location</th>
+                  <th className="px-5 py-3 font-medium text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {unregisteredStaff.map((record) => (
-                  <tr key={record.file_number} className="bg-amber-50/40">
+                  <tr key={record.id} className="bg-amber-50/40">
                     <td className="px-5 py-3 font-medium text-gray-700">
                       {record.file_number}
                     </td>
@@ -1347,6 +1544,27 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-5 py-3 text-gray-600">
                       {record.state?.name ?? "Not assigned"}
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => startEditUnregisteredStaff(record)}
+                          aria-label={`Edit ${record.file_number}`}
+                          className="text-[#1a6b3c]"
+                        >
+                          <Edit3 size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteUnregisteredStaff(record)}
+                          disabled={deletingUnregisteredId === record.id}
+                          aria-label={`Delete ${record.file_number}`}
+                          className="text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1650,54 +1868,10 @@ export default function AdminUsersPage() {
                       <option value="F">F</option>
                     </select>
                   </label>
-
-                  <label className="text-sm font-medium text-gray-700">
-                    Date of birth
-                    <input
-                      type="date"
-                      value={editForm.profile.date_of_birth}
-                      onChange={(event) =>
-                        setEditForm({
-                          ...editForm,
-                          profile: {
-                            ...editForm.profile,
-                            date_of_birth: event.target.value,
-                          },
-                        })
-                      }
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                    />
-                  </label>
-
-                  <label className="text-sm font-medium text-gray-700">
-                    Employment date
-                    <input
-                      type="date"
-                      value={editForm.profile.employment_date}
-                      onChange={(event) =>
-                        setEditForm({
-                          ...editForm,
-                          profile: {
-                            ...editForm.profile,
-                            employment_date: event.target.value,
-                          },
-                        })
-                      }
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                    />
-                  </label>
                 </div>
               </section>
 
               <section className="space-y-4 border-t border-gray-100 pt-6">
-                <div>
-                  <h4 className="font-bold text-gray-800">Current posting</h4>
-                  <p className="text-xs text-gray-500">
-                    This updates the current posting in place. It does not
-                    create a transfer history record.
-                  </p>
-                </div>
-
                 {!editingStaff.hasPosting ? (
                   <div className="rounded-lg bg-yellow-50 p-3 text-sm text-yellow-700">
                     This staff member does not have a current posting yet, so
@@ -1716,6 +1890,7 @@ export default function AdminUsersPage() {
                             posting: {
                               ...editForm.posting,
                               state: event.target.value,
+                              department: "",
                             },
                           })
                         }
@@ -1730,35 +1905,37 @@ export default function AdminUsersPage() {
                       </select>
                     </label>
 
-                    <label className="text-sm font-medium text-gray-700">
-                      Department
-                      <select
-                        value={editForm.posting.department}
-                        disabled={loadingOrgOptions}
-                        onChange={(event) =>
-                          setEditForm({
-                            ...editForm,
-                            posting: {
-                              ...editForm.posting,
-                              department: event.target.value,
-                            },
-                          })
-                        }
-                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                      >
-                        <option value="">No department</option>
-                        {orgOptions.departments.map((option) => (
-                          <option key={option.id} value={String(option.id)}>
-                            {option.short_form
-                              ? `${option.short_form} - ${optionLabel(
-                                  option,
-                                  "Department",
-                                )}`
-                              : optionLabel(option, "Department")}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    {isHqLocation(editForm.posting.state, orgOptions.states) && (
+                      <label className="text-sm font-medium text-gray-700">
+                        Department
+                        <select
+                          value={editForm.posting.department}
+                          disabled={loadingOrgOptions}
+                          onChange={(event) =>
+                            setEditForm({
+                              ...editForm,
+                              posting: {
+                                ...editForm.posting,
+                                department: event.target.value,
+                              },
+                            })
+                          }
+                          className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                        >
+                          <option value="">No department</option>
+                          {orgOptions.departments.map((option) => (
+                            <option key={option.id} value={String(option.id)}>
+                              {option.short_form
+                                ? `${option.short_form} - ${optionLabel(
+                                    option,
+                                    "Department",
+                                  )}`
+                                : optionLabel(option, "Department")}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
 
                     <label className="text-sm font-medium text-gray-700">
                       Grade level
@@ -1812,104 +1989,6 @@ export default function AdminUsersPage() {
                       </select>
                     </label>
 
-                    <label className="text-sm font-medium text-gray-700">
-                      Posting reason
-                      <select
-                        value={editForm.posting.posting_reason}
-                        disabled={loadingOrgOptions}
-                        onChange={(event) =>
-                          setEditForm({
-                            ...editForm,
-                            posting: {
-                              ...editForm.posting,
-                              posting_reason: event.target.value,
-                            },
-                          })
-                        }
-                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                      >
-                        <option value="">No posting reason</option>
-                        {orgOptions.postingReasons.map((option) => (
-                          <option key={option.id} value={String(option.id)}>
-                            {optionLabel(option, "Reason")}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      Posting status
-                      <select
-                        value={editForm.posting.status}
-                        onChange={(event) =>
-                          setEditForm({
-                            ...editForm,
-                            posting: {
-                              ...editForm.posting,
-                              status: event.target.value as "active" | "retired",
-                            },
-                          })
-                        }
-                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                      >
-                        <option value="active">Active</option>
-                        <option value="retired">Retired</option>
-                      </select>
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      Start date
-                      <input
-                        type="date"
-                        value={editForm.posting.start_date}
-                        onChange={(event) =>
-                          setEditForm({
-                            ...editForm,
-                            posting: {
-                              ...editForm.posting,
-                              start_date: event.target.value,
-                            },
-                          })
-                        }
-                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                      />
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700">
-                      End date
-                      <input
-                        type="date"
-                        value={editForm.posting.end_date}
-                        onChange={(event) =>
-                          setEditForm({
-                            ...editForm,
-                            posting: {
-                              ...editForm.posting,
-                              end_date: event.target.value,
-                            },
-                          })
-                        }
-                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                      />
-                    </label>
-
-                    <label className="text-sm font-medium text-gray-700 md:col-span-2">
-                      Remarks
-                      <textarea
-                        value={editForm.posting.remarks}
-                        onChange={(event) =>
-                          setEditForm({
-                            ...editForm,
-                            posting: {
-                              ...editForm.posting,
-                              remarks: event.target.value,
-                            },
-                          })
-                        }
-                        className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                        rows={3}
-                      />
-                    </label>
                   </div>
                 )}
               </section>
@@ -2092,6 +2171,7 @@ export default function AdminUsersPage() {
                       setStaffRecordForm({
                         ...staffRecordForm,
                         state: event.target.value,
+                        department: "",
                       })
                     }
                     className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
@@ -2104,29 +2184,31 @@ export default function AdminUsersPage() {
                     ))}
                   </select>
                 </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Department
-                  </label>
-                  <select
-                    value={staffRecordForm.department}
-                    disabled={loadingOrgOptions}
-                    onChange={(event) =>
-                      setStaffRecordForm({
-                        ...staffRecordForm,
-                        department: event.target.value,
-                      })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                  >
-                    <option value="">Select department...</option>
-                    {orgOptions.departments.map((option) => (
-                      <option key={option.id} value={String(option.id)}>
-                        {optionLabel(option, "Department")}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {isHqLocation(staffRecordForm.state, orgOptions.states) && (
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Department
+                    </label>
+                    <select
+                      value={staffRecordForm.department}
+                      disabled={loadingOrgOptions}
+                      onChange={(event) =>
+                        setStaffRecordForm({
+                          ...staffRecordForm,
+                          department: event.target.value,
+                        })
+                      }
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                    >
+                      <option value="">Select department...</option>
+                      {orgOptions.departments.map((option) => (
+                        <option key={option.id} value={String(option.id)}>
+                          {optionLabel(option, "Department")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Grade Level
@@ -2187,6 +2269,262 @@ export default function AdminUsersPage() {
                   className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#1a6b3c] hover:bg-[#145530] shadow-sm transition disabled:opacity-50"
                 >
                   {creatingStaffRecord ? "Saving..." : "Save Staff Record"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Unregistered Staff Modal */}
+      {editingUnregisteredId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[90vh]">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50 shrink-0">
+              <div>
+                <h3 className="font-bold text-lg text-gray-800">
+                  Edit Staff Record
+                </h3>
+                <p className="mt-1 text-xs text-gray-500">
+                  File number cannot be changed here.
+                </p>
+              </div>
+              <button
+                onClick={closeUnregisteredEditModal}
+                className="text-gray-400 hover:text-gray-700 bg-white hover:bg-gray-100 border border-gray-200 rounded-full p-2 transition shadow-sm"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5 overflow-y-auto flex-1">
+              {unregisteredEditError && (
+                <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                  {unregisteredEditError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-5">
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    File Number
+                  </label>
+                  <input
+                    type="text"
+                    value={unregisteredEditForm.file_number}
+                    disabled
+                    className="w-full border border-gray-200 bg-gray-50 rounded-lg px-4 py-2.5 text-sm text-gray-500"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    First Name
+                  </label>
+                  <input
+                    type="text"
+                    value={unregisteredEditForm.first_name}
+                    onChange={(event) =>
+                      setUnregisteredEditForm({
+                        ...unregisteredEditForm,
+                        first_name: event.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] capitalize"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Middle Name
+                  </label>
+                  <input
+                    type="text"
+                    value={unregisteredEditForm.middle_name}
+                    onChange={(event) =>
+                      setUnregisteredEditForm({
+                        ...unregisteredEditForm,
+                        middle_name: event.target.value,
+                      })
+                    }
+                    placeholder="Optional"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Surname
+                  </label>
+                  <input
+                    type="text"
+                    value={unregisteredEditForm.last_name}
+                    onChange={(event) =>
+                      setUnregisteredEditForm({
+                        ...unregisteredEditForm,
+                        last_name: event.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] capitalize"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Sex
+                  </label>
+                  <select
+                    value={unregisteredEditForm.sex}
+                    onChange={(event) =>
+                      setUnregisteredEditForm({
+                        ...unregisteredEditForm,
+                        sex: event.target.value as StaffRecordForm["sex"],
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  >
+                    <option value="">Select sex...</option>
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Employment Date
+                  </label>
+                  <input
+                    type="date"
+                    value={unregisteredEditForm.employment_date}
+                    onChange={(event) =>
+                      setUnregisteredEditForm({
+                        ...unregisteredEditForm,
+                        employment_date: event.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Date of Birth
+                  </label>
+                  <input
+                    type="date"
+                    value={unregisteredEditForm.date_of_birth}
+                    onChange={(event) =>
+                      setUnregisteredEditForm({
+                        ...unregisteredEditForm,
+                        date_of_birth: event.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Location
+                  </label>
+                  <select
+                    value={unregisteredEditForm.state}
+                    disabled={loadingOrgOptions}
+                    onChange={(event) =>
+                      setUnregisteredEditForm({
+                        ...unregisteredEditForm,
+                        state: event.target.value,
+                        department: "",
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  >
+                    <option value="">Select location...</option>
+                    {orgOptions.states.map((option) => (
+                      <option key={option.id} value={String(option.id)}>
+                        {optionLabel(option, "Location")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {isHqLocation(unregisteredEditForm.state, orgOptions.states) && (
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Department
+                    </label>
+                    <select
+                      value={unregisteredEditForm.department}
+                      disabled={loadingOrgOptions}
+                      onChange={(event) =>
+                        setUnregisteredEditForm({
+                          ...unregisteredEditForm,
+                          department: event.target.value,
+                        })
+                      }
+                      className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                    >
+                      <option value="">Select department...</option>
+                      {orgOptions.departments.map((option) => (
+                        <option key={option.id} value={String(option.id)}>
+                          {optionLabel(option, "Department")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Grade Level
+                  </label>
+                  <select
+                    value={unregisteredEditForm.grade_level}
+                    disabled={loadingOrgOptions}
+                    onChange={(event) =>
+                      setUnregisteredEditForm({
+                        ...unregisteredEditForm,
+                        grade_level: event.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  >
+                    <option value="">Select grade level...</option>
+                    {orgOptions.gradeLevels.map((option) => (
+                      <option key={option.id} value={String(option.id)}>
+                        {optionLabel(option, "Grade")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Rank
+                  </label>
+                  <select
+                    value={unregisteredEditForm.rank}
+                    disabled={loadingOrgOptions}
+                    onChange={(event) =>
+                      setUnregisteredEditForm({
+                        ...unregisteredEditForm,
+                        rank: event.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  >
+                    <option value="">Select rank...</option>
+                    {orgOptions.ranks.map((option) => (
+                      <option key={option.id} value={String(option.id)}>
+                        {optionLabel(option, "Rank")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="pt-4 border-t border-gray-100 flex gap-3 justify-end">
+                <button
+                  onClick={closeUnregisteredEditModal}
+                  className="px-5 py-2.5 rounded-xl text-sm font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => void handleSaveUnregisteredStaff()}
+                  disabled={savingUnregisteredEdit}
+                  className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#1a6b3c] hover:bg-[#145530] shadow-sm transition disabled:opacity-50"
+                >
+                  {savingUnregisteredEdit ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </div>
@@ -2443,6 +2781,8 @@ export default function AdminUsersPage() {
           </div>
         </div>
       )}
+
+      {dialog}
     </div>
   );
 }

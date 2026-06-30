@@ -203,5 +203,17 @@ export async function proxyApi(method: string, options: ProxyOptions) {
     return new NextResponse(null, { status: 204 });
   }
 
-  return NextResponse.json(payload, { status: response.status });
+  const finalPayload =
+    !response.ok && (payload === null || payload === undefined)
+      ? {
+          success: false,
+          message:
+            response.status === 401
+              ? "Your session has expired. Please log in again."
+              : `Request failed with status ${response.status}.`,
+          data: null,
+        }
+      : payload;
+
+  return NextResponse.json(finalPayload, { status: response.status });
 }
