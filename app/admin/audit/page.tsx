@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import {
   extractErrorMessage,
@@ -22,9 +22,42 @@ type AuditLog = {
   created_at: string;
 };
 
+type PartitionId =
+  | "all"
+  | "deletes"
+  | "registrations"
+  | "logins"
+  | "creates"
+  | "updates"
+  | "other";
+
+const PARTITIONS: { id: PartitionId; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "deletes", label: "Deletes" },
+  { id: "registrations", label: "Registered" },
+  { id: "logins", label: "Logins" },
+  { id: "creates", label: "Creates" },
+  { id: "updates", label: "Updates" },
+  { id: "other", label: "Other" },
+];
+
+function partitionOf(action: string): PartitionId {
+  const [method, path = ""] = action.trim().split(/\s+/, 2);
+  const httpMethod = method?.toUpperCase() ?? "";
+
+  if (httpMethod === "DELETE") return "deletes";
+  if (path.includes("/auth/register")) return "registrations";
+  if (path.includes("/auth/login")) return "logins";
+  if (httpMethod === "POST") return "creates";
+  if (httpMethod === "PATCH" || httpMethod === "PUT") return "updates";
+
+  return "other";
+}
+
 export default function AuditTrailPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [search, setSearch] = useState("");
+  const [activePartition, setActivePartition] = useState<PartitionId>("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -58,19 +91,33 @@ export default function AuditTrailPage() {
     void loadLogs();
   }, []);
 
+  const partitionCounts = useMemo(() => {
+    const counts = new Map<PartitionId, number>();
+
+    for (const log of logs) {
+      const partition = partitionOf(log.action);
+      counts.set(partition, (counts.get(partition) ?? 0) + 1);
+    }
+
+    return counts;
+  }, [logs]);
+
   const normalizedSearch = search.trim().toLowerCase();
 
-  const filteredLogs = logs.filter((log) =>
-    [
-      log.action,
-      log.description,
-      log.user.email,
-      log.user.first_name,
-      log.user.last_name,
-    ].some((value) =>
-      value.toLowerCase().includes(normalizedSearch)
+  const filteredLogs = logs
+    .filter(
+      (log) =>
+        activePartition === "all" || partitionOf(log.action) === activePartition
     )
-  );
+    .filter((log) =>
+      [
+        log.action,
+        log.description,
+        log.user.email,
+        log.user.first_name,
+        log.user.last_name,
+      ].some((value) => value.toLowerCase().includes(normalizedSearch))
+    );
 
   return (
     <div className="space-y-6">
@@ -88,6 +135,40 @@ export default function AuditTrailPage() {
           {error}
         </div>
       )}
+
+      <div className="flex flex-wrap gap-2">
+        {PARTITIONS.map((partition) => {
+          const isActive = activePartition === partition.id;
+          const count =
+            partition.id === "all"
+              ? logs.length
+              : (partitionCounts.get(partition.id) ?? 0);
+
+          return (
+            <button
+              key={partition.id}
+              type="button"
+              onClick={() => setActivePartition(partition.id)}
+              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                isActive
+                  ? "bg-[#1a6b3c] text-white shadow-sm"
+                  : "bg-white text-gray-600 hover:bg-green-50 hover:text-[#1a6b3c]"
+              }`}
+            >
+              {partition.label}
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                  isActive
+                    ? "bg-white/20 text-white"
+                    : "bg-gray-100 text-gray-500"
+                }`}
+              >
+                {loading ? "…" : count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       <div className="overflow-hidden rounded-2xl bg-white shadow-sm">
         <div className="relative max-w-md p-5">

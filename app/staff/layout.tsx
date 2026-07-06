@@ -360,7 +360,7 @@ export default function StaffLayout({
   return (
     <AuthGuard allowedRoles={STAFF_ROLES}>
       <div className="min-h-screen flex flex-col">
-        <header className="h-16 bg-white flex items-center justify-between px-4 sm:px-8 fixed top-0 left-0 lg:left-60 right-0 z-40 border-b border-gray-100">
+        <header className="h-16 bg-white flex items-center justify-between px-4 sm:px-8 fixed top-0 left-0 lg:left-60 right-0 z-40 border-b border-gray-100 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
@@ -529,7 +529,7 @@ export default function StaffLayout({
           </div>
         </header>
 
-        <div className="flex pt-16 min-h-screen">
+        <div className="flex pt-16 min-h-screen print:pt-0 print:min-h-0">
           {isSidebarOpen && (
             <div
               onClick={() => setIsSidebarOpen(false)}
@@ -538,7 +538,7 @@ export default function StaffLayout({
           )}
 
           <aside
-            className={`w-64 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col justify-between py-6 px-4 z-50 shadow-xl overflow-y-auto transition-transform duration-300 ease-in-out lg:w-60 lg:translate-x-0 ${
+            className={`w-64 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col justify-between py-6 px-4 z-50 shadow-xl overflow-y-auto transition-transform duration-300 ease-in-out lg:w-60 lg:translate-x-0 print:hidden ${
               isSidebarOpen ? "translate-x-0" : "-translate-x-full"
             }`}
           >
@@ -621,7 +621,7 @@ export default function StaffLayout({
             </div>
           </aside>
 
-          <main className="ml-0 lg:ml-60 flex-1 bg-gray-100 min-h-screen p-4 sm:p-6">
+          <main className="ml-0 lg:ml-60 flex-1 bg-gray-100 min-h-screen p-4 sm:p-6 print:ml-0 print:min-h-0 print:bg-white print:p-0">
             {children}
           </main>
         </div>

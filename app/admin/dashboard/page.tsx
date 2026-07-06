@@ -124,10 +124,6 @@ export default function AdminDashboardPage() {
       value: analytics?.totalNumberOfActiveCohorts,
     },
     {
-      label: "Departments",
-      value: analytics?.totalNumberOfDepartments,
-    },
-    {
       label: "Upcoming Sessions",
       value: analytics?.totalUpcomingLiveSessionsWithinMonth,
     },
@@ -182,7 +178,7 @@ export default function AdminDashboardPage() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {secondaryStats.map((stat) => (
           <div
             key={stat.label}

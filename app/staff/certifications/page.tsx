@@ -85,7 +85,7 @@ export default function CertificationsPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
-      <div>
+      <div className="print:hidden">
         <h2 className="mb-1 text-2xl font-bold text-gray-800">
           Certifications
         </h2>
@@ -95,7 +95,7 @@ export default function CertificationsPage() {
       </div>
 
       {error && (
-        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
+        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700 print:hidden">
           {error}
         </div>
       )}
@@ -109,8 +109,8 @@ export default function CertificationsPage() {
           You do not have any certificates yet.
         </p>
       ) : selectedCert ? (
-        <div className="flex flex-col gap-6 lg:flex-row">
-          <div className="space-y-4 lg:w-1/3">
+        <div className="flex flex-col gap-6 lg:flex-row print:block">
+          <div className="space-y-4 lg:w-1/3 print:hidden">
             {certificates.map((cert) => (
               <button
                 key={cert.id}
@@ -156,7 +156,7 @@ export default function CertificationsPage() {
             ))}
           </div>
 
-          <div className="flex flex-col items-center lg:w-2/3">
+          <div className="flex flex-col items-center lg:w-2/3 print:w-full">
             <div className="flex w-full items-center justify-between rounded-t-2xl border border-b-0 border-gray-200 bg-white p-5 print:hidden">
               <span className="text-sm font-bold text-gray-700">
                 Certificate Preview
@@ -183,9 +183,9 @@ export default function CertificationsPage() {
               </div>
             </div>
 
-            <div className="flex w-full justify-center overflow-x-auto rounded-b-2xl border border-gray-200 bg-gray-100 p-8 print:border-none print:bg-white print:p-0 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
+            <div className="flex w-full justify-center overflow-x-auto rounded-b-2xl border border-gray-200 bg-gray-100 p-8 print:flex print:min-h-screen print:items-center print:justify-center print:border-none print:bg-white print:p-0 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
               <div
-                className="relative h-[565px] w-[800px] shrink-0 bg-white shadow-2xl print:h-screen print:w-full print:shadow-none"
+                className="relative h-[565px] w-[800px] shrink-0 bg-white shadow-2xl print:h-auto print:w-[90%] print:max-w-[1000px] print:aspect-[800/565] print:shadow-none"
                 id="certificate-canvas"
               >
                 <div className="absolute inset-5 border-[3px] border-[#1a6b3c] p-2">

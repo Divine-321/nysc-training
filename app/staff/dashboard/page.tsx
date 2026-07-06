@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Award,
   BookOpen,
-  CheckCircle2,
   Lock,
   PlayCircle,
   Target,
@@ -16,9 +16,11 @@ import {
   toPercentage,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
+import { readApiList } from "@/app/lib/portal-api";
 
 export default function StaffDashboard() {
   const [courses, setCourses] = useState<StaffCourse[]>([]);
+  const [certificateCount, setCertificateCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lockedNotice, setLockedNotice] = useState<string | null>(null);
@@ -26,7 +28,20 @@ export default function StaffDashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setCourses(await loadStaffCourses());
+        const [staffCourses, certificatesResponse] = await Promise.all([
+          loadStaffCourses(),
+          fetch("/api/training/certificates", { cache: "no-store" }),
+        ]);
+        setCourses(staffCourses);
+
+        const certificatesPayload = await certificatesResponse
+          .json()
+          .catch(() => null);
+        setCertificateCount(
+          certificatesResponse.ok
+            ? readApiList(certificatesPayload).length
+            : 0,
+        );
         setError("");
       } catch (loadError) {
         setError(
@@ -43,9 +58,6 @@ export default function StaffDashboard() {
   }, []);
 
   const activeCourses = useMemo(() => courses.slice(0, 3), [courses]);
-  const materialsCompletedCount = courses.filter(
-    (course) => course.enrollment.status === "COMPLETED",
-  ).length;
   const overallProgress = Math.round(
     courses.reduce(
       (total, course) =>
@@ -63,18 +75,18 @@ export default function StaffDashboard() {
       icon: <BookOpen size={24} />,
     },
     {
-      label: "Average Material Progress",
+      label: "Average Progress",
       value: `${overallProgress}%`,
       color: "bg-blue-50",
       text: "text-blue-700",
       icon: <PlayCircle size={24} />,
     },
     {
-      label: "Materials Completed",
-      value: materialsCompletedCount,
+      label: "Certificate(s)",
+      value: certificateCount,
       color: "bg-amber-50",
       text: "text-amber-700",
-      icon: <CheckCircle2 size={24} />,
+      icon: <Award size={24} />,
     },
   ];
 
@@ -211,7 +223,7 @@ export default function StaffDashboard() {
         <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:p-8">
           <div className="relative z-10 mb-6 flex items-center justify-between">
             <h3 className="text-lg font-bold text-gray-800">
-              Overall Material Progress
+              Overall Progress
             </h3>
             <Target className="text-gray-200" size={42} />
           </div>

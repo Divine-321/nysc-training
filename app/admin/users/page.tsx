@@ -330,6 +330,12 @@ export default function AdminUsersPage() {
   const [deletingUnregisteredId, setDeletingUnregisteredId] = useState<
     number | null
   >(null);
+  const [unregisteredSearch, setUnregisteredSearch] = useState("");
+  const [selectedUnregisteredIds, setSelectedUnregisteredIds] = useState<
+    number[]
+  >([]);
+  const [bulkDeletingUnregistered, setBulkDeletingUnregistered] =
+    useState(false);
 
   const pageSize = 20;
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -943,7 +949,9 @@ export default function AdminUsersPage() {
           ? { employment_date: staffRecordForm.employment_date }
           : {}),
         state: Number(staffRecordForm.state),
-        department: isHq ? Number(staffRecordForm.department) : null,
+        ...(isHq && staffRecordForm.department
+          ? { department: Number(staffRecordForm.department) }
+          : {}),
         grade_level: Number(staffRecordForm.grade_level),
         rank: Number(staffRecordForm.rank),
       };
@@ -1034,7 +1042,9 @@ export default function AdminUsersPage() {
         state: unregisteredEditForm.state
           ? Number(unregisteredEditForm.state)
           : undefined,
-        department: isHq ? Number(unregisteredEditForm.department) : null,
+        ...(isHq && unregisteredEditForm.department
+          ? { department: Number(unregisteredEditForm.department) }
+          : {}),
         grade_level: unregisteredEditForm.grade_level
           ? Number(unregisteredEditForm.grade_level)
           : undefined,
@@ -1116,6 +1126,55 @@ export default function AdminUsersPage() {
     } finally {
       setDeletingUnregisteredId(null);
     }
+  };
+
+  const handleBulkDeleteUnregistered = async () => {
+    if (selectedUnregisteredIds.length === 0) return;
+
+    const confirmed = await confirm(
+      `Delete ${selectedUnregisteredIds.length} staff record${
+        selectedUnregisteredIds.length === 1 ? "" : "s"
+      }? These staff members will no longer be able to register.`,
+      { danger: true },
+    );
+
+    if (!confirmed) return;
+
+    setBulkDeletingUnregistered(true);
+    setUnregisteredError("");
+
+    const results = await Promise.all(
+      selectedUnregisteredIds.map(async (id) => {
+        try {
+          const response = await fetch(`/api/accounts/staff-records/${id}`, {
+            method: "DELETE",
+          });
+          return { id, ok: response.ok || response.status === 204 };
+        } catch {
+          return { id, ok: false };
+        }
+      }),
+    );
+
+    const deletedIds = new Set(
+      results.filter((result) => result.ok).map((result) => result.id),
+    );
+    const failedCount = results.filter((result) => !result.ok).length;
+
+    setUnregisteredStaff((current) =>
+      current.filter((record) => !deletedIds.has(record.id)),
+    );
+    setSelectedUnregisteredIds((current) =>
+      current.filter((id) => !deletedIds.has(id)),
+    );
+
+    if (failedCount > 0) {
+      setUnregisteredError(
+        `${failedCount} record${failedCount === 1 ? "" : "s"} could not be deleted.`,
+      );
+    }
+
+    setBulkDeletingUnregistered(false);
   };
 
   const handleSaveStaff = async () => {
@@ -1464,21 +1523,56 @@ export default function AdminUsersPage() {
 
       {/* Unregistered Staff */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-gray-100 flex items-center gap-2">
-          <Users size={18} className="text-amber-600" />
-          <div>
-            <h3 className="font-bold text-gray-800">
-              Unregistered Staff{" "}
-              {unregisteredSupported && (
-                <span className="text-gray-400 font-normal">
-                  ({unregisteredStaff.length})
-                </span>
-              )}
-            </h3>
-            <p className="text-xs text-gray-500">
-              Staff records created with a file number, but the staff member
-              hasn&apos;t completed self-registration yet.
-            </p>
+        <div className="p-5 border-b border-gray-100 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <Users size={18} className="text-amber-600" />
+            <div>
+              <h3 className="font-bold text-gray-800">
+                Unregistered Staff{" "}
+                {unregisteredSupported && (
+                  <span className="text-gray-400 font-normal">
+                    ({unregisteredStaff.length})
+                  </span>
+                )}
+              </h3>
+              <p className="text-xs text-gray-500">
+                Staff records created with a file number, but the staff member
+                hasn&apos;t completed self-registration yet.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative">
+              <Search
+                size={15}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                type="search"
+                placeholder="Search by name or file no..."
+                value={unregisteredSearch}
+                onChange={(event) => {
+                  setUnregisteredSearch(event.target.value);
+                  setSelectedUnregisteredIds([]);
+                }}
+                className="w-full rounded-lg border border-gray-200 py-2 pl-8 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] sm:w-64"
+              />
+            </div>
+
+            {selectedUnregisteredIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleBulkDeleteUnregistered()}
+                disabled={bulkDeletingUnregistered}
+                className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+              >
+                <Trash2 size={15} />
+                {bulkDeletingUnregistered
+                  ? "Deleting..."
+                  : `Delete ${selectedUnregisteredIds.length} selected`}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1496,82 +1590,165 @@ export default function AdminUsersPage() {
           <p className="p-5 text-sm text-gray-500">
             Everyone who has a staff record has also registered.
           </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm whitespace-nowrap">
-              <thead className="bg-gray-50 text-gray-500">
-                <tr>
-                  <th className="px-5 py-3 font-medium">File No</th>
-                  <th className="px-5 py-3 font-medium">Name</th>
-                  <th className="px-5 py-3 font-medium">Sex</th>
-                  <th className="px-5 py-3 font-medium">Date of Birth</th>
-                  <th className="px-5 py-3 font-medium">Employment Date</th>
-                  <th className="px-5 py-3 font-medium">Rank</th>
-                  <th className="px-5 py-3 font-medium">Grade Level</th>
-                  <th className="px-5 py-3 font-medium">Department</th>
-                  <th className="px-5 py-3 font-medium">Location</th>
-                  <th className="px-5 py-3 font-medium text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {unregisteredStaff.map((record) => (
-                  <tr key={record.id} className="bg-amber-50/40">
-                    <td className="px-5 py-3 font-medium text-gray-700">
-                      {record.file_number}
-                    </td>
-                    <td className="px-5 py-3 text-gray-700">
-                      {[record.first_name, record.middle_name, record.last_name]
-                        .filter(Boolean)
-                        .join(" ") || "Not registered"}
-                    </td>
-                    <td className="px-5 py-3 text-gray-600 capitalize">
-                      {record.sex || "Not assigned"}
-                    </td>
-                    <td className="px-5 py-3 text-gray-600">
-                      {record.date_of_birth || "Not assigned"}
-                    </td>
-                    <td className="px-5 py-3 text-gray-600">
-                      {record.employment_date || "Not assigned"}
-                    </td>
-                    <td className="px-5 py-3 text-gray-600">
-                      {record.rank?.title ?? "Not assigned"}
-                    </td>
-                    <td className="px-5 py-3 text-gray-600">
-                      {record.grade_level?.code ?? "Not assigned"}
-                    </td>
-                    <td className="px-5 py-3 text-gray-600">
-                      {record.department?.name ?? "Not assigned"}
-                    </td>
-                    <td className="px-5 py-3 text-gray-600">
-                      {record.state?.name ?? "Not assigned"}
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center justify-end gap-3">
-                        <button
-                          type="button"
-                          onClick={() => startEditUnregisteredStaff(record)}
-                          aria-label={`Edit ${record.file_number}`}
-                          className="text-[#1a6b3c]"
-                        >
-                          <Edit3 size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteUnregisteredStaff(record)}
-                          disabled={deletingUnregisteredId === record.id}
-                          aria-label={`Delete ${record.file_number}`}
-                          className="text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        ) : (() => {
+            const normalizedUnregisteredSearch = unregisteredSearch
+              .trim()
+              .toLowerCase();
+            const filteredUnregistered = unregisteredSearch.trim()
+              ? unregisteredStaff.filter((record) =>
+                  [
+                    record.file_number,
+                    record.first_name,
+                    record.last_name,
+                    record.middle_name,
+                  ]
+                    .filter(Boolean)
+                    .some((value) =>
+                      value!.toLowerCase().includes(normalizedUnregisteredSearch),
+                    ),
+                )
+              : unregisteredStaff;
+
+            if (filteredUnregistered.length === 0) {
+              return (
+                <p className="p-5 text-sm text-gray-500">
+                  No records match &quot;{unregisteredSearch}&quot;.
+                </p>
+              );
+            }
+
+            const allFilteredSelected = filteredUnregistered.every((record) =>
+              selectedUnregisteredIds.includes(record.id),
+            );
+
+            return (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm whitespace-nowrap">
+                  <thead className="bg-gray-50 text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 accent-[#1a6b3c] cursor-pointer"
+                          checked={allFilteredSelected}
+                          onChange={() => {
+                            if (allFilteredSelected) {
+                              setSelectedUnregisteredIds((current) =>
+                                current.filter(
+                                  (id) =>
+                                    !filteredUnregistered.some(
+                                      (record) => record.id === id,
+                                    ),
+                                ),
+                              );
+                            } else {
+                              setSelectedUnregisteredIds((current) => [
+                                ...new Set([
+                                  ...current,
+                                  ...filteredUnregistered.map(
+                                    (record) => record.id,
+                                  ),
+                                ]),
+                              ]);
+                            }
+                          }}
+                        />
+                      </th>
+                      <th className="px-5 py-3 font-medium">File No</th>
+                      <th className="px-5 py-3 font-medium">Name</th>
+                      <th className="px-5 py-3 font-medium">Sex</th>
+                      <th className="px-5 py-3 font-medium">Date of Birth</th>
+                      <th className="px-5 py-3 font-medium">Employment Date</th>
+                      <th className="px-5 py-3 font-medium">Rank</th>
+                      <th className="px-5 py-3 font-medium">Grade Level</th>
+                      <th className="px-5 py-3 font-medium">Department</th>
+                      <th className="px-5 py-3 font-medium">Location</th>
+                      <th className="px-5 py-3 font-medium text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {filteredUnregistered.map((record) => (
+                      <tr
+                        key={record.id}
+                        className={`bg-amber-50/40 ${
+                          selectedUnregisteredIds.includes(record.id)
+                            ? "bg-amber-100/60"
+                            : ""
+                        }`}
+                      >
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-[#1a6b3c] cursor-pointer"
+                            checked={selectedUnregisteredIds.includes(record.id)}
+                            onChange={() => {
+                              setSelectedUnregisteredIds((current) =>
+                                current.includes(record.id)
+                                  ? current.filter((id) => id !== record.id)
+                                  : [...current, record.id],
+                              );
+                            }}
+                          />
+                        </td>
+                        <td className="px-5 py-3 font-medium text-gray-700">
+                          {record.file_number}
+                        </td>
+                        <td className="px-5 py-3 text-gray-700">
+                          {[record.first_name, record.middle_name, record.last_name]
+                            .filter(Boolean)
+                            .join(" ") || "Not registered"}
+                        </td>
+                        <td className="px-5 py-3 text-gray-600 capitalize">
+                          {record.sex || "Not assigned"}
+                        </td>
+                        <td className="px-5 py-3 text-gray-600">
+                          {record.date_of_birth || "Not assigned"}
+                        </td>
+                        <td className="px-5 py-3 text-gray-600">
+                          {record.employment_date || "Not assigned"}
+                        </td>
+                        <td className="px-5 py-3 text-gray-600">
+                          {record.rank?.title ?? "Not assigned"}
+                        </td>
+                        <td className="px-5 py-3 text-gray-600">
+                          {record.grade_level?.code ?? "Not assigned"}
+                        </td>
+                        <td className="px-5 py-3 text-gray-600">
+                          {record.department?.name ?? "Not assigned"}
+                        </td>
+                        <td className="px-5 py-3 text-gray-600">
+                          {record.state?.name ?? "Not assigned"}
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex items-center justify-end gap-3">
+                            <button
+                              type="button"
+                              onClick={() => startEditUnregisteredStaff(record)}
+                              aria-label={`Edit ${record.file_number}`}
+                              className="text-[#1a6b3c]"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleDeleteUnregisteredStaff(record)
+                              }
+                              disabled={deletingUnregisteredId === record.id}
+                              aria-label={`Delete ${record.file_number}`}
+                              className="text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
       </div>
 
       {/* Comprehensive Staff Details Modal */}
@@ -2146,22 +2323,6 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Employment Date
-                  </label>
-                  <input
-                    type="date"
-                    value={staffRecordForm.employment_date}
-                    onChange={(event) =>
-                      setStaffRecordForm({
-                        ...staffRecordForm,
-                        employment_date: event.target.value,
-                      })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                  />
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Location
                   </label>
                   <select
@@ -2383,22 +2544,6 @@ export default function AdminUsersPage() {
                     <option value="male">Male</option>
                     <option value="female">Female</option>
                   </select>
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Employment Date
-                  </label>
-                  <input
-                    type="date"
-                    value={unregisteredEditForm.employment_date}
-                    onChange={(event) =>
-                      setUnregisteredEditForm({
-                        ...unregisteredEditForm,
-                        employment_date: event.target.value,
-                      })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                  />
                 </div>
                 <div className="col-span-2 sm:col-span-1">
                   <label className="block text-sm font-medium text-gray-700 mb-1">

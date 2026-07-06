@@ -5,10 +5,12 @@ import type { ChangeEvent, FormEvent } from "react";
 import {
   ClipboardList,
   FileSpreadsheet,
+  ListPlus,
   Plus,
   Trash2,
   Upload,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import {
   extractErrorMessage,
   readApiList,
@@ -16,6 +18,7 @@ import {
 import { useConfirm } from "@/app/components/useConfirm";
 
 type AssessmentType = "PRE_TEST" | "POST_TEST";
+type CorrectOption = "A" | "B" | "C" | "D";
 
 type AssessmentQuestion = {
   id: number;
@@ -36,9 +39,18 @@ type Assessment = {
 const emptyForm = {
   type: "PRE_TEST" as AssessmentType,
   title: "",
-  description: "",
   pass_mark: "50.00",
   max_attempts: "1",
+};
+
+const emptyQuestionForm = {
+  question_text: "",
+  points: "1",
+  option_a: "",
+  option_b: "",
+  option_c: "",
+  option_d: "",
+  correct_option: "A" as CorrectOption,
 };
 
 function assessmentTypeLabel(type: AssessmentType) {
@@ -59,6 +71,11 @@ export default function CourseAssessmentsManager({
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [openQuestionFormId, setOpenQuestionFormId] = useState<number | null>(
+    null,
+  );
+  const [questionForm, setQuestionForm] = useState(emptyQuestionForm);
+  const [addingQuestion, setAddingQuestion] = useState(false);
 
   const loadAssessments = useCallback(async () => {
     try {
@@ -112,7 +129,6 @@ export default function CourseAssessmentsManager({
           course: courseId,
           type: form.type,
           title: form.title.trim(),
-          description: form.description.trim() || null,
           pass_mark: form.pass_mark,
           max_attempts: Number(form.max_attempts),
         }),
@@ -148,17 +164,41 @@ export default function CourseAssessmentsManager({
 
     if (!file) return;
 
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      setError("Please select a CSV file.");
+    const lowerName = file.name.toLowerCase();
+    const isCsv = lowerName.endsWith(".csv");
+    const isExcel = lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls");
+
+    if (!isCsv && !isExcel) {
+      setError("Please select a CSV or Excel (.xlsx/.xls) file.");
       return;
     }
-
-    const formData = new FormData();
-    formData.append("file", file);
 
     setUploadingId(assessment.id);
     setError("");
     setNotice("");
+
+    let uploadFile = file;
+
+    if (isExcel) {
+      try {
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const csvText = XLSX.utils.sheet_to_csv(sheet);
+        uploadFile = new File(
+          [csvText],
+          file.name.replace(/\.(xlsx|xls)$/i, ".csv"),
+          { type: "text/csv" },
+        );
+      } catch {
+        setError("Could not read that Excel file. Please check its format.");
+        setUploadingId(null);
+        return;
+      }
+    }
+
+    const formData = new FormData();
+    formData.append("file", uploadFile);
 
     try {
       const response = await fetch(
@@ -188,6 +228,61 @@ export default function CourseAssessmentsManager({
       );
     } finally {
       setUploadingId(null);
+    }
+  };
+
+  const toggleQuestionForm = (assessment: Assessment) => {
+    setError("");
+    setNotice("");
+    setQuestionForm(emptyQuestionForm);
+    setOpenQuestionFormId((current) =>
+      current === assessment.id ? null : assessment.id,
+    );
+  };
+
+  const handleAddQuestion = async (
+    event: FormEvent,
+    assessment: Assessment,
+  ) => {
+    event.preventDefault();
+    setAddingQuestion(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(
+        `/api/training/assessments/${assessment.id}/add-question`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question_text: questionForm.question_text.trim(),
+            points: Number(questionForm.points) || 1,
+            option_a: questionForm.option_a.trim(),
+            option_b: questionForm.option_b.trim(),
+            option_c: questionForm.option_c.trim(),
+            option_d: questionForm.option_d.trim(),
+            correct_option: questionForm.correct_option,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not add question."),
+        );
+      }
+
+      setNotice("Question added.");
+      setQuestionForm(emptyQuestionForm);
+      await loadAssessments();
+    } catch (addError) {
+      setError(
+        addError instanceof Error ? addError.message : "Could not add question.",
+      );
+    } finally {
+      setAddingQuestion(false);
     }
   };
 
@@ -238,7 +333,7 @@ export default function CourseAssessmentsManager({
             Assessments
           </h3>
           <p className="text-sm text-gray-500">
-            Create pre-test/post-test and upload questions with CSV.
+            Create pre-test/post-test and add questions manually or via CSV.
           </p>
         </div>
       </div>
@@ -327,20 +422,6 @@ export default function CourseAssessmentsManager({
           />
         </div>
 
-        <div className="md:col-span-2">
-          <label className="mb-1 block text-sm font-medium text-gray-700">
-            Description
-          </label>
-          <textarea
-            value={form.description}
-            onChange={(event) =>
-              setForm({ ...form, description: event.target.value })
-            }
-            className="h-24 w-full rounded-lg border px-4 py-3 text-sm"
-            placeholder="Optional instructions for staff."
-          />
-        </div>
-
         <button
           disabled={saving || !form.title.trim()}
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
@@ -356,8 +437,8 @@ export default function CourseAssessmentsManager({
             Existing assessments
           </h4>
           <p className="mt-1 text-xs text-gray-500">
-            CSV headers: question_text, points, option_a, option_b, option_c,
-            option_d, correct_option
+            CSV/Excel headers: question_text, points, option_a, option_b,
+            option_c, option_d, correct_option
           </p>
         </div>
 
@@ -370,51 +451,160 @@ export default function CourseAssessmentsManager({
         ) : (
           <div className="divide-y divide-gray-100">
             {assessments.map((assessment) => (
-              <div
-                key={assessment.id}
-                className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:justify-between"
-              >
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#1a6b3c]">
-                    {assessmentTypeLabel(assessment.type)}
-                  </p>
-                  <h5 className="mt-1 font-semibold text-gray-800">
-                    {assessment.title}
-                  </h5>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Pass mark: {assessment.pass_mark}% • Max attempts:{" "}
-                    {assessment.max_attempts} • Questions:{" "}
-                    {assessment.questions?.length ?? 0}
-                  </p>
+              <div key={assessment.id} className="p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[#1a6b3c]">
+                      {assessmentTypeLabel(assessment.type)}
+                    </p>
+                    <h5 className="mt-1 font-semibold text-gray-800">
+                      {assessment.title}
+                    </h5>
+                    <p className="mt-1 text-sm text-gray-500">
+                      Pass mark: {assessment.pass_mark}% • Max attempts:{" "}
+                      {assessment.max_attempts} • Questions:{" "}
+                      {assessment.questions?.length ?? 0}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleQuestionForm(assessment)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2 text-sm font-semibold text-[#1a6b3c] hover:bg-green-50"
+                    >
+                      <ListPlus size={16} />
+                      {openQuestionFormId === assessment.id
+                        ? "Close form"
+                        : "Add question"}
+                    </button>
+
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2 text-sm font-semibold text-[#1a6b3c] hover:bg-green-50">
+                      <Upload size={16} />
+                      {uploadingId === assessment.id
+                        ? "Uploading..."
+                        : "Upload CSV/Excel"}
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        disabled={uploadingId === assessment.id}
+                        onChange={(event) =>
+                          handleCsvUpload(assessment, event)
+                        }
+                        className="sr-only"
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(assessment)}
+                      disabled={deletingId === assessment.id}
+                      className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Trash2 size={16} />
+                      {deletingId === assessment.id ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2 text-sm font-semibold text-[#1a6b3c] hover:bg-green-50">
-                    <Upload size={16} />
-                    {uploadingId === assessment.id
-                      ? "Uploading..."
-                      : "Upload CSV"}
-                    <input
-                      type="file"
-                      accept=".csv,text/csv"
-                      disabled={uploadingId === assessment.id}
-                      onChange={(event) =>
-                        handleCsvUpload(assessment, event)
-                      }
-                      className="sr-only"
-                    />
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(assessment)}
-                    disabled={deletingId === assessment.id}
-                    className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                {openQuestionFormId === assessment.id && (
+                  <form
+                    onSubmit={(event) => handleAddQuestion(event, assessment)}
+                    className="mt-4 grid gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4 md:grid-cols-2"
                   >
-                    <Trash2 size={16} />
-                    {deletingId === assessment.id ? "Deleting..." : "Delete"}
-                  </button>
-                </div>
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Question text
+                      </label>
+                      <textarea
+                        required
+                        value={questionForm.question_text}
+                        onChange={(event) =>
+                          setQuestionForm({
+                            ...questionForm,
+                            question_text: event.target.value,
+                          })
+                        }
+                        className="h-20 w-full rounded-lg border px-4 py-3 text-sm"
+                        placeholder="What does NYSC stand for?"
+                      />
+                    </div>
+
+                    {(["a", "b", "c", "d"] as const).map((letter) => (
+                      <div key={letter}>
+                        <label className="mb-1 block text-sm font-medium text-gray-700">
+                          Option {letter.toUpperCase()}
+                        </label>
+                        <input
+                          required
+                          value={
+                            questionForm[
+                              `option_${letter}` as `option_${typeof letter}`
+                            ]
+                          }
+                          onChange={(event) =>
+                            setQuestionForm({
+                              ...questionForm,
+                              [`option_${letter}`]: event.target.value,
+                            })
+                          }
+                          className="w-full rounded-lg border px-4 py-2.5 text-sm"
+                        />
+                      </div>
+                    ))}
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Correct option
+                      </label>
+                      <select
+                        value={questionForm.correct_option}
+                        onChange={(event) =>
+                          setQuestionForm({
+                            ...questionForm,
+                            correct_option: event.target
+                              .value as CorrectOption,
+                          })
+                        }
+                        className="w-full rounded-lg border px-4 py-2.5 text-sm"
+                      >
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-gray-700">
+                        Points
+                      </label>
+                      <input
+                        required
+                        type="number"
+                        min="1"
+                        value={questionForm.points}
+                        onChange={(event) =>
+                          setQuestionForm({
+                            ...questionForm,
+                            points: event.target.value,
+                          })
+                        }
+                        className="w-full rounded-lg border px-4 py-2.5 text-sm"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2 flex justify-end">
+                      <button
+                        disabled={addingQuestion}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        <Plus size={18} />
+                        {addingQuestion ? "Adding..." : "Add question"}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             ))}
           </div>
@@ -424,8 +614,12 @@ export default function CourseAssessmentsManager({
       <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
         <div className="mb-2 flex items-center gap-2 font-semibold text-gray-800">
           <FileSpreadsheet size={18} />
-          CSV example
+          CSV/Excel example
         </div>
+        <p className="mb-2 text-xs text-gray-500">
+          Same columns work in a .csv, .xlsx, or .xls file — the first sheet
+          is used for Excel files.
+        </p>
         <code className="block overflow-x-auto whitespace-pre rounded-lg bg-white p-3 text-xs">
           question_text,points,option_a,option_b,option_c,option_d,correct_option{"\n"}
           What does NYSC stand for?,1,National Youth Service Corps,National Youth Safety Corps,Nigerian Youth Staff Council,National Young Service Club,A

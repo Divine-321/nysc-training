@@ -55,6 +55,70 @@ const RESOURCES: { key: ResourceKey; label: string }[] = [
   { key: "departments", label: "Departments" },
 ];
 
+// StaffRecord field cleared to unblock deletion of an in-use org-data item.
+const STAFF_RECORD_FIELD: Record<ResourceKey, string> = {
+  ranks: "rank",
+  "grade-levels": "grade_level",
+  states: "state",
+  departments: "department",
+};
+
+async function findStaffRecordIds(fileNumbers: string[]): Promise<Map<string, number>> {
+  const wanted = new Set(fileNumbers);
+  const found = new Map<string, number>();
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore && found.size < wanted.size) {
+    const response = await fetch(
+      `/api/accounts/staff-records?page=${page}&page_size=100`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) break;
+
+    const payload = (await response.json().catch(() => null)) as {
+      data?: { results?: { id: number; file_number: string }[]; next?: string | null };
+    } | null;
+
+    for (const record of payload?.data?.results ?? []) {
+      if (wanted.has(record.file_number)) found.set(record.file_number, record.id);
+    }
+
+    hasMore = Boolean(payload?.data?.next);
+    page += 1;
+  }
+
+  return found;
+}
+
+async function tryAutoUnassign(
+  resource: ResourceKey,
+  blockingList: BlockingStaffEntry[],
+): Promise<boolean> {
+  const field = STAFF_RECORD_FIELD[resource];
+  if (!field) return false;
+
+  const fileNumbers = blockingList
+    .map((entry) => entry.file_number)
+    .filter((value): value is string => Boolean(value));
+  if (fileNumbers.length !== blockingList.length) return false;
+
+  const idsByFileNumber = await findStaffRecordIds(fileNumbers);
+  if (idsByFileNumber.size !== fileNumbers.length) return false;
+
+  const unassignResults = await Promise.all(
+    fileNumbers.map((fileNumber) =>
+      fetch(`/api/accounts/staff-records/${idsByFileNumber.get(fileNumber)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: null }),
+      }),
+    ),
+  );
+
+  return unassignResults.every((response) => response.ok);
+}
+
 const FIELD_CONFIG: Record<ResourceKey, { name: keyof Item; placeholder: string; type?: string }[]> = {
   ranks: [
     { name: "title", placeholder: "Rank title, e.g. ACCOUNTANT I" },
@@ -192,15 +256,32 @@ export default function OrganizationDataPage() {
     setBlockingStaff(null);
 
     try {
-      const response = await fetch(`/api/organization/${resource}/${item.id}`, {
+      let response = await fetch(`/api/organization/${resource}/${item.id}`, {
         method: "DELETE",
       });
-      const payload = response.status === 204 ? null : await response.json().catch(() => null);
+      let payload = response.status === 204 ? null : await response.json().catch(() => null);
 
       if (!response.ok) {
         const blockingList = extractBlockingStaff(payload);
 
         if (blockingList && blockingList.length > 0) {
+          const unassigned = await tryAutoUnassign(resource, blockingList);
+
+          if (unassigned) {
+            response = await fetch(`/api/organization/${resource}/${item.id}`, {
+              method: "DELETE",
+            });
+            payload = response.status === 204 ? null : await response.json().catch(() => null);
+
+            if (response.ok) {
+              setNotice(
+                `Deleted. ${blockingList.length} staff record${blockingList.length === 1 ? "" : "s"} automatically unassigned.`,
+              );
+              setItems((current) => current.filter((existing) => existing.id !== item.id));
+              return;
+            }
+          }
+
           setBlockingStaff({
             itemLabel: String(item.title ?? item.name ?? item.code ?? "this item"),
             staff: blockingList,
