@@ -13,6 +13,11 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ImageUp, Save } from "lucide-react";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 
+type CourseCategory = {
+  id: number;
+  name: string;
+};
+
 export default function CreateCoursePage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
@@ -21,7 +26,8 @@ export default function CreateCoursePage() {
   const [thumbnailPublicId, setThumbnailPublicId] = useState("");
   const [thumbnailProgress, setThumbnailProgress] = useState(0);
   const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
-  const [status, setStatus] = useState<"DRAFT" | "PUBLISHED" | "ARCHIVED">("DRAFT");
+  const [categories, setCategories] = useState<CourseCategory[]>([]);
+  const [categoryId, setCategoryId] = useState("");
   const [trainerIds, setTrainerIds] = useState<number[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState("");
@@ -35,10 +41,12 @@ export default function CreateCoursePage() {
 
   useEffect(() => {
     const loadOptions = async () => {
-      const [trainerResponse, courseResponse] = await Promise.all([
-        fetch("/api/training/trainers", { cache: "no-store" }),
-        fetch("/api/training/courses", { cache: "no-store" }),
-      ]);
+      const [trainerResponse, courseResponse, categoryResponse] =
+        await Promise.all([
+          fetch("/api/training/trainers", { cache: "no-store" }),
+          fetch("/api/training/courses", { cache: "no-store" }),
+          fetch("/api/training/categories", { cache: "no-store" }),
+        ]);
 
       if (trainerResponse.ok) {
         setTrainers(readApiList<Trainer>(await trainerResponse.json()));
@@ -46,6 +54,12 @@ export default function CreateCoursePage() {
 
       if (courseResponse.ok) {
         setCourses(readApiList<Course>(await courseResponse.json()));
+      }
+
+      if (categoryResponse.ok) {
+        setCategories(
+          readApiList<CourseCategory>(await categoryResponse.json()),
+        );
       }
     };
 
@@ -177,7 +191,10 @@ export default function CreateCoursePage() {
           description,
           thumbnail_url: thumbnailUrl || null,
           cloudinary_public_id: thumbnailPublicId || null,
-          status,
+          // The status field was removed from the UI; courses go live
+          // immediately so staff can see them once assigned.
+          status: "PUBLISHED",
+          category: categoryId ? Number(categoryId) : null,
           trainer_ids: trainerIds,
           prerequisite_ids: prerequisiteIds,
         }),
@@ -219,7 +236,7 @@ router.push(
         </Link>
         <h2 className="text-2xl font-bold text-gray-800">Create Course</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Create a course before adding modules and learning materials.
+          Create a course before adding its modules and activities.
         </p>
       </div>
 
@@ -283,11 +300,18 @@ router.push(
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-          <select value={status} onChange={(event) => setStatus(event.target.value as "DRAFT" | "PUBLISHED" | "ARCHIVED")} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] md:w-1/2">
-            <option value="DRAFT">Draft</option>
-            <option value="PUBLISHED">Published</option>
-            <option value="ARCHIVED">Archived</option>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+          <select
+            value={categoryId}
+            onChange={(event) => setCategoryId(event.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] md:w-1/2"
+          >
+            <option value="">No category</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
           </select>
         </div>
 

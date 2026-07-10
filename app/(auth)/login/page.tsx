@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { AlertCircle, Eye, EyeOff, X } from "lucide-react";
+import { AlertCircle, BookOpen, Eye, EyeOff, ExternalLink, X } from "lucide-react";
+import type { LoginManual } from "@/app/lib/login-manual";
+
+const MANUAL_DISMISS_KEY = "nysc-login-manual-dismissed";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -13,6 +16,42 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [manual, setManual] = useState<LoginManual | null>(null);
+  const [showManual, setShowManual] = useState(false);
+
+  // Loads the admin-attached portal manual and pops it up unless the user
+  // permanently dismissed this exact manual before.
+  useEffect(() => {
+    const loadManual = async () => {
+      try {
+        const response = await fetch("/api/public/login-manual", {
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+        const data = payload?.data as LoginManual | null;
+
+        if (!data?.file_url) return;
+
+        setManual(data);
+
+        const dismissedFor = window.localStorage.getItem(MANUAL_DISMISS_KEY);
+        if (dismissedFor !== String(data.id)) {
+          setShowManual(true);
+        }
+      } catch {
+        // No manual — nothing to show.
+      }
+    };
+
+    void loadManual();
+  }, []);
+
+  const dismissManual = (permanently: boolean) => {
+    if (permanently && manual) {
+      window.localStorage.setItem(MANUAL_DISMISS_KEY, String(manual.id));
+    }
+    setShowManual(false);
+  };
 
   const handleLogin = () => {
     setError("");
@@ -23,7 +62,7 @@ export default function LoginPage() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ login: username, password }),
+      body: JSON.stringify({ login: username, password, role: "staff" }),
     })
       .then(async (response) => {
         const payload = await response.json();
@@ -91,7 +130,7 @@ export default function LoginPage() {
           {/* Login / Register Toggle */}
           <div className="flex bg-[#e8f5ee] rounded-full p-1 mb-6 w-64">
             <button className="flex-1 bg-[#1a6b3c] text-white rounded-full py-2 text-sm font-semibold">
-              Login
+              Staff Login
             </button>
             <Link
               href="/admin-login"
@@ -194,8 +233,68 @@ export default function LoginPage() {
                 Register here
               </Link>
             </p>
+
+            {manual && (
+              <p className="text-center text-sm text-gray-500">
+                New to the portal?{" "}
+                <button
+                  type="button"
+                  onClick={() => setShowManual(true)}
+                  className="font-semibold text-[#1a6b3c] hover:underline"
+                >
+                  View the user manual
+                </button>
+              </p>
+            )}
           </div>
         </div>
+
+      {showManual && manual && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-50 text-[#1a6b3c]">
+                  <BookOpen size={20} />
+                </div>
+                <h3 className="text-lg font-bold text-gray-800">
+                  {manual.title || "Portal User Manual"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => dismissManual(false)}
+                aria-label="Close"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="mb-5 text-sm text-gray-600">
+              {manual.description ||
+                "Read this short guide to learn how to register, log in, take your courses, and download your certificate."}
+            </p>
+
+            <a
+              href={manual.file_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] px-6 py-3 font-semibold text-white transition hover:bg-[#145530]"
+            >
+              <ExternalLink size={16} /> Open the manual
+            </a>
+
+            <button
+              type="button"
+              onClick={() => dismissManual(true)}
+              className="w-full text-center text-xs font-medium text-gray-400 hover:text-gray-600"
+            >
+              Don&apos;t show this again
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

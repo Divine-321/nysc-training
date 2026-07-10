@@ -1,8 +1,21 @@
 "use client";
 
-import { Bell, Lock } from "lucide-react";
-import { useState } from "react";
-import { extractErrorMessage } from "@/app/lib/portal-api";
+import { Bell, BookOpen, ExternalLink, Lock, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  extractErrorMessage,
+  readApiItem,
+  readApiList,
+} from "@/app/lib/portal-api";
+import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
+import { LOGIN_MANUAL_MARKER } from "@/app/lib/login-manual";
+
+type ManualBook = {
+  id: number;
+  title: string;
+  description: string | null;
+  file_url: string;
+};
 
 export default function AdminSettingsPage() {
   const [emailNotifs, setEmailNotifs] = useState(true);
@@ -13,6 +26,100 @@ export default function AdminSettingsPage() {
   const [passwordError, setPasswordError] = useState("");
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  const [manual, setManual] = useState<ManualBook | null>(null);
+  const [manualBusy, setManualBusy] = useState(false);
+  const [manualProgress, setManualProgress] = useState(0);
+  const [manualError, setManualError] = useState("");
+  const [manualNotice, setManualNotice] = useState("");
+
+  useEffect(() => {
+    const loadManual = async () => {
+      try {
+        const response = await fetch("/api/learning/books", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) return;
+
+        const payload = await response.json().catch(() => null);
+        const existing = readApiList<ManualBook>(payload).find((book) =>
+          book.title?.startsWith(LOGIN_MANUAL_MARKER),
+        );
+
+        setManual(existing ?? null);
+      } catch {
+        // Non-critical; the section just shows "no manual attached".
+      }
+    };
+
+    void loadManual();
+  }, []);
+
+  // Uploads the manual PDF and stores it as the marker book that the login
+  // page popup looks for. Re-uploading replaces the existing manual.
+  const handleManualUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      setManualError("Please choose a PDF file.");
+      return;
+    }
+
+    setManualBusy(true);
+    setManualError("");
+    setManualNotice("");
+    setManualProgress(0);
+
+    try {
+      const uploaded = await uploadFileToCloudinary(
+        file,
+        setManualProgress,
+        "book_pdf",
+      );
+
+      const body = JSON.stringify({
+        title: `${LOGIN_MANUAL_MARKER} Portal User Manual`,
+        description:
+          "How to use the NYSC E-Training Portal. Shown to users on the login page.",
+        file_url: uploaded.secure_url,
+      });
+
+      const response = await fetch(
+        manual ? `/api/learning/books/${manual.id}` : "/api/learning/books",
+        {
+          method: manual ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        },
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not save the manual."),
+        );
+      }
+
+      setManual(readApiItem<ManualBook>(payload));
+      setManualNotice(
+        "Manual attached. It will appear as a popup on the login page.",
+      );
+    } catch (uploadError) {
+      setManualError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Could not upload the manual.",
+      );
+    } finally {
+      setManualBusy(false);
+    }
+  };
 
   const handleChangePassword = async () => {
     setPasswordError("");
@@ -101,6 +208,71 @@ export default function AdminSettingsPage() {
                   <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#1a6b3c]"></div>
                 </label>
               </div>
+            </div>
+          </div>
+
+          {/* Login page manual */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 sm:p-8">
+            <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
+              <div className="w-10 h-10 rounded-full bg-green-50 text-[#1a6b3c] flex items-center justify-center">
+                <BookOpen size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">
+                  Login Page Manual
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Attach the portal user manual (PDF). It appears as a popup
+                  on the login page.
+                </p>
+              </div>
+            </div>
+
+            {manualError && (
+              <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                {manualError}
+              </div>
+            )}
+            {manualNotice && (
+              <div className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+                {manualNotice}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                {manual ? (
+                  <a
+                    href={manual.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-[#1a6b3c] hover:underline"
+                  >
+                    <ExternalLink size={16} />
+                    View current manual
+                  </a>
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    No manual attached yet.
+                  </p>
+                )}
+              </div>
+
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50">
+                <Upload size={16} />
+                {manualBusy
+                  ? `Uploading... ${manualProgress}%`
+                  : manual
+                    ? "Replace manual (PDF)"
+                    : "Attach manual (PDF)"}
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  disabled={manualBusy}
+                  onChange={handleManualUpload}
+                />
+              </label>
             </div>
           </div>
 

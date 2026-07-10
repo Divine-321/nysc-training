@@ -6,37 +6,54 @@ import {
   CheckCircle2,
   FileText,
   Search,
+  Star,
   XCircle,
 } from "lucide-react";
 import {
-  readStoredAssessmentResults,
-  type AssessmentResult,
+  loadAssessmentAttempts,
+  type AssessmentAttempt,
 } from "@/app/lib/staff-learning";
+import AttemptStatusChip from "@/app/components/AttemptStatusChip";
 import { formatDateTime as formatDate } from "@/app/lib/format";
 
+// Results come from the server only (no browser storage): every row is an
+// AssessmentAttempt returned by the attempts API. Until the backend ships
+// that endpoint this list is empty and the empty state explains why.
 export default function ResultPage() {
-  const [results, setResults] = useState<AssessmentResult[]>([]);
+  const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const loadResults = async () => {
-      setResults(readStoredAssessmentResults());
+    const fetchAttempts = async () => {
+      setAttempts(await loadAssessmentAttempts());
+      setLoading(false);
     };
 
-    void loadResults();
+    void fetchAttempts();
   }, []);
 
-  const filteredResults = useMemo(() => {
+  const filteredAttempts = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    if (!normalizedSearch) return results;
+    const sorted = attempts
+      .slice()
+      .sort((first, second) =>
+        (second.submitted_at ?? second.submission_time ?? "").localeCompare(
+          first.submitted_at ?? first.submission_time ?? "",
+        ),
+      );
 
-    return results.filter((result) =>
-      `${result.course_title} ${result.assessment_type}`
+    if (!normalizedSearch) return sorted;
+
+    return sorted.filter((attempt) =>
+      `${attempt.course_title ?? ""} ${attempt.assessment_title ?? ""} ${
+        attempt.assessment_type ?? ""
+      }`
         .toLowerCase()
         .includes(normalizedSearch),
     );
-  }, [results, search]);
+  }, [attempts, search]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -45,7 +62,8 @@ export default function ResultPage() {
           Assessment Results
         </h2>
         <p className="text-sm text-gray-500">
-          View results returned after submitting course assessments.
+          Every attempt is graded and stored by the backend. Your official
+          result for an assessment is your best attempt.
         </p>
       </div>
 
@@ -67,19 +85,24 @@ export default function ResultPage() {
         </div>
 
         <div className="overflow-x-auto">
-          {filteredResults.length === 0 ? (
+          {loading ? (
+            <p className="p-8 text-center text-sm text-gray-500">
+              Loading results...
+            </p>
+          ) : filteredAttempts.length === 0 ? (
             <div className="p-8 text-center">
               <Award className="mx-auto mb-3 text-gray-300" size={42} />
               <p className="font-semibold text-gray-700">
                 No assessment results yet.
               </p>
               <p className="mt-1 text-sm text-gray-500">
-                After you submit a course assessment, its backend-graded result
-                will appear here.
+                Results appear here after you submit an assessment. Your score
+                is shown immediately after each submission.
               </p>
               <p className="mt-3 text-xs text-gray-400">
-                For permanent result history, backend still needs to expose a
-                staff results-list endpoint.
+                Attempt history is served by the backend attempts API, which is
+                still being rolled out — past attempts will appear here once it
+                is live.
               </p>
             </div>
           ) : (
@@ -88,6 +111,7 @@ export default function ResultPage() {
                 <tr>
                   <th className="px-6 py-4">Course</th>
                   <th className="px-6 py-4">Assessment</th>
+                  <th className="px-6 py-4">Attempt</th>
                   <th className="px-6 py-4">Score</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4">Date</th>
@@ -95,8 +119,8 @@ export default function ResultPage() {
               </thead>
 
               <tbody className="divide-y divide-gray-100">
-                {filteredResults.map((result) => (
-                  <tr key={result.id} className="transition hover:bg-gray-50">
+                {filteredAttempts.map((attempt) => (
+                  <tr key={attempt.id} className="transition hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-50 text-[#1a6b3c]">
@@ -104,41 +128,73 @@ export default function ResultPage() {
                         </div>
                         <span
                           className="max-w-xs truncate font-semibold text-gray-800"
-                          title={result.course_title}
+                          title={attempt.course_title}
                         >
-                          {result.course_title}
+                          {attempt.course_title || "—"}
                         </span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 font-medium text-gray-600">
                         <FileText size={16} className="text-gray-400" />
-                        {result.assessment_type}
+                        {attempt.assessment_title ||
+                          attempt.assessment_type ||
+                          `Assessment #${attempt.assessment}`}
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="font-bold text-gray-800">
-                        {result.percentage}%
+                      <span className="flex items-center gap-1.5 font-medium text-gray-600">
+                        #{attempt.attempt_number}
+                        {attempt.is_official_result && (
+                          <span title="Official result (best attempt)">
+                            <Star
+                              size={14}
+                              className="fill-amber-400 text-amber-400"
+                            />
+                          </span>
+                        )}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${
-                          result.passed
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {result.passed ? (
-                          <CheckCircle2 size={14} />
-                        ) : (
-                          <XCircle size={14} />
-                        )}
-                        {result.passed ? "Passed" : "Failed"}
+                      <span className="font-bold text-gray-800">
+                        {attempt.percentage !== null
+                          ? `${attempt.percentage}%`
+                          : "—"}
                       </span>
                     </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        {/* The deployed serializer omits attempt_status; a
+                            returned attempt is by definition submitted. */}
+                        <AttemptStatusChip
+                          status={attempt.attempt_status ?? "SUBMITTED"}
+                        />
+                        {(attempt.attempt_status ?? "SUBMITTED") ===
+                          "SUBMITTED" && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-xs font-bold ${
+                              attempt.passed
+                                ? "text-green-700"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {attempt.passed ? (
+                              <CheckCircle2 size={14} />
+                            ) : (
+                              <XCircle size={14} />
+                            )}
+                            {attempt.passed ? "Passed" : "Failed"}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 font-medium text-gray-500">
-                      {formatDate(result.submitted_at)}
+                      {attempt.submitted_at || attempt.submission_time
+                        ? formatDate(
+                            (attempt.submitted_at ??
+                              attempt.submission_time) as string,
+                          )
+                        : "—"}
                     </td>
                   </tr>
                 ))}
@@ -148,7 +204,7 @@ export default function ResultPage() {
         </div>
 
         <div className="flex items-center justify-between border-t border-gray-100 p-5 text-sm text-gray-500">
-          <p>Showing {filteredResults.length} result(s)</p>
+          <p>Showing {filteredAttempts.length} attempt(s)</p>
         </div>
       </div>
     </div>

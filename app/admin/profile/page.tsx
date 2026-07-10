@@ -20,6 +20,9 @@ import {
   resolveMediaUrl,
   type AuthUser,
 } from "@/app/lib/portal-api";
+import CameraCaptureModal, {
+  dataUrlToFile,
+} from "@/app/components/CameraCaptureModal";
 
 const defaultProfileData = {
   photo: "/1-blank-profile.png",
@@ -41,6 +44,7 @@ export default function AdminProfilePage() {
   const [formData, setFormData] = useState(defaultProfileData);
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -117,18 +121,9 @@ export default function AdminProfilePage() {
     }
   };
 
-  const handlePhotoChange = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file.");
-      return;
-    }
+  // Photos must be captured live with the camera (no device uploads).
+  const handlePhotoCapture = async (imageDataUrl: string) => {
+    const file = dataUrlToFile(imageDataUrl, "profile-photo.jpg");
 
     setUploadingPhoto(true);
     setError("");
@@ -171,6 +166,7 @@ export default function AdminProfilePage() {
       setAdminData((current) => ({ ...current, photo: nextPhoto }));
       setFormData((current) => ({ ...current, photo: nextPhoto }));
       setMessage("Profile picture updated successfully.");
+      setShowPhotoModal(false);
       window.dispatchEvent(new Event("nysc-profile-updated"));
     } catch (uploadError) {
       setError(
@@ -226,19 +222,17 @@ export default function AdminProfilePage() {
             />
 
             {isEditing && (
-              <label className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover:opacity-100 transition">
+              <button
+                type="button"
+                disabled={uploadingPhoto}
+                onClick={() => setShowPhotoModal(true)}
+                className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover:opacity-100 transition"
+              >
                 <Camera size={24} />
                 <span className="text-xs mt-1 font-medium">
-                  {uploadingPhoto ? "Uploading..." : "Change"}
+                  {uploadingPhoto ? "Uploading..." : "Take photo"}
                 </span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  disabled={uploadingPhoto}
-                  onChange={handlePhotoChange}
-                />
-              </label>
+              </button>
             )}
           </div>
 
@@ -465,6 +459,16 @@ export default function AdminProfilePage() {
           </div>
         </div>
       </div>
+
+      {showPhotoModal && (
+        <CameraCaptureModal
+          title="Update profile photo"
+          description="Profile photos must be taken with your camera."
+          busy={uploadingPhoto}
+          onCapture={handlePhotoCapture}
+          onCancel={() => setShowPhotoModal(false)}
+        />
+      )}
     </div>
   );
 }

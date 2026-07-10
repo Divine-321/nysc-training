@@ -18,8 +18,8 @@ import {
   extractErrorMessage,
   readApiList,
 } from "@/app/lib/portal-api";
-import ModuleDocumentsManager from "./ModuleDocumentsManager";
-import type { ModuleDocument } from "./ModuleDocumentsManager";
+import ModuleActivitiesManager from "./ModuleDocumentsManager";
+import type { Activity } from "./ModuleDocumentsManager";
 import { useConfirm } from "@/app/components/useConfirm";
 
 type CourseModule = {
@@ -29,10 +29,17 @@ type CourseModule = {
   description: string | null;
   notes: string | null;
   order: number;
-  documents: ModuleDocument[];
+  /** Legacy serializer name for the module's learning resources. */
+  documents?: Activity[];
+  /** New-model serializer name once the Activities API ships. */
+  activities?: Activity[];
   created_at: string;
   updated_at: string;
 };
+
+function getModuleActivities(module: CourseModule): Activity[] {
+  return module.activities ?? module.documents ?? [];
+}
 
 const emptyForm = {
   title: "",
@@ -53,6 +60,9 @@ export default function CourseModulesManager({
 }) {
   const { confirm, dialog } = useConfirm();
   const [modules, setModules] = useState<CourseModule[]>([]);
+  const [otherModules, setOtherModules] = useState<CourseModule[]>([]);
+  const [selectedAttachId, setSelectedAttachId] = useState("");
+  const [attaching, setAttaching] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -78,6 +88,11 @@ export default function CourseModulesManager({
       setModules(
         dedupeById(allModules.filter((module) => module.course === courseId))
           .sort((first, second) => first.order - second.order)
+      );
+      setOtherModules(
+        dedupeById(
+          allModules.filter((module) => module.course !== courseId),
+        ).sort((first, second) => first.title.localeCompare(second.title)),
       );
 
       setError("");
@@ -153,6 +168,45 @@ export default function CourseModulesManager({
     }
   };
 
+  // Re-parents an existing module (from another course) onto this course.
+  const handleAttachModule = async () => {
+    const moduleId = Number(selectedAttachId);
+
+    if (!Number.isFinite(moduleId) || !selectedAttachId) return;
+
+    setAttaching(true);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/training/modules/${moduleId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          course: courseId,
+          order: getNextModuleOrder(modules),
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not assign this module."),
+        );
+      }
+
+      setSelectedAttachId("");
+      await loadModules();
+    } catch (attachError) {
+      setError(
+        attachError instanceof Error
+          ? attachError.message
+          : "Could not assign this module.",
+      );
+    } finally {
+      setAttaching(false);
+    }
+  };
+
   const startEditing = (module: CourseModule) => {
     setEditingId(module.id);
 
@@ -165,7 +219,7 @@ export default function CourseModulesManager({
 
   const handleDelete = async (id: number) => {
     const confirmed = await confirm(
-      "Delete this module and its materials?",
+      "Delete this module and its activities?",
       { danger: true },
     );
 
@@ -199,17 +253,15 @@ export default function CourseModulesManager({
       order: index,
     }));
 
+    // Deployed contract: {module_ids: [...]} in the desired order.
     const response = await fetch("/api/training/modules/reorder", {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(
-        modulesWithOrder.map((module) => ({
-          id: module.id,
-          order: module.order,
-        }))
-      ),
+      body: JSON.stringify({
+        module_ids: modulesWithOrder.map((module) => module.id),
+      }),
     });
 
     if (!response.ok) {
@@ -302,6 +354,43 @@ export default function CourseModulesManager({
             </button>
           )}
         </div>
+
+        <div className="border-t border-gray-100 pt-4">
+          <h4 className="mb-1 text-sm font-bold text-gray-800">
+            Or assign an existing module
+          </h4>
+          <p className="mb-3 text-xs text-gray-500">
+            Move a module that already exists (in another course) into this
+            course, together with its activities.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+            <select
+              value={selectedAttachId}
+              onChange={(event) => setSelectedAttachId(event.target.value)}
+              className="w-full rounded-lg border px-4 py-2.5 text-sm"
+            >
+              <option value="">Select a module to assign</option>
+              {otherModules.map((module) => (
+                <option key={module.id} value={module.id}>
+                  {module.title} ({getModuleActivities(module).length} activity(ies))
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleAttachModule}
+              disabled={!selectedAttachId || attaching}
+              className="rounded-lg border border-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50 disabled:opacity-50"
+            >
+              {attaching ? "Assigning..." : "Assign to course"}
+            </button>
+          </div>
+          {otherModules.length === 0 && (
+            <p className="mt-2 text-xs text-gray-400">
+              No modules from other courses are available.
+            </p>
+          )}
+        </div>
       </form>
 
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
@@ -329,7 +418,7 @@ export default function CourseModulesManager({
                       {module.description || "No description"}
                     </p>
                     <p className="mt-2 text-xs text-gray-400">
-                      {module.documents.length} material(s)
+                      {getModuleActivities(module).length} activity(ies)
                     </p>
                   </div>
 
@@ -370,9 +459,9 @@ export default function CourseModulesManager({
                   </div>
                 </div>
 
-                <ModuleDocumentsManager
+                <ModuleActivitiesManager
                   moduleId={module.id}
-                  documents={module.documents}
+                  activities={getModuleActivities(module)}
                   onChanged={loadModules}
                 />
               </div>

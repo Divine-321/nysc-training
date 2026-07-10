@@ -59,6 +59,8 @@ export type LoginResponse = ApiEnvelope<AuthData>;
 export type LoginCredentials = {
   login: string;
   password: string;
+  /** Portal gate required by the backend: "staff" or "admin". */
+  role: "staff" | "admin";
 };
 
 export type Trainer = {

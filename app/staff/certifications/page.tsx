@@ -1,12 +1,32 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Award, Download, ExternalLink, Printer } from "lucide-react";
+import {
+  Award,
+  Download,
+  ExternalLink,
+  PlayCircle,
+  Printer,
+  Target,
+} from "lucide-react";
 import {
   extractErrorMessage,
   readApiList,
 } from "@/app/lib/portal-api";
+import {
+  documentIsComplete,
+  flagIsTrue,
+  loadAssessmentAttempts,
+  loadStaffCourses,
+  type Assessment,
+  type AssessmentAttempt,
+  type StaffCourse,
+} from "@/app/lib/staff-learning";
+import RequirementChecklist, {
+  type RequirementItem,
+} from "@/app/components/RequirementChecklist";
 import { formatDate as formatDateMedium } from "@/app/lib/format";
 
 type Certificate = {
@@ -23,11 +43,106 @@ function formatDate(value: string) {
   return formatDateMedium(value, "long");
 }
 
+function staffCourseId(staffCourse: StaffCourse) {
+  return staffCourse.cohortCourse?.course ?? staffCourse.course?.id ?? null;
+}
+
+// Spec section 21: show staff exactly which certificate requirements are
+// still open — every module at 100%, all materials done, post-test passed,
+// evaluation submitted. Post-test pass state comes from attempts (empty
+// until the results API ships, so it is labelled honestly).
+function buildRequirements(
+  staffCourse: StaffCourse,
+  assessments: Assessment[],
+  attempts: AssessmentAttempt[],
+): RequirementItem[] {
+  const { enrollment, modules } = staffCourse;
+
+  const allDocs = modules.flatMap((courseModule) => courseModule.documents);
+  const completedDocs = allDocs.filter((doc) =>
+    documentIsComplete(enrollment, doc.id),
+  ).length;
+
+  const modulesWithContent = modules.filter(
+    (courseModule) => courseModule.documents.length > 0,
+  );
+  const completedModules = modulesWithContent.filter((courseModule) =>
+    courseModule.documents.every((doc) =>
+      documentIsComplete(enrollment, doc.id),
+    ),
+  ).length;
+
+  const courseId = staffCourseId(staffCourse);
+  const postTest = assessments.find(
+    (assessment) =>
+      assessment.course === courseId && assessment.type === "POST_TEST",
+  );
+  // The enrollment now carries the authoritative flag; attempts are a
+  // fallback for older payloads.
+  const passedPostTest = postTest
+    ? flagIsTrue(enrollment.post_test_passed) ||
+      attempts.some(
+        (attempt) =>
+          attempt.assessment === postTest.id &&
+          attempt.passed &&
+          (attempt.attempt_status ?? "SUBMITTED") === "SUBMITTED",
+      )
+    : false;
+
+  const items: RequirementItem[] = [
+    {
+      label: "Complete every module",
+      met:
+        modulesWithContent.length > 0 &&
+        completedModules === modulesWithContent.length,
+      detail: `${completedModules} of ${modulesWithContent.length} module(s) at 100%`,
+    },
+    {
+      label: "Complete all learning materials",
+      met: allDocs.length > 0 && completedDocs === allDocs.length,
+      detail: `${completedDocs} of ${allDocs.length} material(s) completed`,
+    },
+  ];
+
+  if (postTest) {
+    items.push({
+      label: `Pass the post-test — ${postTest.title}`,
+      met: passedPostTest,
+      detail: passedPostTest
+        ? "Passed"
+        : "Not passed yet — take the post-test from the course player. Required before your certificate can be issued.",
+    });
+  } else {
+    items.push({
+      label: "No post-test is required for this course",
+      met: true,
+    });
+  }
+
+  const evaluationDone =
+    flagIsTrue(enrollment.evaluation_submitted) ||
+    Boolean(enrollment.evaluation);
+
+  items.push({
+    label: "Submit the course evaluation",
+    met: evaluationDone,
+    detail: evaluationDone
+      ? "Submitted"
+      : "Rate the course from the course page after finishing.",
+  });
+
+  return items;
+}
+
 export default function CertificationsPage() {
   const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [selectedCert, setSelectedCert] = useState<Certificate | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [staffCourses, setStaffCourses] = useState<StaffCourse[]>([]);
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
+  const [loadingEligibility, setLoadingEligibility] = useState(true);
 
   const loadCertificates = useCallback(async () => {
     try {
@@ -70,9 +185,41 @@ export default function CertificationsPage() {
     void fetchData();
   }, [loadCertificates]);
 
+  useEffect(() => {
+    const loadEligibilityData = async () => {
+      try {
+        const [courses, attemptList, assessmentPayload] = await Promise.all([
+          loadStaffCourses().catch(() => [] as StaffCourse[]),
+          loadAssessmentAttempts(),
+          fetch("/api/training/assessments", { cache: "no-store" })
+            .then((response) => (response.ok ? response.json() : null))
+            .catch(() => null),
+        ]);
+
+        setStaffCourses(courses);
+        setAttempts(attemptList);
+        setAssessments(readApiList<Assessment>(assessmentPayload));
+      } finally {
+        setLoadingEligibility(false);
+      }
+    };
+
+    void loadEligibilityData();
+  }, []);
+
   const handlePrint = () => {
     window.print();
   };
+
+  // Enrolled courses that do not have a certificate yet — these get the
+  // "what's left" checklist.
+  const pendingCourses = staffCourses.filter(
+    (staffCourse) =>
+      !certificates.some(
+        (certificate) =>
+          certificate.course_title === staffCourse.enrollment.course_title,
+      ),
+  );
 
   const handleDownload = () => {
     if (selectedCert?.pdf_url) {
@@ -196,30 +343,42 @@ export default function CertificationsPage() {
                 <div className="absolute bottom-5 left-5 h-10 w-10 border-b-4 border-l-4 border-[#1a6b3c]" />
                 <div className="absolute bottom-5 right-5 h-10 w-10 border-b-4 border-r-4 border-[#1a6b3c]" />
 
-                <div className="relative z-10 flex h-full flex-col items-center justify-center p-12 text-center">
+                <div className="absolute right-12 top-10 z-20 text-right">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                    Certificate ID
+                  </p>
+                  <p className="font-serif text-sm font-semibold text-gray-700">
+                    {selectedCert.certificate_id}
+                  </p>
+                </div>
+
+                <div className="relative z-10 flex h-full flex-col items-center justify-center px-12 py-10 text-center">
                   <Image
                     src="/images/nysc-logo.png"
                     alt="NYSC Logo"
-                    width={90}
-                    height={90}
-                    className="mb-6 opacity-90"
+                    width={72}
+                    height={72}
+                    className="mb-4 opacity-90"
                   />
-                  <h1 className="mb-3 font-serif text-4xl font-bold uppercase tracking-widest text-[#1a6b3c]">
+                  <h1 className="mb-2 font-serif text-3xl font-bold uppercase tracking-widest text-[#1a6b3c]">
                     Certificate of Completion
                   </h1>
-                  <p className="mb-10 text-sm font-medium uppercase tracking-widest text-gray-500">
+                  <p className="mb-6 text-sm font-medium uppercase tracking-widest text-gray-500">
                     National Youth Service Corps E-Training
                   </p>
-                  <p className="mb-4 text-lg italic text-gray-700">
+                  <p className="mb-3 text-lg italic text-gray-700">
                     This is to proudly certify that
                   </p>
-                  <h2 className="mb-8 inline-block border-b-2 border-gray-300 px-16 pb-2 font-serif text-5xl font-bold text-gray-900">
+                  <h2 className="mb-2 inline-block max-w-full break-words border-b-2 border-gray-300 px-12 pb-2 font-serif text-4xl font-bold text-gray-900">
                     {selectedCert.staff_name}
                   </h2>
-                  <p className="mb-3 text-lg italic text-gray-700">
+                  <p className="mb-5 text-sm font-semibold uppercase tracking-widest text-gray-600">
+                    File Number: {selectedCert.file_number}
+                  </p>
+                  <p className="mb-2 text-lg italic text-gray-700">
                     has successfully completed the training course
                   </p>
-                  <h3 className="mb-14 max-w-xl text-2xl font-bold text-[#1a6b3c]">
+                  <h3 className="mb-8 max-w-xl text-2xl font-bold text-[#1a6b3c]">
                     {selectedCert.course_title}
                   </h3>
 
@@ -250,28 +409,97 @@ export default function CertificationsPage() {
                     </div>
 
                     <div className="flex w-48 flex-col items-center">
-                      <div className="flex h-10 items-end">
-                        <span className="font-serif text-xl italic text-gray-800">
-                          {selectedCert.certificate_id}
-                        </span>
-                      </div>
+                      <div className="h-10" />
                       <div className="mt-2 w-full border-t border-gray-400 pt-2">
                         <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
-                          Certificate ID
+                          Authorized Signature
                         </p>
                       </div>
                     </div>
                   </div>
-
-                  <p className="mt-6 text-xs text-gray-400">
-                    File number: {selectedCert.file_number}
-                  </p>
                 </div>
               </div>
             </div>
           </div>
         </div>
       ) : null}
+
+      {!loadingEligibility && pendingCourses.length > 0 && (
+        <section className="print:hidden">
+          <div className="mb-4">
+            <h3 className="flex items-center gap-2 text-lg font-bold text-gray-800">
+              <Target size={20} className="text-[#1a6b3c]" />
+              Certificate progress
+            </h3>
+            <p className="text-sm text-gray-500">
+              What is left before your next certificate can be issued.
+              Certificates are generated automatically once every requirement
+              is met.
+            </p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {pendingCourses.map((staffCourse) => {
+              const items = buildRequirements(
+                staffCourse,
+                assessments,
+                attempts,
+              );
+              const metCount = items.filter((item) => item.met).length;
+              const courseId = staffCourseId(staffCourse);
+
+              return (
+                <div
+                  key={staffCourse.enrollment.id}
+                  className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
+                >
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <h4 className="font-bold text-gray-800">
+                        {staffCourse.enrollment.course_title}
+                      </h4>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {metCount} of {items.length} requirement(s) met
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
+                        metCount === items.length
+                          ? "bg-green-100 text-green-700"
+                          : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {metCount === items.length
+                        ? "Awaiting issue"
+                        : "In progress"}
+                    </span>
+                  </div>
+
+                  <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-gray-100">
+                    <div
+                      className="h-full rounded-full bg-[#1a6b3c] transition-all duration-500"
+                      style={{
+                        width: `${Math.round((metCount / items.length) * 100)}%`,
+                      }}
+                    />
+                  </div>
+
+                  <RequirementChecklist items={items} />
+
+                  {courseId !== null && (
+                    <Link
+                      href={`/staff/course/${courseId}/learn`}
+                      className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50"
+                    >
+                      <PlayCircle size={16} /> Continue course
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   MapPin,
   Briefcase,
   BookOpen,
+  Camera,
   Hash,
   Layers,
   Mail,
@@ -23,6 +24,11 @@ import {
   readApiList,
   type AuthUser,
 } from "@/app/lib/portal-api";
+import {
+  cohortCourseBatchLabel,
+  type CohortCourse,
+} from "@/app/lib/staff-learning";
+import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import { useConfirm } from "@/app/components/useConfirm";
 
 type StaffUser = {
@@ -267,11 +273,10 @@ function formatCohortAssignmentError(message: string) {
 
   if (
     normalizedMessage.includes("unique set") ||
-    (normalizedMessage.includes("cohort") &&
-      normalizedMessage.includes("staff") &&
+    (normalizedMessage.includes("staff") &&
       normalizedMessage.includes("unique"))
   ) {
-    return "This staff member is already assigned to the selected cohort.";
+    return "This staff member is already assigned to the selected training programme.";
   }
 
   if (
@@ -279,7 +284,7 @@ function formatCohortAssignmentError(message: string) {
     normalizedMessage.includes("already assigned") ||
     normalizedMessage.includes("already exists")
   ) {
-    return "This staff member is already assigned to the selected cohort.";
+    return "This staff member is already assigned to the selected training programme.";
   }
 
   return message;
@@ -311,6 +316,7 @@ export default function AdminUsersPage() {
   const [addStaffError, setAddStaffError] = useState("");
   const [addStaffNotice, setAddStaffNotice] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  const [uploadingEditPhoto, setUploadingEditPhoto] = useState(false);
   const [editError, setEditError] = useState("");
   const [editNotice, setEditNotice] = useState("");
 
@@ -343,6 +349,11 @@ export default function AdminUsersPage() {
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [selectedCohort, setSelectedCohort] = useState("");
   const [cohorts, setCohorts] = useState<CohortOption[]>([]);
+  // New-model (Training Programme) assignment targets. When the restructured
+  // backend is live, staff are assigned via Enrollment into a CohortCourse
+  // instead of CohortStaff into a Cohort.
+  const [programmeMode, setProgrammeMode] = useState(false);
+  const [programmes, setProgrammes] = useState<CohortCourse[]>([]);
   const [loadingCohorts, setLoadingCohorts] = useState(true);
   const [cohortError, setCohortError] = useState("");
   const [assigningStaff, setAssigningStaff] = useState(false);
@@ -606,15 +617,47 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => {
-    const loadCohorts = async () => {
+    // Loads assignment targets across both backend models: Training
+    // Programmes (new — cohort is a batch string / year exists) or dynamic
+    // Cohorts (legacy).
+    const loadAssignmentTargets = async () => {
       try {
+        const programmeResponse = await fetch("/api/training/cohort-courses", {
+          cache: "no-store",
+        });
+        const programmePayload = await programmeResponse
+          .json()
+          .catch(() => null);
+        const programmeList = programmeResponse.ok
+          ? readApiList<CohortCourse>(programmePayload)
+          : [];
+
+        const isNewModel = programmeList.some(
+          (item) => typeof item.cohort === "string" || item.year !== undefined,
+        );
+
+        if (isNewModel) {
+          setProgrammeMode(true);
+          setProgrammes(programmeList);
+          setCohortError("");
+          return;
+        }
+
         const response = await fetch("/api/training/cohorts", {
           cache: "no-store",
         });
-
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
+          // Old cohorts endpoint gone but the programme list was empty —
+          // we are on the new backend with no programmes created yet.
+          if (response.status === 404 && programmeResponse.ok) {
+            setProgrammeMode(true);
+            setProgrammes(programmeList);
+            setCohortError("");
+            return;
+          }
+
           throw new Error(
             extractErrorMessage(payload, "Could not load cohorts."),
           );
@@ -631,7 +674,7 @@ export default function AdminUsersPage() {
       }
     };
 
-    void loadCohorts();
+    void loadAssignmentTargets();
   }, []);
 
   useEffect(() => {
@@ -701,9 +744,29 @@ export default function AdminUsersPage() {
     }
   };
 
+  // Unified dropdown options across both models.
+  const assignTargets = programmeMode
+    ? programmes.map((programme) => ({
+        id: programme.id,
+        label: `${
+          programme.course_details?.title ?? `Course #${programme.course}`
+        } — ${cohortCourseBatchLabel(programme)}${
+          programme.year ? ` ${programme.year}` : ""
+        }`,
+      }))
+    : cohorts.map((cohort) => ({
+        id: cohort.id,
+        label: `${cohort.name} - ${cohort.batch}`,
+      }));
+  const targetLabel = programmeMode ? "Training Programme" : "Cohort";
+
   const handleAssignSelectedStaff = async () => {
     if (!selectedCohort) {
-      setAssignmentError("Please select a cohort.");
+      setAssignmentError(
+        programmeMode
+          ? "Please select a training programme."
+          : "Please select a cohort.",
+      );
       return;
     }
 
@@ -719,16 +782,29 @@ export default function AdminUsersPage() {
     const results = await Promise.all(
       selectedStaffIds.map(async (staffId) => {
         try {
-          const response = await fetch("/api/training/cohort-staff", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
+          // New model: assignment IS an Enrollment into the programme.
+          const response = await fetch(
+            programmeMode
+              ? "/api/training/enrollments"
+              : "/api/training/cohort-staff",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(
+                programmeMode
+                  ? {
+                      cohort_course: Number(selectedCohort),
+                      staff: Number(staffId),
+                    }
+                  : {
+                      cohort: Number(selectedCohort),
+                      staff: Number(staffId),
+                    },
+              ),
             },
-            body: JSON.stringify({
-              cohort: Number(selectedCohort),
-              staff: Number(staffId),
-            }),
-          });
+          );
 
           const payload = await response.json().catch(() => null);
 
@@ -803,7 +879,9 @@ export default function AdminUsersPage() {
       formData.set("file", cohortFile);
 
       const response = await fetch(
-        `/api/training/cohorts/${selectedCohort}/bulk-upload`,
+        programmeMode
+          ? `/api/training/cohort-courses/${selectedCohort}/bulk-enroll`
+          : `/api/training/cohorts/${selectedCohort}/bulk-upload`,
         {
           method: "POST",
           body: formData,
@@ -823,13 +901,9 @@ export default function AdminUsersPage() {
         );
       }
 
+      // The count grid renders only when the backend returned the counts.
       const result = payload?.data as BulkUploadData | undefined;
-
-      if (!result) {
-        throw new Error("The bulk-upload response did not contain result data.");
-      }
-
-      setBulkResult(result);
+      setBulkResult(result?.total_rows !== undefined ? result : null);
       setAssignmentNotice(payload?.message || "Staff import completed.");
       setCohortFile(null);
       setFileInputKey((current) => current + 1);
@@ -2005,23 +2079,80 @@ export default function AdminUsersPage() {
                     />
                   </label>
 
-                  <label className="text-sm font-medium text-gray-700">
-                    Profile picture URL
-                    <input
-                      type="url"
-                      value={editForm.profile.profile_picture_url}
-                      onChange={(event) =>
-                        setEditForm({
-                          ...editForm,
-                          profile: {
-                            ...editForm.profile,
-                            profile_picture_url: event.target.value,
-                          },
-                        })
-                      }
-                      className="mt-1 w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                    />
-                  </label>
+                  <div className="text-sm font-medium text-gray-700">
+                    Profile picture
+                    <div className="mt-1 flex items-center gap-4">
+                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full border-2 border-gray-100 bg-gray-100">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={
+                            editForm.profile.profile_picture_url ||
+                            "/1-blank-profile.png"
+                          }
+                          alt="Profile preview"
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:border-[#1a6b3c] hover:text-[#1a6b3c]">
+                        <Camera size={16} />
+                        {uploadingEditPhoto
+                          ? "Uploading..."
+                          : "Change photo"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          disabled={uploadingEditPhoto}
+                          onChange={async (event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = "";
+
+                            if (!file) return;
+
+                            if (!file.type.startsWith("image/")) {
+                              setEditError("Please choose an image file.");
+                              return;
+                            }
+
+                            setUploadingEditPhoto(true);
+                            setEditError("");
+
+                            try {
+                              const uploaded = await uploadFileToCloudinary(
+                                file,
+                                undefined,
+                                "course",
+                              );
+                              setEditForm((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      profile: {
+                                        ...current.profile,
+                                        profile_picture_url:
+                                          uploaded.secure_url,
+                                      },
+                                    }
+                                  : current,
+                              );
+                            } catch (uploadError) {
+                              setEditError(
+                                uploadError instanceof Error
+                                  ? uploadError.message
+                                  : "Could not upload the profile picture.",
+                              );
+                            } finally {
+                              setUploadingEditPhoto(false);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <p className="mt-1 text-xs font-normal text-gray-500">
+                      Upload a new photo. It is saved when you save the staff
+                      profile.
+                    </p>
+                  </div>
 
                   <label className="text-sm font-medium text-gray-700">
                     Sex
@@ -2733,7 +2864,7 @@ export default function AdminUsersPage() {
                       htmlFor="cohort-select"
                       className="block text-sm font-medium text-gray-700 mb-2"
                     >
-                      Select Cohort
+                      Select {targetLabel}
                     </label>
                     <select
                       id="cohort-select"
@@ -2743,13 +2874,13 @@ export default function AdminUsersPage() {
                     >
                       <option value="">
                         {loadingCohorts
-                          ? "Loading cohorts..."
-                          : "Select Cohort..."}
+                          ? "Loading..."
+                          : `Select ${targetLabel}...`}
                       </option>
 
-                      {cohorts.map((cohort) => (
-                        <option key={cohort.id} value={String(cohort.id)}>
-                          {cohort.name} - {cohort.batch}
+                      {assignTargets.map((target) => (
+                        <option key={target.id} value={String(target.id)}>
+                          {target.label}
                         </option>
                       ))}
                     </select>
@@ -2767,7 +2898,7 @@ export default function AdminUsersPage() {
                       htmlFor="cohort-select"
                       className="block text-sm font-medium text-gray-700 mb-2"
                     >
-                      Select Cohort
+                      Select {targetLabel}
                     </label>
                     <select
                       id="cohort-select"
@@ -2777,13 +2908,13 @@ export default function AdminUsersPage() {
                     >
                       <option value="">
                         {loadingCohorts
-                          ? "Loading cohorts..."
-                          : "Select Cohort..."}
+                          ? "Loading..."
+                          : `Select ${targetLabel}...`}
                       </option>
 
-                      {cohorts.map((cohort) => (
-                        <option key={cohort.id} value={String(cohort.id)}>
-                          {cohort.name} - {cohort.batch}
+                      {assignTargets.map((target) => (
+                        <option key={target.id} value={String(target.id)}>
+                          {target.label}
                         </option>
                       ))}
                     </select>
@@ -2851,6 +2982,8 @@ export default function AdminUsersPage() {
                       <p className="mt-3 text-center text-xs text-gray-500">
                         Row 1 must be a header named file_number. Put one staff
                         file number in Column A on each following row.
+                        {programmeMode &&
+                          " Each newly enrolled staff member is notified by email (and SMS where available)."}
                       </p>
                     </div>
                   </div>
@@ -2910,7 +3043,9 @@ export default function AdminUsersPage() {
                   disabled={assigningStaff || !selectedCohort}
                   className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-[#1a6b3c] hover:bg-[#145530] shadow-sm transition disabled:opacity-50"
                 >
-                  {assigningStaff ? "Assigning..." : "Assign to Cohort"}
+                  {assigningStaff
+                    ? "Assigning..."
+                    : `Assign to ${targetLabel}`}
                 </button>
               ) : (
                 <button

@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { AlertCircle, Eye, EyeOff, X, CheckCircle2 } from "lucide-react";
+import CameraCaptureModal, {
+  dataUrlToFile,
+} from "@/app/components/CameraCaptureModal";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -29,6 +32,7 @@ export default function RegisterPage() {
   const [fileNoValid, setFileNoValid] = useState<boolean | null>(null);
   const [fileNoValidationMsg, setFileNoValidationMsg] = useState("");
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
 
   const validateFileNumber = async (fileNo: string) => {
     if (!fileNo) {
@@ -392,33 +396,24 @@ export default function RegisterPage() {
                   Profile Picture <span className="text-red-600">*</span>
                 </label>
 
-                <input
-                  required
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] ?? null;
-
-                    if (file && file.size > 5 * 1024 * 1024) {
-                      setError("Profile picture must not exceed 5MB.");
-                      event.target.value = "";
-                      setProfilePicture(null);
-                      return;
-                    }
-
-                    setError("");
-                    setProfilePicture(file);
-                  }}
-                  className="w-full rounded-full border border-[#1a6b3c] px-4 py-2.5 text-sm"
-                />
+                <button
+                  type="button"
+                  onClick={() => setShowPhotoModal(true)}
+                  className="w-full rounded-full border border-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50"
+                >
+                  {profilePicture
+                    ? "Retake photo with camera"
+                    : "Take photo with camera"}
+                </button>
 
                 <p className="mt-1 text-xs text-gray-500">
-                  Required. JPG, PNG, or WebP. Maximum size: 5MB.
+                  Required. Your photo must be taken live with your camera —
+                  it is used to verify your identity during assessments.
                 </p>
 
                 {profilePicture && (
                   <p className="mt-1 text-xs font-medium text-[#1a6b3c]">
-                    Selected: {profilePicture.name}
+                    Photo captured ✓
                   </p>
                 )}
               </div>
@@ -498,6 +493,21 @@ export default function RegisterPage() {
           </button>
         </form>
       </div>
+
+      {showPhotoModal && (
+        <CameraCaptureModal
+          title="Profile photo"
+          description="Take a clear photo of your face. It is used to verify your identity during assessments."
+          onCapture={(imageDataUrl) => {
+            setProfilePicture(
+              dataUrlToFile(imageDataUrl, "profile-photo.jpg"),
+            );
+            setError("");
+            setShowPhotoModal(false);
+          }}
+          onCancel={() => setShowPhotoModal(false)}
+        />
+      )}
     </div>
   );
 }

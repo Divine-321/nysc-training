@@ -1,173 +1,287 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { ExternalLink, FileUp, Trash2 } from "lucide-react";
-import { extractErrorMessage } from "@/app/lib/portal-api";
+import {
+  ArrowDown,
+  ArrowUp,
+  Eye,
+  FileUp,
+  Pencil,
+  Save,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  activityContentType,
+  activityUrl,
+  createActivity,
+  deleteActivity,
+  isActivitiesApiLive,
+  swapActivityOrder,
+  toViewerActivity,
+  updateActivity,
+  type AdminActivity,
+  type LegacyDocType,
+} from "@/app/lib/activities-api";
+import type { ActivityContentType } from "@/app/lib/training-types";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
+import ActivityViewer from "@/app/components/ActivityViewer";
+import RichTextEditor from "@/app/components/RichTextEditor";
 import { useConfirm } from "@/app/components/useConfirm";
 
-export type ModuleDocument = {
-  id: number;
-  module: number;
-  title: string;
-  doc_type: "VIDEO" | "PDF" | "PPT" | "IMAGE" | "OTHER";
-  file_url: string;
-  cloudinary_public_id: string | null;
-  order: number;
-};
+// Re-exported so CourseModulesManager can type the module payload.
+export type Activity = AdminActivity;
 
-type ModuleDocumentsManagerProps = {
+type ModuleActivitiesManagerProps = {
   moduleId: number;
-  documents: ModuleDocument[];
+  activities: Activity[];
   onChanged: () => Promise<void>;
 };
 
-function inferDocumentType(file: File): ModuleDocument["doc_type"] {
-  const filename = file.name.toLowerCase();
+type ContentTypeConfig = {
+  value: ActivityContentType;
+  label: string;
+  /** How the admin supplies the content. */
+  input: "upload" | "url" | "text";
+  /** Best-effort mapping to the legacy backend doc_type. */
+  docType: LegacyDocType;
+  accept?: string;
+};
 
-  if (file.type.startsWith("video/")) return "VIDEO";
-  if (file.type.startsWith("image/")) return "IMAGE";
-  if (file.type === "application/pdf" || filename.endsWith(".pdf")) {
-    return "PDF";
-  }
-  if (filename.endsWith(".ppt") || filename.endsWith(".pptx")) {
-    return "PPT";
-  }
+const CONTENT_TYPES: ContentTypeConfig[] = [
+  { value: "VIDEO", label: "Video", input: "upload", docType: "VIDEO", accept: "video/*" },
+  { value: "PDF", label: "PDF", input: "upload", docType: "PDF", accept: ".pdf,application/pdf" },
+  { value: "PPT", label: "Slides (PPT)", input: "upload", docType: "PPT", accept: ".ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation" },
+  { value: "AUDIO", label: "Audio", input: "upload", docType: "OTHER", accept: "audio/*" },
+  { value: "EXTERNAL", label: "External Link", input: "url", docType: "OTHER" },
+  { value: "TEXT", label: "Text lesson", input: "text", docType: "OTHER" },
+];
 
-  return "OTHER";
+function configFor(type: ActivityContentType): ContentTypeConfig {
+  return CONTENT_TYPES.find((item) => item.value === type) ?? CONTENT_TYPES[0];
 }
 
 function filenameWithoutExtension(filename: string) {
   return filename.replace(/\.[^/.]+$/, "");
 }
 
-export default function ModuleDocumentsManager({
+/** True when the editor HTML has neither readable text nor embedded media. */
+function richTextIsEmpty(html: string) {
+  return (
+    html.replace(/<[^>]*>/g, "").trim().length === 0 &&
+    !/<(img|video|audio)\b/i.test(html)
+  );
+}
+
+export default function ModuleActivitiesManager({
   moduleId,
-  documents,
+  activities,
   onChanged,
-}: ModuleDocumentsManagerProps) {
+}: ModuleActivitiesManagerProps) {
   const { confirm, dialog } = useConfirm();
   const [title, setTitle] = useState("");
-  const [documentType, setDocumentType] =
-    useState<ModuleDocument["doc_type"]>("VIDEO");
+  const [contentType, setContentType] = useState<ActivityContentType>("VIDEO");
   const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [externalUrl, setExternalUrl] = useState("");
+  const [textContent, setTextContent] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [previewActivity, setPreviewActivity] = useState<Activity | null>(null);
+  const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [reordering, setReordering] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [textPersists, setTextPersists] = useState(true);
 
-  const handleUpload = async (event: FormEvent<HTMLFormElement>) => {
+  // Legacy module-docs storage drops text_content; warn authors until the
+  // Activities API (which persists it) is live.
+  useEffect(() => {
+    let active = true;
+
+    void isActivitiesApiLive().then((live) => {
+      if (active) setTextPersists(live);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const config = configFor(contentType);
+  const sortedActivities = activities
+    .slice()
+    .sort((first, second) => first.order - second.order);
+  const editingActivity =
+    editingId === null
+      ? null
+      : sortedActivities.find((activity) => activity.id === editingId) ?? null;
+
+  const resetForm = () => {
+    setTitle("");
+    setContentType("VIDEO");
+    setFile(null);
+    setExternalUrl("");
+    setTextContent("");
+    setEditingId(null);
+    setProgress(0);
+    setFileInputKey((current) => current + 1);
+  };
+
+  const startEditing = (activity: Activity) => {
+    const kind = activityContentType(activity);
+
+    setEditingId(activity.id);
+    setTitle(activity.title);
+    setContentType(kind);
+    setFile(null);
+    setExternalUrl(kind === "EXTERNAL" ? activityUrl(activity) : "");
+    setTextContent(activity.text_content ?? "");
+    setError("");
+    setNotice("");
+    setFileInputKey((current) => current + 1);
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!file) {
-      setError("Please select a file.");
-      return;
-    }
-
     if (!title.trim()) {
-      setError("Please enter a document title.");
+      setError("Please enter an activity title.");
       return;
     }
 
-    setUploading(true);
+    const keepsExistingFile =
+      editingActivity !== null && Boolean(activityUrl(editingActivity));
+
+    if (config.input === "upload" && !file && !keepsExistingFile) {
+      setError("Please select a file for this activity.");
+      return;
+    }
+    if (config.input === "url" && !externalUrl.trim()) {
+      setError("Please enter the external link URL.");
+      return;
+    }
+    if (config.input === "text" && richTextIsEmpty(textContent)) {
+      setError("Please enter the lesson content.");
+      return;
+    }
+
+    setSaving(true);
     setProgress(0);
     setError("");
     setNotice("");
 
     try {
-      const uploadedFile = await uploadFileToCloudinary(file, setProgress);
+      let contentUrl: string | null = null;
+      let cloudinaryPublicId: string | null =
+        editingActivity?.cloudinary_public_id ?? null;
 
-      const response = await fetch("/api/training/module-docs", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          module: moduleId,
-          title: title.trim(),
-          doc_type: documentType,
-          file_url: uploadedFile.secure_url,
-          cloudinary_public_id: uploadedFile.public_id,
-          order: documents.length,
-        }),
-      });
-
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          extractErrorMessage(
-            payload,
-            "The file uploaded, but its module record could not be saved.",
-          ),
-        );
+      if (config.input === "upload") {
+        if (file) {
+          const uploadedFile = await uploadFileToCloudinary(file, setProgress);
+          contentUrl = uploadedFile.secure_url;
+          cloudinaryPublicId = uploadedFile.public_id;
+        } else if (editingActivity) {
+          contentUrl = activityUrl(editingActivity) || null;
+        }
+      } else if (config.input === "url") {
+        contentUrl = externalUrl.trim();
       }
 
-      setTitle("");
-      setFile(null);
-      setProgress(0);
-      setFileInputKey((current) => current + 1);
-      setNotice("Module material uploaded successfully.");
+      const input = {
+        module: moduleId,
+        title: title.trim(),
+        order: editingActivity ? editingActivity.order : activities.length,
+        content_type: contentType,
+        content_url: contentUrl,
+        text_content: config.input === "text" ? textContent : null,
+        doc_type: config.docType,
+        cloudinary_public_id: cloudinaryPublicId,
+      };
+
+      if (editingActivity) {
+        await updateActivity(editingActivity.id, input);
+        setNotice("Activity updated successfully.");
+      } else {
+        await createActivity(input);
+        setNotice("Activity added successfully.");
+      }
+
+      resetForm();
       await onChanged();
-    } catch (uploadError) {
+    } catch (submitError) {
       setError(
-        uploadError instanceof Error
-          ? uploadError.message
-          : "Could not upload the module material.",
+        submitError instanceof Error
+          ? submitError.message
+          : "Could not save the activity.",
       );
     } finally {
-      setUploading(false);
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (document: ModuleDocument) => {
+  const handleDelete = async (activity: Activity) => {
     const confirmed = await confirm(
-      `Delete "${document.title}" from this module and Cloudinary?`,
+      `Delete "${activity.title}" from this module?`,
       { danger: true },
     );
 
     if (!confirmed) return;
 
-    setDeletingId(document.id);
+    setDeletingId(activity.id);
     setError("");
     setNotice("");
 
     try {
-      const response = await fetch(
-        `/api/training/module-docs/${document.id}`,
-        { method: "DELETE" },
-      );
+      await deleteActivity(activity.id);
 
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null);
-        throw new Error(
-          extractErrorMessage(payload, "Could not delete this material."),
-        );
-      }
+      if (editingId === activity.id) resetForm();
 
-      setNotice("Module material deleted successfully.");
+      setNotice("Activity deleted successfully.");
       await onChanged();
     } catch (deleteError) {
       setError(
         deleteError instanceof Error
           ? deleteError.message
-          : "Could not delete this material.",
+          : "Could not delete this activity.",
       );
     } finally {
       setDeletingId(null);
     }
   };
 
+  const moveActivity = async (currentIndex: number, newIndex: number) => {
+    if (newIndex < 0 || newIndex >= sortedActivities.length) return;
+
+    setReordering(true);
+    setError("");
+
+    try {
+      await swapActivityOrder(
+        sortedActivities[currentIndex],
+        sortedActivities[newIndex],
+      );
+      await onChanged();
+    } catch (reorderError) {
+      setError(
+        reorderError instanceof Error
+          ? reorderError.message
+          : "Could not reorder activities.",
+      );
+    } finally {
+      setReordering(false);
+    }
+  };
+
   return (
     <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
       <div>
-        <p className="text-sm font-semibold text-gray-700">Module materials</p>
+        <p className="text-sm font-semibold text-gray-700">Activities</p>
         <p className="text-xs text-gray-500">
-          Upload videos, audio, PDFs, presentations or images after creating the
-          module.
+          Add the learning resources for this module: video, PDF, audio, an
+          external link, or text.
         </p>
       </div>
 
@@ -183,92 +297,179 @@ export default function ModuleDocumentsManager({
         </div>
       )}
 
-      {documents.length > 0 && (
+      {sortedActivities.length > 0 && (
         <ul className="space-y-2">
-          {documents
-            .slice()
-            .sort((first, second) => first.order - second.order)
-            .map((document) => (
+          {sortedActivities.map((activity, index) => {
+            const kind = activityContentType(activity);
+            const isBeingEdited = editingId === activity.id;
+
+            return (
               <li
-                key={document.id}
-                className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 p-3"
+                key={activity.id}
+                className={`flex items-center justify-between gap-3 rounded-lg p-3 ${
+                  isBeingEdited
+                    ? "bg-green-50 ring-1 ring-[#1a6b3c]/30"
+                    : "bg-gray-50"
+                }`}
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-gray-800">
-                    {document.title}
+                    {activity.title}
                   </p>
-                  <p className="text-xs text-gray-500">{document.doc_type}</p>
+                  <p className="text-xs text-gray-500">
+                    {configFor(kind).label}
+                    {isBeingEdited && " — editing"}
+                  </p>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-3">
-                  <a
-                    href={document.file_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label={`Open ${document.title}`}
-                    className="text-[#1a6b3c]"
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => moveActivity(index, index - 1)}
+                    disabled={index === 0 || reordering}
+                    aria-label="Move activity up"
+                    className="text-gray-500 disabled:opacity-30"
                   >
-                    <ExternalLink size={16} />
-                  </a>
+                    <ArrowUp size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moveActivity(index, index + 1)}
+                    disabled={index === sortedActivities.length - 1 || reordering}
+                    aria-label="Move activity down"
+                    className="text-gray-500 disabled:opacity-30"
+                  >
+                    <ArrowDown size={16} />
+                  </button>
 
                   <button
                     type="button"
-                    onClick={() => handleDelete(document)}
-                    disabled={deletingId === document.id}
-                    aria-label={`Delete ${document.title}`}
+                    onClick={() => setPreviewActivity(activity)}
+                    aria-label={`Preview ${activity.title}`}
+                    className="text-[#1a6b3c]"
+                  >
+                    <Eye size={16} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => startEditing(activity)}
+                    aria-label={`Edit ${activity.title}`}
+                    className="text-[#1a6b3c]"
+                  >
+                    <Pencil size={16} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(activity)}
+                    disabled={deletingId === activity.id}
+                    aria-label={`Delete ${activity.title}`}
                     className="text-red-600 disabled:opacity-50"
                   >
                     <Trash2 size={16} />
                   </button>
                 </div>
               </li>
-            ))}
+            );
+          })}
         </ul>
       )}
 
-      <form onSubmit={handleUpload} className="grid gap-3 sm:grid-cols-2">
+      <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-2">
+        {editingActivity && (
+          <p className="text-xs font-semibold text-[#1a6b3c] sm:col-span-2">
+            Editing “{editingActivity.title}”
+          </p>
+        )}
+
         <input
           required
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder="Material title"
+          placeholder="Activity title"
           className="rounded-lg border px-3 py-2 text-sm"
         />
 
         <select
-          value={documentType}
-          onChange={(event) =>
-            setDocumentType(event.target.value as ModuleDocument["doc_type"])
-          }
+          value={contentType}
+          onChange={(event) => {
+            setContentType(event.target.value as ActivityContentType);
+            setFile(null);
+            setExternalUrl("");
+            setTextContent("");
+            setFileInputKey((current) => current + 1);
+          }}
           className="rounded-lg border px-3 py-2 text-sm"
         >
-          <option value="VIDEO">Video</option>
-          <option value="PDF">PDF</option>
-          <option value="PPT">Presentation</option>
-          <option value="IMAGE">Image</option>
-          <option value="OTHER">Audio/Other</option>
+          {CONTENT_TYPES.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
 
-        <input
-          key={fileInputKey}
-          required
-          type="file"
-          accept="video/*,audio/*,.pdf,.ppt,.pptx,image/*"
-          onChange={(event) => {
-            const selectedFile = event.target.files?.[0] ?? null;
-            setFile(selectedFile);
+        {config.input === "upload" && (
+          <div className="sm:col-span-2">
+            <input
+              key={fileInputKey}
+              type="file"
+              accept={config.accept}
+              onChange={(event) => {
+                const selectedFile = event.target.files?.[0] ?? null;
+                setFile(selectedFile);
 
-            if (selectedFile) {
-              setDocumentType(inferDocumentType(selectedFile));
-              setTitle((current) =>
-                current || filenameWithoutExtension(selectedFile.name),
-              );
-            }
-          }}
-          className="rounded-lg border px-3 py-2 text-sm sm:col-span-2"
-        />
+                if (selectedFile) {
+                  setTitle((current) =>
+                    current || filenameWithoutExtension(selectedFile.name),
+                  );
+                }
+              }}
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+            />
+            {editingActivity &&
+              activityContentType(editingActivity) === contentType &&
+              activityUrl(editingActivity) && (
+                <p className="mt-1 text-xs text-gray-500">
+                  Leave empty to keep the current file.
+                </p>
+              )}
+          </div>
+        )}
 
-        {uploading && (
+        {config.input === "url" && (
+          <input
+            required
+            type="url"
+            value={externalUrl}
+            onChange={(event) => setExternalUrl(event.target.value)}
+            placeholder="https://example.com/resource"
+            className="rounded-lg border px-3 py-2 text-sm sm:col-span-2"
+          />
+        )}
+
+        {config.input === "text" && (
+          <div className="space-y-2 sm:col-span-2">
+            {!textPersists && (
+              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                Text lessons will appear to staff once the new content engine
+                is deployed (rolling out now). Files, links, video and audio
+                activities are unaffected.
+              </p>
+            )}
+            <RichTextEditor
+              value={textContent}
+              onChange={setTextContent}
+              disabled={saving}
+            />
+            <p className="text-xs text-gray-400">
+              Write the lesson like a page: mix headings, text, images, video
+              and audio. Staff read it directly inside the course player.
+            </p>
+          </div>
+        )}
+
+        {saving && config.input === "upload" && file && (
           <div className="sm:col-span-2">
             <div className="mb-1 flex justify-between text-xs text-gray-500">
               <span>Uploading directly to Cloudinary...</span>
@@ -283,14 +484,59 @@ export default function ModuleDocumentsManager({
           </div>
         )}
 
-        <button
-          disabled={uploading}
-          className="flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50 sm:col-span-2"
-        >
-          <FileUp size={17} />
-          {uploading ? "Uploading..." : "Upload material"}
-        </button>
+        <div className="flex gap-2 sm:col-span-2">
+          <button
+            disabled={saving}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {editingActivity ? <Save size={17} /> : <FileUp size={17} />}
+            {saving
+              ? "Saving..."
+              : editingActivity
+                ? "Update activity"
+                : "Add activity"}
+          </button>
+
+          {editingActivity && (
+            <button
+              type="button"
+              onClick={resetForm}
+              disabled={saving}
+              className="rounded-lg border px-4 py-2.5 text-sm font-semibold text-gray-600"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </form>
+
+      {previewActivity && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">
+                  {previewActivity.title}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  {configFor(activityContentType(previewActivity)).label} — as
+                  staff will see it
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewActivity(null)}
+                aria-label="Close preview"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <ActivityViewer activity={toViewerActivity(previewActivity)} />
+          </div>
+        </div>
+      )}
 
       {dialog}
     </div>

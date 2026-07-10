@@ -10,6 +10,9 @@ import {
   readApiList,
   resolveMediaUrl,
 } from "@/app/lib/portal-api";
+import CameraCaptureModal, {
+  dataUrlToFile,
+} from "@/app/components/CameraCaptureModal";
 
 type CohortStaffAssignment = {
   id: number;
@@ -47,6 +50,7 @@ export default function StaffProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -104,7 +108,9 @@ const [formData, setFormData] = useState(emptyProfileData);
         .map((assignment) => assignment.cohort_name);
 
       if (cohortNames.length === 0) {
-        cohortNames = enrollments.map((enrollment) => enrollment.cohort_name);
+        cohortNames = enrollments
+          .map((enrollment) => enrollment.cohort_name)
+          .filter((name): name is string => Boolean(name));
       }
 
       const locationParts = [
@@ -175,18 +181,10 @@ const [formData, setFormData] = useState(emptyProfileData);
     }
   };
 
-  const handlePhotoChange = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setError("Please choose an image file.");
-      return;
-    }
+  // Photos must be captured live with the camera (no device uploads): the
+  // registered photo is what exam identity verification compares against.
+  const handlePhotoCapture = async (imageDataUrl: string) => {
+    const file = dataUrlToFile(imageDataUrl, "profile-photo.jpg");
 
     setUploadingPhoto(true);
     setError("");
@@ -229,6 +227,7 @@ const [formData, setFormData] = useState(emptyProfileData);
       setStaffData((current) => ({ ...current, photo: nextPhoto }));
       setFormData((current) => ({ ...current, photo: nextPhoto }));
       setMessage("Profile picture updated successfully.");
+      setShowPhotoModal(false);
       window.dispatchEvent(new Event("nysc-profile-updated"));
     } catch (uploadError) {
       setError(
@@ -281,19 +280,17 @@ const [formData, setFormData] = useState(emptyProfileData);
               className="object-cover" 
             />
             {isEditing && (
-              <label className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover:opacity-100 transition">
+              <button
+                type="button"
+                disabled={uploadingPhoto}
+                onClick={() => setShowPhotoModal(true)}
+                className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white cursor-pointer opacity-0 group-hover:opacity-100 transition"
+              >
                 <Camera size={24} />
                 <span className="text-xs mt-1 font-medium">
-                  {uploadingPhoto ? "Uploading..." : "Change"}
+                  {uploadingPhoto ? "Uploading..." : "Take photo"}
                 </span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept="image/*"
-                  disabled={uploadingPhoto}
-                  onChange={handlePhotoChange}
-                />
-              </label>
+              </button>
             )}
           </div>
           
@@ -466,6 +463,16 @@ const [formData, setFormData] = useState(emptyProfileData);
           </div>
         </div>
       </div>
+
+      {showPhotoModal && (
+        <CameraCaptureModal
+          title="Update profile photo"
+          description="Profile photos must be taken with your camera. This photo is used to verify your identity before assessments."
+          busy={uploadingPhoto}
+          onCapture={handlePhotoCapture}
+          onCancel={() => setShowPhotoModal(false)}
+        />
+      )}
     </div>
   );
 }

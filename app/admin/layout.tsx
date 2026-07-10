@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Users,
   UserPlus,
+  BarChart3,
   BookOpen,
   Layers,
   History,
@@ -19,6 +20,7 @@ import {
   Award,
   UserCheck,
   Settings2,
+  ShieldCheck,
   Menu,
   X,
 } from "lucide-react";
@@ -35,7 +37,7 @@ const navItems = [
     icon: BookOpen,
   },
   {
-    label: "Cohorts",
+    label: "Training Programmes",
     href: "/admin/cohorts",
     icon: Layers,
   },
@@ -59,6 +61,16 @@ const navItems = [
     label: "Certificates",
     href: "/admin/certificates",
     icon: Award,
+  },
+  {
+    label: "Proctoring",
+    href: "/admin/proctoring",
+    icon: ShieldCheck,
+  },
+  {
+    label: "Reports",
+    href: "/admin/reports",
+    icon: BarChart3,
   },
   {
     label: "Trainers",

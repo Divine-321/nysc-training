@@ -41,6 +41,7 @@ const emptyForm = {
   title: "",
   pass_mark: "50.00",
   max_attempts: "1",
+  duration: "30",
 };
 
 const emptyQuestionForm = {
@@ -131,6 +132,7 @@ export default function CourseAssessmentsManager({
           title: form.title.trim(),
           pass_mark: form.pass_mark,
           max_attempts: Number(form.max_attempts),
+          duration: Number(form.duration) || 30,
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -422,6 +424,22 @@ export default function CourseAssessmentsManager({
           />
         </div>
 
+        <div>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Duration (minutes)
+          </label>
+          <input
+            required
+            type="number"
+            min="1"
+            value={form.duration}
+            onChange={(event) =>
+              setForm({ ...form, duration: event.target.value })
+            }
+            className="w-full rounded-lg border px-4 py-2.5 text-sm"
+          />
+        </div>
+
         <button
           disabled={saving || !form.title.trim()}
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
@@ -462,7 +480,7 @@ export default function CourseAssessmentsManager({
                     </h5>
                     <p className="mt-1 text-sm text-gray-500">
                       Pass mark: {assessment.pass_mark}% • Max attempts:{" "}
-                      {assessment.max_attempts} • Questions:{" "}
+                      {assessment.max_attempts || "Unlimited"} • Questions:{" "}
                       {assessment.questions?.length ?? 0}
                     </p>
                   </div>

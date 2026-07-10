@@ -213,7 +213,9 @@ export default function StaffLayout({
                 .catch(() => null);
               const cohortNames = readApiList<CourseEnrollment>(
                 enrollmentPayload,
-              ).map((enrollment) => enrollment.cohort_name);
+              )
+                .map((enrollment) => enrollment.cohort_name)
+                .filter((name): name is string => Boolean(name));
 
               setUserCohorts([...new Set(cohortNames)]);
             }

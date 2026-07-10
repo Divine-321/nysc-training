@@ -6,6 +6,32 @@ import {
   type Course,
 } from "@/app/lib/portal-api";
 
+// New target learning-model vocabulary (Course -> Module -> Activity). The full
+// types live in ./training-types and are re-exported here so screens can migrate
+// off the old ModuleDocument/DocumentProgress/AssessmentResult types incrementally.
+// The top-level `Course` and mid-level `Module` types are intentionally NOT
+// re-exported here to avoid clashing with the old `Course` import above — import
+// those directly from "@/app/lib/training-types".
+import type {
+  Activity,
+  ActivityContentType,
+  ActivityCompletion,
+  AssessmentAttempt,
+  AssessmentAttemptStatus,
+  Batch,
+} from "@/app/lib/training-types";
+
+export { BATCH_OPTIONS } from "@/app/lib/training-types";
+export type {
+  Activity,
+  ActivityContentType,
+  ActivityCompletion,
+  AssessmentAttempt,
+  AssessmentAttemptStatus,
+  Batch,
+};
+
+/** @deprecated Old model. Replaced by `Activity` in the Course -> Module -> Activity restructure. */
 export type ModuleDocument = {
   id: number;
   module: number;
@@ -14,8 +40,14 @@ export type ModuleDocument = {
   file_url: string;
   cloudinary_public_id: string | null;
   order: number;
+  // New-model Activity fields — absent from the legacy module-docs
+  // serializer, present once the Activities backend ships.
+  content_type?: ActivityContentType;
+  content_url?: string | null;
+  text_content?: string | null;
 };
 
+/** @deprecated Old model. Replaced by `Module` (from ./training-types) in the restructure. */
 export type CourseModule = {
   id: number;
   course: number;
@@ -26,6 +58,7 @@ export type CourseModule = {
   documents: ModuleDocument[];
 };
 
+/** @deprecated Old model. Replaced by `ActivityCompletion` (from ./training-types). */
 export type DocumentProgress = {
   id: number;
   enrollment: number;
@@ -53,21 +86,53 @@ export type CourseEnrollment = {
   cohort_name: string;
   status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
   completion_percentage: string;
-  document_progress: DocumentProgress[];
+  /** @deprecated Legacy serializer name; the restructure renamed it activity_completions. */
+  document_progress?: DocumentProgress[];
+  /** New-model completion records (restructure, live 2026-07-10). */
+  activity_completions?: ActivityCompletion[];
   evaluation: CourseEvaluation | null;
   last_accessed: string;
   enrolled_at: string;
   completed_at: string | null;
+  // Certificate-eligibility fields (serialized as booleans or strings).
+  post_test_passed?: boolean | string;
+  evaluation_submitted?: boolean | string;
 };
 
+/** Tolerant reader for backend flags serialized as booleans OR strings. */
+export function flagIsTrue(value: boolean | string | null | undefined) {
+  if (typeof value === "boolean") return value;
+  return typeof value === "string" && value.toLowerCase() === "true";
+}
+
+// CohortCourse is the "Training Programme" (delivery of a Course to a fixed
+// Batch in a year). OLD backend: `cohort` is a Cohort FK (number) and
+// `cohort_name` is derived. NEW backend (confirmed contract, 2026-07-10):
+// `cohort` IS the batch string ("BATCH A" | "BATCH B" | "BATCH C") plus
+// year/start_date/end_date, unique on (course, cohort, year).
 export type CohortCourse = {
   id: number;
-  cohort: number;
-  cohort_name: string;
+  cohort: number | Batch;
+  cohort_name?: string;
   course: number;
   course_details: Course;
-  assigned_at: string;
+  assigned_at?: string;
+  year?: number;
+  start_date?: string;
+  end_date?: string;
+  created_by?: number | null;
 };
+
+/** Human label for a programme's cohort across both backend models. */
+export function cohortCourseBatchLabel(
+  cohortCourse: CohortCourse | null | undefined,
+) {
+  if (!cohortCourse) return "";
+
+  return typeof cohortCourse.cohort === "string"
+    ? cohortCourse.cohort
+    : cohortCourse.cohort_name ?? "";
+}
 
 export type StaffCourse = {
   enrollment: CourseEnrollment;
@@ -97,10 +162,12 @@ export type Assessment = {
   title: string;
   description: string | null;
   pass_mark: string;
-  max_attempts: number;
+  /** Null/0 means unlimited attempts (restructure, 2026-07-10). */
+  max_attempts: number | null;
   questions: AssessmentQuestion[];
 };
 
+/** @deprecated Old model. Replaced by `AssessmentAttempt` (from ./training-types). */
 export type AssessmentResult = {
   id: number;
   assessment: number;
@@ -120,7 +187,12 @@ export type LiveSession = {
   cohort_name: string;
   title: string;
   description: string | null;
-  meeting_url: string;
+  /**
+   * @deprecated Staff UIs must NEVER render or open this — joining must go
+   * through the backend join endpoint so attendance is recorded first. The
+   * backend is expected to stop sending it in staff list payloads.
+   */
+  meeting_url?: string;
   start_time: string;
   end_time: string;
   status: "SCHEDULED" | "ONGOING" | "COMPLETED" | "CANCELLED";
@@ -150,10 +222,24 @@ export function documentIsComplete(
   documentId: number,
 ) {
   return Boolean(
-    enrollment?.document_progress?.some(
-      (item) => item.document === documentId && item.is_completed,
-    ),
+    enrollment?.activity_completions?.some(
+      (item) => item.activity === documentId && item.is_completed,
+    ) ||
+      enrollment?.document_progress?.some(
+        (item) => item.document === documentId && item.is_completed,
+      ),
   );
+}
+
+// The restructured serializer nests the module's items as `activities`
+// instead of `documents`; accept either so nothing breaks on deploy day.
+type RawCourseModule = CourseModule & { activities?: ModuleDocument[] };
+
+function normalizeModule(rawModule: RawCourseModule): CourseModule {
+  return {
+    ...rawModule,
+    documents: rawModule.activities ?? rawModule.documents ?? [],
+  };
 }
 
 async function loadModulesForCourse(courseId: number) {
@@ -162,15 +248,17 @@ async function loadModulesForCourse(courseId: number) {
       `/api/training/modules?course=${courseId}`,
     );
 
-    return dedupeById(readApiList<CourseModule>(modulePayload));
+    return dedupeById(
+      readApiList<RawCourseModule>(modulePayload).map(normalizeModule),
+    );
   } catch (filteredError) {
     try {
       const modulePayload = await getJson("/api/training/modules");
 
       return dedupeById(
-        readApiList<CourseModule>(modulePayload).filter(
-          (module) => module.course === courseId,
-        ),
+        readApiList<RawCourseModule>(modulePayload)
+          .filter((rawModule) => rawModule.course === courseId)
+          .map(normalizeModule),
       );
     } catch (listError) {
       console.error(
@@ -256,30 +344,83 @@ export async function loadLiveSessionsForCourse(cohortCourseIds: number[]) {
   );
 }
 
+// The restructure renamed complete-document to complete-activity. Remembered
+// per page load: once the new endpoint answers (or 404s), stop re-probing.
+let completeActivityLive: boolean | null = null;
+
+/** Normalized result of marking an activity complete, across both backends. */
+export type ActivityCompletionResult = {
+  completionPercentage: string | null;
+  courseStatus: CourseEnrollment["status"] | null;
+};
+
 export async function markDocumentComplete(
   enrollmentId: number,
   documentId: number,
-) {
-  const response = await fetch(
-    `/api/training/enrollments/${enrollmentId}/complete-document`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        document: documentId,
-        document_id: documentId,
-      }),
-    },
-  );
+): Promise<ActivityCompletionResult | null> {
+  // Both id spellings are sent so either serializer accepts the body.
+  const body = JSON.stringify({
+    activity: documentId,
+    activity_id: documentId,
+    document: documentId,
+    document_id: documentId,
+  });
+  const requestInit = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  };
+
+  let response: Response | null = null;
+
+  if (completeActivityLive !== false) {
+    response = await fetch(
+      `/api/training/enrollments/${enrollmentId}/complete-activity`,
+      requestInit,
+    );
+
+    if (response.status === 404 && completeActivityLive === null) {
+      // Endpoint not shipped yet — fall back to the legacy one below.
+      completeActivityLive = false;
+      response = null;
+    } else {
+      completeActivityLive = true;
+    }
+  }
+
+  if (!response) {
+    response = await fetch(
+      `/api/training/enrollments/${enrollmentId}/complete-document`,
+      requestInit,
+    );
+  }
+
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
     throw new Error(
-      extractErrorMessage(payload, "Could not mark this document complete."),
+      extractErrorMessage(payload, "Could not mark this activity complete."),
     );
   }
 
-  return readApiItem<CourseEnrollment>(payload);
+  // New backend returns {data: {new_percentage, course_status}}; the legacy
+  // one returned the full enrollment. Normalize both.
+  const data = readApiItem<{
+    new_percentage?: string;
+    course_status?: string;
+    completion_percentage?: string;
+    status?: string;
+  }>(payload);
+
+  if (!data) return null;
+
+  return {
+    completionPercentage:
+      data.new_percentage ?? data.completion_percentage ?? null,
+    courseStatus: (data.course_status ??
+      data.status ??
+      null) as ActivityCompletionResult["courseStatus"],
+  };
 }
 
 export async function submitAssessment(
@@ -299,41 +440,29 @@ export async function submitAssessment(
     );
   }
 
-  const result = readApiItem<AssessmentResult>(payload);
-
-  if (result) {
-    saveAssessmentResult(result);
-  }
-
-  return result;
+  return readApiItem<AssessmentResult>(payload);
 }
 
-const ASSESSMENT_RESULTS_STORAGE_KEY = "nysc-assessment-results";
-
-export function readStoredAssessmentResults() {
-  if (typeof window === "undefined") return [];
-
+/**
+ * Loads the staff member's assessment attempts from the server. The server is
+ * the only source of truth for results — nothing is cached in localStorage.
+ *
+ * The attempts endpoint is part of the AssessmentAttempt restructure and is
+ * not live on the backend yet, so this returns [] (instead of throwing) until
+ * it ships; the result/CBT screens then light up automatically.
+ */
+export async function loadAssessmentAttempts(): Promise<AssessmentAttempt[]> {
   try {
-    const rawResults = window.localStorage.getItem(
-      ASSESSMENT_RESULTS_STORAGE_KEY,
-    );
+    const response = await fetch("/api/training/assessment-attempts", {
+      cache: "no-store",
+    });
 
-    return rawResults ? (JSON.parse(rawResults) as AssessmentResult[]) : [];
+    if (!response.ok) return [];
+
+    const payload = await response.json().catch(() => null);
+
+    return readApiList<AssessmentAttempt>(payload);
   } catch {
     return [];
   }
-}
-
-export function saveAssessmentResult(result: AssessmentResult) {
-  if (typeof window === "undefined") return;
-
-  const existingResults = readStoredAssessmentResults();
-  const withoutDuplicate = existingResults.filter(
-    (item) => item.id !== result.id,
-  );
-
-  window.localStorage.setItem(
-    ASSESSMENT_RESULTS_STORAGE_KEY,
-    JSON.stringify([result, ...withoutDuplicate]),
-  );
 }

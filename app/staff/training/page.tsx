@@ -18,15 +18,25 @@ import {
   type StaffCourse,
 } from "@/app/lib/staff-learning";
 
-function statusLabel(status: StaffCourse["enrollment"]["status"]) {
-  if (status === "COMPLETED") return "Materials completed";
-  if (status === "IN_PROGRESS") return "In progress";
+// A course counts as completed once its progress hits 100%, even if the
+// backend enrollment status has not been updated yet.
+function isCourseCompleted(item: StaffCourse) {
+  return (
+    item.enrollment.status === "COMPLETED" ||
+    toPercentage(item.enrollment.completion_percentage) >= 100
+  );
+}
+
+function statusLabel(item: StaffCourse) {
+  if (isCourseCompleted(item)) return "Completed";
+  if (item.enrollment.status === "IN_PROGRESS") return "In progress";
   return "Not started";
 }
 
-function statusClass(status: StaffCourse["enrollment"]["status"]) {
-  if (status === "COMPLETED") return "bg-green-100 text-green-700";
-  if (status === "IN_PROGRESS") return "bg-blue-100 text-blue-700";
+function statusClass(item: StaffCourse) {
+  if (isCourseCompleted(item)) return "bg-green-100 text-green-700";
+  if (item.enrollment.status === "IN_PROGRESS")
+    return "bg-blue-100 text-blue-700";
   return "bg-amber-100 text-amber-700";
 }
 
@@ -71,8 +81,8 @@ export default function StaffTraining() {
       const progress = toPercentage(item.enrollment.completion_percentage);
       const matchesTab =
         tab === "all" ||
-        (tab === "completed" && item.enrollment.status === "COMPLETED") ||
-        (tab === "inprogress" && item.enrollment.status !== "COMPLETED");
+        (tab === "completed" && isCourseCompleted(item)) ||
+        (tab === "inprogress" && !isCourseCompleted(item));
       const matchesSearch =
         !normalizedSearch ||
         `${item.enrollment.course_title} ${item.enrollment.cohort_name} ${trainerLabel(item)}`
@@ -123,7 +133,7 @@ export default function StaffTraining() {
               }`}
             >
               {item === "completed"
-                ? "Materials completed"
+                ? "Completed"
                 : item === "inprogress"
                   ? "In progress"
                   : item}
@@ -164,10 +174,11 @@ export default function StaffTraining() {
                 (total, module) => total + module.documents.length,
                 0,
               );
-              const completedDocuments =
-                item.enrollment.document_progress.filter(
-                  (progressItem) => progressItem.is_completed,
-                ).length;
+              const completedDocuments = (
+                item.enrollment.activity_completions ??
+                item.enrollment.document_progress ??
+                []
+              ).filter((progressItem) => progressItem.is_completed).length;
 
               return (
                 <div
@@ -191,10 +202,10 @@ export default function StaffTraining() {
                     )}
                     <span
                       className={`absolute bottom-2 left-2 rounded-full px-3 py-1 text-xs font-bold ${statusClass(
-                        item.enrollment.status,
+                        item,
                       )}`}
                     >
-                      {statusLabel(item.enrollment.status)}
+                      {statusLabel(item)}
                     </span>
                   </div>
 

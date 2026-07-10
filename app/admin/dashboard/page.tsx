@@ -195,59 +195,18 @@ export default function AdminDashboardPage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-        <Link
-          href="/admin/courses/create"
-          className="rounded-2xl bg-[#1a6b3c] p-6 text-white shadow-sm transition hover:bg-[#145530]"
-        >
-          <PlusCircle size={32} className="mb-4 text-green-200" />
-
-          <h3 className="text-lg font-bold">Create Course</h3>
-
-          <p className="mt-1 text-sm text-green-100">
-            Add a course and its modules.
-          </p>
-        </Link>
-
-        <Link
-          href="/admin/cohorts"
-          className="rounded-2xl bg-yellow-500 p-6 text-white shadow-sm transition hover:bg-yellow-600"
-        >
-          <Layers size={32} className="mb-4 text-yellow-100" />
-
-          <h3 className="text-lg font-bold">Manage Cohorts</h3>
-
-          <p className="mt-1 text-sm text-yellow-100">
-            Create and manage training cohorts.
-          </p>
-        </Link>
-
-        <Link
-          href="/admin/users"
-          className="rounded-2xl bg-red-600 p-6 text-white shadow-sm transition hover:bg-red-700"
-        >
-          <UserCog size={32} className="mb-4 text-red-200" />
-
-          <h3 className="text-lg font-bold">Manage Staff</h3>
-
-          <p className="mt-1 text-sm text-red-100">
-            View staff and cohort assignments.
-          </p>
-        </Link>
-      </div>
-
       <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
         <div className="flex items-center gap-2 border-b border-gray-100 p-6">
           <Video size={20} className="text-[#1a6b3c]" />
 
           <h3 className="text-lg font-bold text-gray-800">
-            Upcoming Live Classes
+            Upcoming Live Sessions
           </h3>
         </div>
 
         {loading ? (
           <p className="p-8 text-center text-sm text-gray-500">
-            Loading upcoming classes...
+            Loading upcoming sessions...
           </p>
         ) : analytics?.upcomingLiveClasses.length ? (
           <ul className="divide-y divide-gray-100">
@@ -293,10 +252,52 @@ export default function AdminDashboardPage() {
           </ul>
         ) : (
           <p className="p-8 text-center text-sm text-gray-500">
-            No upcoming live classes in the next 30 days.
+            No upcoming live sessions in the next 30 days.
           </p>
         )}
       </div>
+
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+        <Link
+          href="/admin/courses/create"
+          className="rounded-2xl bg-[#1a6b3c] p-6 text-white shadow-sm transition hover:bg-[#145530]"
+        >
+          <PlusCircle size={32} className="mb-4 text-green-200" />
+
+          <h3 className="text-lg font-bold">Create Course</h3>
+
+          <p className="mt-1 text-sm text-green-100">
+            Add a course and its modules.
+          </p>
+        </Link>
+
+        <Link
+          href="/admin/cohorts"
+          className="rounded-2xl bg-yellow-500 p-6 text-white shadow-sm transition hover:bg-yellow-600"
+        >
+          <Layers size={32} className="mb-4 text-yellow-100" />
+
+          <h3 className="text-lg font-bold">Manage Cohorts</h3>
+
+          <p className="mt-1 text-sm text-yellow-100">
+            Create and manage training cohorts.
+          </p>
+        </Link>
+
+        <Link
+          href="/admin/users"
+          className="rounded-2xl bg-red-600 p-6 text-white shadow-sm transition hover:bg-red-700"
+        >
+          <UserCog size={32} className="mb-4 text-red-200" />
+
+          <h3 className="text-lg font-bold">Manage Staff</h3>
+
+          <p className="mt-1 text-sm text-red-100">
+            View staff and cohort assignments.
+          </p>
+        </Link>
+      </div>
+
     </div>
   );
 }

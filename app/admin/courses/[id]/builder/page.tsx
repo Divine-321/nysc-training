@@ -23,6 +23,11 @@ import {
   type Trainer,
 } from "@/app/lib/portal-api";
 
+type CourseCategory = {
+  id: number;
+  name: string;
+};
+
 const TABS = [
   { id: "details", label: "Details", icon: Settings2 },
   { id: "modules", label: "Modules", icon: Layers },
@@ -31,12 +36,6 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
-
-function statusBadgeClass(status: Course["status"]) {
-  if (status === "PUBLISHED") return "bg-green-100 text-green-700";
-  if (status === "ARCHIVED") return "bg-gray-100 text-gray-500";
-  return "bg-amber-100 text-amber-700";
-}
 
 export default function CourseBuilderPage() {
   const params = useParams();
@@ -52,8 +51,8 @@ export default function CourseBuilderPage() {
   const [thumbnailPublicId, setThumbnailPublicId] = useState("");
   const [thumbnailProgress, setThumbnailProgress] = useState(0);
   const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
-  const [status, setStatus] =
-    useState<"DRAFT" | "PUBLISHED" | "ARCHIVED">("DRAFT");
+  const [categories, setCategories] = useState<CourseCategory[]>([]);
+  const [categoryId, setCategoryId] = useState("");
   const [trainerIds, setTrainerIds] = useState<number[]>([]);
   const [savedTrainerIds, setSavedTrainerIds] = useState<number[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState("");
@@ -69,21 +68,31 @@ export default function CourseBuilderPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [courseResponse, trainerResponse, coursesListResponse] =
-          await Promise.all([
-            fetch(`/api/training/courses/${courseId}`, {
-              cache: "no-store",
-            }),
-            fetch("/api/training/trainers", { cache: "no-store" }),
-            fetch("/api/training/courses", { cache: "no-store" }),
-          ]);
+        const [
+          courseResponse,
+          trainerResponse,
+          coursesListResponse,
+          categoryResponse,
+        ] = await Promise.all([
+          fetch(`/api/training/courses/${courseId}`, {
+            cache: "no-store",
+          }),
+          fetch("/api/training/trainers", { cache: "no-store" }),
+          fetch("/api/training/courses", { cache: "no-store" }),
+          fetch("/api/training/categories", { cache: "no-store" }),
+        ]);
 
-        const [coursePayload, trainerPayload, coursesListPayload] =
-          await Promise.all([
-            courseResponse.json().catch(() => null),
-            trainerResponse.json().catch(() => null),
-            coursesListResponse.json().catch(() => null),
-          ]);
+        const [
+          coursePayload,
+          trainerPayload,
+          coursesListPayload,
+          categoryPayload,
+        ] = await Promise.all([
+          courseResponse.json().catch(() => null),
+          trainerResponse.json().catch(() => null),
+          coursesListResponse.json().catch(() => null),
+          categoryResponse.json().catch(() => null),
+        ]);
 
         if (!courseResponse.ok) {
           throw new Error(
@@ -102,7 +111,9 @@ export default function CourseBuilderPage() {
         setDescription(loadedCourse.description);
         setThumbnailUrl(loadedCourse.thumbnail_url ?? "");
         setThumbnailPublicId(loadedCourse.cloudinary_public_id ?? "");
-        setStatus(loadedCourse.status);
+        setCategoryId(
+          loadedCourse.category != null ? String(loadedCourse.category) : "",
+        );
         setTrainerIds(
           loadedCourse.trainers.map((trainer) => trainer.id),
         );
@@ -123,6 +134,10 @@ export default function CourseBuilderPage() {
               (courseOption) => String(courseOption.id) !== courseId,
             ),
           );
+        }
+
+        if (categoryResponse.ok) {
+          setCategories(readApiList<CourseCategory>(categoryPayload));
         }
       } catch (loadError) {
         setError(
@@ -266,7 +281,9 @@ export default function CourseBuilderPage() {
           description: description.trim(),
           thumbnail_url: thumbnailUrl.trim() || null,
           cloudinary_public_id: thumbnailPublicId || null,
-          status,
+          // Status was removed from the UI; keep every course published.
+          status: "PUBLISHED",
+          category: categoryId ? Number(categoryId) : null,
           trainer_ids: trainerIds,
           prerequisite_ids: prerequisiteIds,
         }),
@@ -319,13 +336,6 @@ export default function CourseBuilderPage() {
           <h2 className="text-xl font-bold text-gray-800 sm:text-2xl">
             {course.title}
           </h2>
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${statusBadgeClass(
-              course.status,
-            )}`}
-          >
-            {course.status.toLowerCase()}
-          </span>
         </div>
       </div>
 
@@ -428,23 +438,19 @@ export default function CourseBuilderPage() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Status
+              Category
             </label>
             <select
-              value={status}
-              onChange={(event) =>
-                setStatus(
-                  event.target.value as
-                    | "DRAFT"
-                    | "PUBLISHED"
-                    | "ARCHIVED",
-                )
-              }
+              value={categoryId}
+              onChange={(event) => setCategoryId(event.target.value)}
               className="w-full rounded-lg border px-4 py-2.5 text-sm sm:w-1/2"
             >
-              <option value="DRAFT">Draft</option>
-              <option value="PUBLISHED">Published</option>
-              <option value="ARCHIVED">Archived</option>
+              <option value="">No category</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
             </select>
           </div>
 

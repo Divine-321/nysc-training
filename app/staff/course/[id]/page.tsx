@@ -9,17 +9,23 @@ import {
   CheckCircle2,
   ClipboardCheck,
   FileText,
+  Info,
   PlayCircle,
   UserCheck,
+  Video,
 } from "lucide-react";
 import {
   documentIsComplete,
   loadAssessments,
+  loadLiveSessionsForCourse,
   loadStaffCourse,
   toPercentage,
   type Assessment,
+  type LiveSession,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
+import { extractErrorMessage, readApiItem } from "@/app/lib/portal-api";
+import { formatDateTime } from "@/app/lib/format";
 
 function trainerLabel(staffCourse: StaffCourse) {
   const trainers = staffCourse.course?.trainers ?? [];
@@ -64,6 +70,8 @@ export default function CourseOverviewPage() {
   const courseId = Number(params.id);
   const [staffCourse, setStaffCourse] = useState<StaffCourse | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
+  const [joiningSessionId, setJoiningSessionId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -77,6 +85,13 @@ export default function CourseOverviewPage() {
 
         setStaffCourse(courseData);
         setAssessments(assessmentData);
+        setLiveSessions(
+          courseData
+            ? await loadLiveSessionsForCourse([
+                courseData.enrollment.cohort_course,
+              ]).catch(() => [])
+            : [],
+        );
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -126,7 +141,55 @@ export default function CourseOverviewPage() {
   }
 
   const progress = toPercentage(staffCourse.enrollment.completion_percentage);
+  const isCompleted =
+    staffCourse.enrollment.status === "COMPLETED" || progress >= 100;
   const firstModule = staffCourse.modules[0];
+
+  const handleJoinSession = async (session: LiveSession) => {
+    setJoiningSessionId(session.id);
+    setError("");
+
+    // Open the tab before any await so popup blockers allow it; point it at
+    // the meeting only after the backend records attendance.
+    const meetingTab = window.open("about:blank", "_blank");
+
+    try {
+      const response = await fetch(
+        `/api/training/live-sessions/${session.id}/join`,
+        { method: "POST" },
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not join this live session."),
+        );
+      }
+
+      const joinData = readApiItem<{ meeting_url?: string }>(payload);
+
+      if (!joinData?.meeting_url) {
+        throw new Error(
+          "Attendance was recorded, but the backend did not return a meeting link.",
+        );
+      }
+
+      if (meetingTab) {
+        meetingTab.location.href = joinData.meeting_url;
+      } else {
+        window.open(joinData.meeting_url, "_blank", "noopener,noreferrer");
+      }
+    } catch (joinError) {
+      meetingTab?.close();
+      setError(
+        joinError instanceof Error
+          ? joinError.message
+          : "Could not join this live session.",
+      );
+    } finally {
+      setJoiningSessionId(null);
+    }
+  };
   const preTest = assessments.find((assessment) => assessment.type === "PRE_TEST");
   const postTest = assessments.find(
     (assessment) => assessment.type === "POST_TEST",
@@ -168,18 +231,28 @@ export default function CourseOverviewPage() {
               <span className="rounded-full bg-white/20 px-3 py-1">
                 {totalDocuments} material(s)
               </span>
-              <span className="rounded-full bg-white/20 px-3 py-1">
-                {progress}% materials complete
-              </span>
+              {isCompleted ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-500 px-3 py-1">
+                  <CheckCircle2 size={13} /> Completed
+                </span>
+              ) : (
+                <span className="rounded-full bg-white/20 px-3 py-1">
+                  {progress}% materials complete
+                </span>
+              )}
             </div>
 
             {firstModule && (
               <Link
-                href={`/staff/course/${courseId}/module/${firstModule.id}`}
+                href={`/staff/course/${courseId}/learn`}
                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-white px-4 py-2 text-sm font-semibold text-white transition hover:bg-white hover:text-[#1a6b3c]"
               >
                 <PlayCircle size={17} />
-                {progress > 0 ? "Resume" : "Start learning"}
+                {isCompleted
+                  ? "Review course"
+                  : progress > 0
+                    ? "Resume"
+                    : "Start learning"}
               </Link>
             )}
           </div>
@@ -245,11 +318,18 @@ export default function CourseOverviewPage() {
               const completedDocuments = module.documents.filter((document) =>
                 documentIsComplete(staffCourse.enrollment, document.id),
               ).length;
+              const firstDoc = module.documents
+                .slice()
+                .sort((first, second) => first.order - second.order)[0];
 
               return (
                 <Link
                   key={module.id}
-                  href={`/staff/course/${courseId}/module/${module.id}`}
+                  href={
+                    firstDoc
+                      ? `/staff/course/${courseId}/learn?doc=${firstDoc.id}`
+                      : `/staff/course/${courseId}/learn`
+                  }
                   className="block rounded-lg border p-4 transition hover:bg-gray-50"
                 >
                   <div className="flex items-start justify-between gap-4">
@@ -292,6 +372,70 @@ export default function CourseOverviewPage() {
           </div>
         )}
       </div>
+
+      {liveSessions.length > 0 && (
+        <div className="rounded-xl bg-white p-6 shadow-sm">
+          <h3 className="mb-2 flex items-center gap-2 font-bold text-gray-800">
+            <Video size={20} className="text-[#1a6b3c]" />
+            Live Sessions
+          </h3>
+          <p className="mb-4 flex items-start gap-2 rounded-lg bg-blue-50 p-3 text-xs text-blue-800">
+            <Info size={14} className="mt-0.5 shrink-0" />
+            Before joining, set your meeting display name to your full name
+            and file number (for example &quot;ADAMU MUSA — TS0001&quot;) so
+            your attendance can be matched.
+          </p>
+
+          <div className="space-y-3">
+            {liveSessions.map((session) => {
+              const isClosed =
+                session.status === "COMPLETED" ||
+                session.status === "CANCELLED";
+
+              return (
+                <div
+                  key={session.id}
+                  className="flex flex-col justify-between gap-3 rounded-lg border p-4 sm:flex-row sm:items-center"
+                >
+                  <div>
+                    <h4 className="font-semibold text-gray-800">
+                      {session.title}
+                    </h4>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {formatDateTime(session.start_time)} —{" "}
+                      {formatDateTime(session.end_time)}
+                    </p>
+                  </div>
+
+                  {isClosed ? (
+                    <span className="shrink-0 rounded-full bg-gray-100 px-4 py-1.5 text-xs font-semibold text-gray-500">
+                      {session.status}
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleJoinSession(session)}
+                      disabled={joiningSessionId === session.id}
+                      className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-60 ${
+                        session.status === "ONGOING"
+                          ? "bg-red-500 hover:bg-red-600"
+                          : "bg-[#1a6b3c] hover:bg-[#145530]"
+                      }`}
+                    >
+                      <Video size={16} />
+                      {joiningSessionId === session.id
+                        ? "Joining..."
+                        : session.status === "ONGOING"
+                          ? "Join Live Now"
+                          : "Join Session"}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {postTest && (
         <AssessmentCard

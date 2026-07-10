@@ -7,7 +7,11 @@ const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24;
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { login?: string; password?: string };
+    const body = (await request.json()) as {
+      login?: string;
+      password?: string;
+      role?: "staff" | "admin";
+    };
 
     if (!body.login || !body.password) {
       return NextResponse.json(
@@ -19,6 +23,8 @@ export async function POST(request: Request) {
     const response = await loginUser({
       login: body.login,
       password: body.password,
+      // Backend requires a portal role; default to the staff portal.
+      role: body.role === "admin" ? "admin" : "staff",
     });
 
     const nextResponse = NextResponse.json(response, { status: 200 });

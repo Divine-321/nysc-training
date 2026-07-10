@@ -12,11 +12,11 @@ import {
   Timer,
 } from "lucide-react";
 import {
+  loadAssessmentAttempts,
   loadAssessments,
   loadStaffCourses,
-  readStoredAssessmentResults,
   type Assessment,
-  type AssessmentResult,
+  type AssessmentAttempt,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
 
@@ -33,7 +33,7 @@ function assessmentRoute(courseId: number, type: Assessment["type"]) {
 
 export default function CBTPage() {
   const [items, setItems] = useState<AvailableAssessment[]>([]);
-  const [results, setResults] = useState<AssessmentResult[]>([]);
+  const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -57,7 +57,7 @@ export default function CBTPage() {
         );
 
         setItems(assessmentGroups.flat());
-        setResults(readStoredAssessmentResults());
+        setAttempts(await loadAssessmentAttempts());
         setError("");
       } catch (loadError) {
         setError(
@@ -73,21 +73,28 @@ export default function CBTPage() {
     void fetchData();
   }, []);
 
+  const submittedAttempts = useMemo(
+    () =>
+      attempts.filter(
+        (attempt) => (attempt.attempt_status ?? "SUBMITTED") === "SUBMITTED",
+      ),
+    [attempts],
+  );
   const completedAssessmentIds = useMemo(
-    () => new Set(results.map((result) => result.assessment)),
-    [results],
+    () => new Set(submittedAttempts.map((attempt) => attempt.assessment)),
+    [submittedAttempts],
   );
   const availableItems = items.filter(
     (item) => !completedAssessmentIds.has(item.assessment.id),
   );
   const averageScore =
-    results.length === 0
+    submittedAttempts.length === 0
       ? 0
       : Math.round(
-          results.reduce(
-            (total, result) => total + Number(result.percentage || 0),
+          submittedAttempts.reduce(
+            (total, attempt) => total + Number(attempt.percentage || 0),
             0,
-          ) / results.length,
+          ) / submittedAttempts.length,
         );
 
   return (
@@ -127,7 +134,7 @@ export default function CBTPage() {
           <div>
             <p className="text-sm font-bold text-gray-500">Completed Tests</p>
             <h3 className="mt-1 text-3xl font-extrabold text-gray-800">
-              {results.length}
+              {completedAssessmentIds.size}
             </h3>
           </div>
         </div>
@@ -219,9 +226,9 @@ export default function CBTPage() {
       </div>
 
       <p className="text-xs text-gray-500">
-        Note: completed result history currently uses results returned after
-        submission on this browser. A backend results-list endpoint is needed
-        for permanent history across devices.
+        Completed tests and scores come from the backend attempts API. Until
+        that endpoint is live, every assessment shows as available and the
+        stats above start from zero.
       </p>
     </div>
   );

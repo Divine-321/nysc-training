@@ -156,7 +156,6 @@ export default function AdminCoursesPage() {
                 <th className="px-4 py-3 text-left">Course</th>
                 <th className="px-4 py-3 text-left">Trainers</th>
                 <th className="px-4 py-3 text-left">Modules</th>
-                <th className="px-4 py-3 text-left">Status</th>
                 <th className="px-4 py-3 text-left">Action</th>
               </tr>
             </thead>
@@ -187,10 +186,6 @@ export default function AdminCoursesPage() {
 
                     <td className="px-4 py-4">
                       {moduleCount}
-                    </td>
-
-                    <td className="px-4 py-4">
-                      {course.status}
                     </td>
 
                     <td className="px-4 py-4">

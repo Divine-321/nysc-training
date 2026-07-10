@@ -10,6 +10,11 @@
     "gen:types": "openapi-typescript https://web-production-84896.up.railway.app/api/schema/ -o src/types/openapi.ts"
   },
   "dependencies": {
+    "@tiptap/extension-image": "^2.27.2",
+    "@tiptap/extension-link": "^2.27.2",
+    "@tiptap/react": "^2.27.2",
+    "@tiptap/starter-kit": "^2.27.2",
+    "dompurify": "^3.4.11",
     "lucide-react": "^1.17.0",
     "next": "16.2.6",
     "react": "19.2.4",

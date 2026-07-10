@@ -25,7 +25,7 @@ export default function AdminLoginPage() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ login: email, password }),
+      body: JSON.stringify({ login: email, password, role: "admin" }),
     });
 
     const payload = await response.json();

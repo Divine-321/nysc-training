@@ -5,17 +5,32 @@ import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
   ArrowLeft,
+  Award,
+  Camera,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  FileText,
   HelpCircle,
+  PlayCircle,
+  ShieldCheck,
 } from "lucide-react";
 import {
   loadAssessments,
+  loadStaffCourse,
   submitAssessment,
   type Assessment,
   type AssessmentResult,
+  type StaffCourse,
 } from "@/app/lib/staff-learning";
+import IdentityVerificationModal from "@/app/components/IdentityVerificationModal";
+import ProctoringMonitor from "@/app/components/ProctoringMonitor";
+import { closeProctoringSession } from "@/app/lib/proctoring";
+import type { ProctoringStartResult } from "@/app/lib/training-types";
+
+// The exam runs in three phases (PDF sections 14-15): an intro screen, a
+// blocking identity-verification step, and the proctored questions view.
+type ExamPhase = "intro" | "verifying" | "in_progress";
 
 export default function AssessmentPage() {
   const router = useRouter();
@@ -27,6 +42,11 @@ export default function AssessmentPage() {
     assessmentType === "POST_TEST" ? "Post-Course Test" : "Pre-Course Test";
 
   const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [staffCourse, setStaffCourse] = useState<StaffCourse | null>(null);
+  const [examPhase, setExamPhase] = useState<ExamPhase>("intro");
+  const [proctoring, setProctoring] = useState<ProctoringStartResult | null>(
+    null,
+  );
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
   const [result, setResult] = useState<AssessmentResult | null>(null);
@@ -37,10 +57,14 @@ export default function AssessmentPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const assessments = await loadAssessments(courseId);
+        const [assessments, course] = await Promise.all([
+          loadAssessments(courseId),
+          loadStaffCourse(courseId),
+        ]);
         const selectedAssessment =
           assessments.find((item) => item.type === assessmentType) ?? null;
         setAssessment(selectedAssessment);
+        setStaffCourse(course);
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -84,6 +108,13 @@ export default function AssessmentPage() {
         selected_option: answers[item.id],
       }));
       setResult(await submitAssessment(assessment.id, submission));
+
+      // End the proctoring session so the backend can mark it CLEAN (or keep
+      // it flagged for review) now that the attempt is submitted.
+      if (proctoring?.sessionId) {
+        void closeProctoringSession(proctoring.sessionId);
+      }
+      setExamPhase("intro");
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -93,6 +124,26 @@ export default function AssessmentPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const enrollmentId = staffCourse?.enrollment.id ?? null;
+
+  const handleStartExam = () => {
+    setError("");
+
+    if (!enrollmentId) {
+      setError(
+        "We could not find your enrollment for this course, so the assessment cannot start.",
+      );
+      return;
+    }
+
+    setExamPhase("verifying");
+  };
+
+  const handleVerified = (verification: ProctoringStartResult) => {
+    setProctoring(verification);
+    setExamPhase("in_progress");
   };
 
   if (loading) {
@@ -148,7 +199,7 @@ export default function AssessmentPage() {
             )}
 
             <div className="min-h-[520px] rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:p-10">
-              {!result ? (
+              {!result && examPhase === "in_progress" ? (
                 <div className="flex flex-col gap-8 md:flex-row lg:gap-12">
                   <aside className="w-full shrink-0 md:w-48">
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-5">
@@ -287,7 +338,7 @@ export default function AssessmentPage() {
                     </div>
                   </section>
                 </div>
-              ) : (
+              ) : result ? (
                 <div className="mx-auto max-w-xl py-8">
                   <div className="rounded-2xl border border-green-100 bg-[#f0f7f3] p-8 text-center">
                     <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-[#1a6b3c]">
@@ -331,12 +382,80 @@ export default function AssessmentPage() {
                     </button>
                   </div>
                 </div>
+              ) : (
+                <div className="mx-auto max-w-xl py-8 text-center">
+                  <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-50 text-[#1a6b3c]">
+                    <ShieldCheck size={32} />
+                  </div>
+                  <h3 className="mb-2 text-2xl font-bold text-gray-800">
+                    {assessment.title || assessmentLabel}
+                  </h3>
+                  <p className="mb-8 text-sm text-gray-500">
+                    {assessment.description ||
+                      "Read the details below, then start when you are ready."}
+                  </p>
+
+                  <div className="mb-8 grid grid-cols-3 gap-4 text-left">
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                      <FileText size={18} className="mb-2 text-[#1a6b3c]" />
+                      <p className="text-xs font-medium text-gray-500">
+                        Questions
+                      </p>
+                      <p className="text-lg font-bold text-gray-800">
+                        {sortedQuestions.length}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                      <Award size={18} className="mb-2 text-[#1a6b3c]" />
+                      <p className="text-xs font-medium text-gray-500">
+                        Pass mark
+                      </p>
+                      <p className="text-lg font-bold text-gray-800">
+                        {assessment.pass_mark}%
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                      <AlertCircle size={18} className="mb-2 text-[#1a6b3c]" />
+                      <p className="text-xs font-medium text-gray-500">
+                        Max attempts
+                      </p>
+                      <p className="text-lg font-bold text-gray-800">
+                        {assessment.max_attempts || "Unlimited"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mb-8 flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 p-4 text-left text-sm text-amber-800">
+                    <Camera size={18} className="mt-0.5 shrink-0" />
+                    <p>
+                      This assessment is proctored. Your camera must stay on:
+                      we will verify your identity before you start, and
+                      periodic snapshots are taken while you work. Switching
+                      tabs or windows is recorded.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleStartExam}
+                    disabled={!enrollmentId}
+                    className="mx-auto flex items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] px-8 py-3 font-semibold text-white shadow-sm transition hover:bg-[#145530] disabled:opacity-50"
+                  >
+                    <PlayCircle size={18} /> Start Assessment
+                  </button>
+                  {!enrollmentId && (
+                    <p className="mt-3 text-xs text-red-600">
+                      You are not enrolled in this course, so the assessment
+                      cannot start.
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           </div>
         </main>
 
-        {!result && (
+        {!result && examPhase === "in_progress" && (
           <aside className="flex h-auto w-full shrink-0 flex-col border-t border-gray-200 bg-white p-6 lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:border-l lg:border-t-0 lg:py-14">
             <h3 className="mb-6 text-lg font-bold text-gray-800">
               Quiz Navigation
@@ -375,6 +494,19 @@ export default function AssessmentPage() {
           </aside>
         )}
       </div>
+
+      {examPhase === "verifying" && enrollmentId && (
+        <IdentityVerificationModal
+          assessmentId={assessment.id}
+          enrollmentId={enrollmentId}
+          onVerified={handleVerified}
+          onCancel={() => setExamPhase("intro")}
+        />
+      )}
+
+      {examPhase === "in_progress" && !result && proctoring?.sessionId ? (
+        <ProctoringMonitor sessionId={proctoring.sessionId} />
+      ) : null}
     </div>
   );
 }

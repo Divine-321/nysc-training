@@ -2,12 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowLeft,
   CheckCircle2,
-  ExternalLink,
   FileText,
   Headphones,
   ImageIcon,
@@ -61,23 +59,24 @@ function DocumentPreview({ document }: { document: ModuleDocument }) {
     );
   }
 
+  if (document.doc_type === "PDF") {
+    return (
+      <iframe
+        src={document.file_url}
+        title={document.title}
+        className="w-full rounded-xl border border-gray-200"
+        style={{ height: "75vh" }}
+      />
+    );
+  }
+
   return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 p-6 text-center">
-      <FileText className="mx-auto mb-3 text-[#1a6b3c]" size={42} />
-      <p className="font-semibold text-gray-800">{document.title}</p>
-      <p className="mt-1 text-sm text-gray-500">
-        Open this document in a new tab to read it.
-      </p>
-      <a
-        href={document.file_url}
-        target="_blank"
-        rel="noreferrer"
-        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2 text-sm font-semibold text-white"
-      >
-        <ExternalLink size={16} />
-        Open document
-      </a>
-    </div>
+    <iframe
+      src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(document.file_url)}`}
+      title={document.title}
+      className="w-full rounded-xl border border-gray-200"
+      style={{ height: "75vh" }}
+    />
   );
 }
 
@@ -213,28 +212,9 @@ export default function ModulePage() {
       )}
 
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8">
-        <div className="relative mb-8 min-h-52 overflow-hidden rounded-xl bg-[#1a6b3c]">
-          {staffCourse.course?.thumbnail_url ? (
-            <Image
-              src={staffCourse.course.thumbnail_url}
-              alt={staffCourse.enrollment.course_title}
-              width={1200}
-              height={320}
-              className="h-52 w-full object-cover opacity-80"
-            />
-          ) : (
-            <div className="h-52 w-full bg-gradient-to-br from-[#1a6b3c] to-[#145530]" />
-          )}
-          <div className="absolute inset-0 flex flex-col justify-end bg-black/35 p-6">
-            <p className="text-sm font-semibold uppercase tracking-wide text-green-100">
-              Module
-            </p>
-            <h1 className="mt-2 text-2xl font-bold text-white sm:text-3xl">
-              {currentModule.title}
-            </h1>
-          </div>
-        </div>
-
+        {/* The course thumbnail is intentionally NOT shown here — it belongs
+            to the course, and displaying it on every module made it look
+            like module content. */}
         <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-start">
           <div>
             <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-gray-500">
@@ -255,15 +235,6 @@ export default function ModulePage() {
               <h2 className="font-bold text-gray-800">
                 {activeDocument.title}
               </h2>
-              <a
-                href={activeDocument.file_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 text-sm font-semibold text-[#1a6b3c]"
-              >
-                <ExternalLink size={16} />
-                Open
-              </a>
             </div>
             <DocumentPreview document={activeDocument} />
           </div>

@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Calendar, Clock, Video } from "lucide-react";
+import { ArrowLeft, Calendar, Clock, Info, Video } from "lucide-react";
 import {
   loadLiveSessionsForCourse,
   loadStaffCourse,
   type LiveSession,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
-import { extractErrorMessage } from "@/app/lib/portal-api";
+import { extractErrorMessage, readApiItem } from "@/app/lib/portal-api";
 import { formatDateTime } from "@/app/lib/format";
 
 function sessionButtonLabel(session: LiveSession) {
@@ -56,6 +56,10 @@ export default function CourseLiveSessionsPage() {
     setJoiningId(session.id);
     setError("");
 
+    // Open the tab synchronously (before any await) so popup blockers allow
+    // it; we point it at the meeting once the backend confirms attendance.
+    const meetingTab = window.open("about:blank", "_blank");
+
     try {
       const response = await fetch(`/api/training/live-sessions/${session.id}/join`, {
         method: "POST",
@@ -68,8 +72,25 @@ export default function CourseLiveSessionsPage() {
         );
       }
 
-      window.open(session.meeting_url, "_blank", "noopener,noreferrer");
+      // Attendance is only counted when joining through the backend, so we
+      // must use the meeting URL from THIS response — never the one in the
+      // session list payload.
+      const joinData = readApiItem<{ meeting_url?: string }>(payload);
+      const meetingUrl = joinData?.meeting_url;
+
+      if (!meetingUrl) {
+        throw new Error(
+          "Attendance was recorded, but the backend did not return a meeting link.",
+        );
+      }
+
+      if (meetingTab) {
+        meetingTab.location.href = meetingUrl;
+      } else {
+        window.open(meetingUrl, "_blank", "noopener,noreferrer");
+      }
     } catch (joinError) {
+      meetingTab?.close();
       setError(
         joinError instanceof Error
           ? joinError.message
@@ -99,11 +120,30 @@ export default function CourseLiveSessionsPage() {
         <h1 className="mb-2 text-2xl font-bold text-gray-800 sm:text-3xl">
           Live Sessions
         </h1>
-        <p className="mb-6 text-sm text-gray-500">
+        <p className="mb-4 text-sm text-gray-500">
           {staffCourse
             ? `Sessions for ${staffCourse.enrollment.course_title}`
             : "Sessions for this course"}
         </p>
+
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+          <Info size={18} className="mt-0.5 shrink-0" />
+          <div>
+            <p className="font-semibold">Before you join</p>
+            <p className="mt-0.5">
+              Set your meeting display name (device name) to your{" "}
+              <span className="font-semibold">
+                full name and file number
+              </span>{" "}
+              — for example{" "}
+              <span className="font-semibold">
+                &quot;ADAMU MUSA — TS0001&quot;
+              </span>
+              . This is how your attendance inside the meeting is matched to
+              your training record.
+            </p>
+          </div>
+        </div>
 
         {loading ? (
           <p className="py-10 text-center text-gray-500">
