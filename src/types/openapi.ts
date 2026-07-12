@@ -52,6 +52,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/accounts/auth/forgot-password/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Request a password-reset OTP. Supply your file number or email address. A 6-digit OTP valid for 10 minutes is sent via **email**. If a phone number is registered on the account's profile, the same OTP is also sent via **SMS**. Always returns 200 — the response does not reveal whether the account exists. */
+        post: operations["accounts_auth_forgot_password_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/accounts/auth/login/": {
         parameters: {
             query?: never;
@@ -100,6 +117,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/accounts/auth/refresh/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Exchange a valid refresh token for a new access token. Refresh tokens rotate on every use (`ROTATE_REFRESH_TOKENS=True`) and the previous one is immediately blacklisted (`BLACKLIST_AFTER_ROTATION=True`), so the response always includes a new `refresh` token too — discard the old one and store the new pair. Access tokens expire after 20 minutes; refresh tokens after 1 day. Once the refresh token itself expires or is invalid/blacklisted, the user must log in again. */
+        post: operations["accounts_auth_refresh_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/accounts/auth/register/": {
         parameters: {
             query?: never;
@@ -109,6 +143,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Register a new staff account. On success a 6-digit OTP (valid 10 minutes) is dispatched asynchronously via **email** to the supplied address. If a `phone_number` is provided, the same OTP is also sent via **SMS**. The account remains inactive until the OTP is verified via `POST /api/accounts/auth/verify-email/`. */
         post: operations["accounts_auth_register_create"];
         delete?: never;
         options?: never;
@@ -125,7 +160,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Invalidate any existing OTP and issue a fresh one. The new OTP is sent via **email** and, if a phone number was provided at registration, also via **SMS**. */
         post: operations["accounts_auth_resend_otp_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/auth/reset-password/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Confirm the OTP received by email (or SMS) and set a new password. The OTP is single-use and expires after 10 minutes. */
+        post: operations["accounts_auth_reset_password_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -164,6 +217,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/accounts/me/change-email/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Begin the email-change flow. A 6-digit OTP is sent to the **new** email address to confirm ownership. If a phone number is registered on the account's profile, the same OTP is also delivered via **SMS**. Verify the code with `POST /api/accounts/profile/verify-email-change/`. */
+        post: operations["accounts_me_change_email_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/me/change-email/verify/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["accounts_me_change_email_verify_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/accounts/me/update/": {
         parameters: {
             query?: never;
@@ -178,6 +264,342 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["accounts_me_update_partial_update"];
+        trace?: never;
+    };
+    "/api/accounts/staff/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["accounts_staff_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/staff-records/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List all `StaffRecord` rows — the pre-seeded HR records admins create before a staff member self-registers (see `POST /api/accounts/staff-records/` and the bulk-upload endpoint). Includes both registered (`is_registered=True`) and not-yet-registered records, with `state`, `department`, `grade_level`, and `rank` nested in full so the response can populate an admin dashboard table without follow-up requests. Ordered by `file_number`. Admin-only. */
+        get: operations["accounts_staff_records_retrieve"];
+        put?: never;
+        post: operations["accounts_staff_records_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/staff-records/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Retrieve a single `StaffRecord` by id, with `state`, `department`, `grade_level`, and `rank` nested in full. Admin-only. */
+        get: operations["accounts_staff_records_retrieve_2"];
+        put?: never;
+        post?: never;
+        /** @description Soft-delete a `StaffRecord` by id. This does not remove the row — it sets `is_deleted=True` and mangles `file_number` (prefixed with `deleted_<id>_`) so the original is freed up for reuse by a future staff record while remaining traceable back to this one. Already-deleted or non-existent ids both return `404`. Deleted records are excluded from the list, detail, and update endpoints, and can no longer be looked up via `POST /api/accounts/auth/lookup/` for self-registration. */
+        delete: operations["accounts_staff_records_destroy"];
+        options?: never;
+        head?: never;
+        /** @description Update a `StaffRecord` by id. Accepts the same fields as the create endpoint (`file_number`, `first_name`, `middle_name`, `last_name`, `sex`, `date_of_birth`, `employment_date`, `state`, `department`, `grade_level`, `rank`) — send only the fields you want to change. `posting_reason` and `is_registered` are never accepted here, same as on create. Returns the same flat shape as the create endpoint's response. */
+        patch: operations["accounts_staff_records_partial_update"];
+        trace?: never;
+    };
+    "/api/accounts/staff-records/bulk-upload/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Bulk-create staff records from a CSV file. Admin-only. All-or-nothing: if any row fails validation, the entire batch is rejected and nothing is created — the response lists every failing row number and field so the CSV can be corrected and re-uploaded. `posting_reason` is never accepted here; it is auto-assigned to the `"creation"` posting reason when the staff member later self-registers.
+         *
+         *     **Expected CSV columns:**
+         *
+         *     | Column | Required | Matches | Notes |
+         *     |---|---|---|---|
+         *     | `file_number` | Yes | Unique, max 6 chars | Must not already be in use |
+         *     | `surname` | Yes | — | Maps to `last_name` |
+         *     | `other_names` | Yes | — | First word maps to `first_name`; any remaining words are joined into `middle_name` |
+         *     | `sex` | Yes | `male` / `female` | Case-insensitive |
+         *     | `date_of_birth` | No | — | `YYYY-MM-DD`; left blank if omitted |
+         *     | `employment_date` | No | — | `YYYY-MM-DD`; defaults to today if blank |
+         *     | `state` | Yes | `State.name` then `State.code` | e.g. `Lagos` or `LA` |
+         *     | `department` | Yes | `Department.short_form` then `Department.name` | e.g. `ICT` or `ICT Department` |
+         *     | `grade_level` | Yes | `GradeLevel.level` then `GradeLevel.code` | e.g. `8` or `GL-08` |
+         *     | `rank_title` | Yes | `Rank.title` | e.g. `Assistant Director` |
+         */
+        post: operations["accounts_staff_records_bulk_upload_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/accounts/staff/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Soft-delete a staff member. This does not remove the `CustomUser` row — it sets `is_deleted=True`, `is_active=False` (blocking login immediately), and mangles `email` and `file_number` (prefixed with `deleted_<id>_`) so the originals are freed up for reuse by a future staff member while remaining traceable back to this record. `UserProfile` and `StaffPosting` history are left untouched. Already-deleted staff return `404`, same as a non-existent id. */
+        delete: operations["accounts_staff_destroy"];
+        options?: never;
+        head?: never;
+        /** @description Update a staff member's data as an admin. `file_number`, `email`, and `role` can never be changed here. Optionally include a nested `profile` object (phone_number, profile_picture_url, sex, date_of_birth, employment_date) and/or a nested `posting` object (state, department, grade_level, rank, posting_reason, start_date, end_date, remarks, status) to update those linked records in the same request. `posting` updates the staff member's current (`is_current=True`) posting in place — it does not create a new posting or close the old one. */
+        patch: operations["accounts_staff_partial_update"];
+        trace?: never;
+    };
+    "/api/analytics/dashboard/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["analytics_dashboard_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analytics/reports/certificates/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Total certificates issued.
+         *
+         *     Two modes:
+         *       - year (required): total across all programmes in that year, with per-programme breakdown.
+         *       - cohort_course (overrides): total for that specific programme; year is ignored.
+         */
+        get: operations["analytics_reports_certificates_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analytics/reports/completion-rate/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Average course completion rate.
+         *
+         *     Two modes:
+         *       - year (required): rate per programme across all programmes in that year.
+         *       - cohort_course (overrides): rate for that specific programme; year is ignored.
+         */
+        get: operations["analytics_reports_completion_rate_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analytics/reports/completions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Returns all staff who completed a course.
+         *
+         *     Two modes:
+         *       - course + year (required): completions across all training programmes for that course in that year.
+         *       - cohort_course (overrides): completions for that specific programme only; year is ignored.
+         */
+        get: operations["analytics_reports_completions_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/analytics/reports/top-performers/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Best post-test score per staff for a given training programme.
+         *     Year is derived from the programme itself — no year parameter needed.
+         */
+        get: operations["analytics_reports_top_performers_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/audit/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["audit_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/learning/books/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description API endpoint for the NYSC digital library.
+         *     Staff can view and download. Admins can upload, edit, and delete.
+         */
+        get: operations["learning_books_list"];
+        put?: never;
+        /** @description Admins only: Upload a new PDF/Book */
+        post: operations["learning_books_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/learning/books/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description API endpoint for the NYSC digital library.
+         *     Staff can view and download. Admins can upload, edit, and delete.
+         */
+        get: operations["learning_books_retrieve"];
+        /** @description Admins only sha: Edit an existing resource */
+        put: operations["learning_books_update"];
+        post?: never;
+        /** @description Admins only: Delete a resource */
+        delete: operations["learning_books_destroy"];
+        options?: never;
+        head?: never;
+        /**
+         * @description API endpoint for the NYSC digital library.
+         *     Staff can view and download. Admins can upload, edit, and delete.
+         */
+        patch: operations["learning_books_partial_update"];
+        trace?: never;
+    };
+    "/api/notifications/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["notifications_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["notifications_partial_update"];
+        trace?: never;
+    };
+    "/api/notifications/mark-all-read/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["notifications_mark_all_read_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notifications/unread-count/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["notifications_unread_count_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/organization/departments/": {
@@ -308,6 +730,54 @@ export interface paths {
         patch: operations["organization_postings_partial_update"];
         trace?: never;
     };
+    "/api/organization/postings/bulk-upload/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Bulk-create staff postings from a CSV file. All-or-nothing: if any row fails validation, the entire batch is rejected and nothing is created — the response lists every failing row number and field so the CSV can be corrected and re-uploaded.
+         *
+         *     **Expected CSV columns:**
+         *
+         *     | Column | Required | Matches | Notes |
+         *     |---|---|---|---|
+         *     | `file_number` | Yes | `CustomUser.file_number` | Identifies the staff member |
+         *     | `state_code` | Yes | `State.code` | e.g. `LA` |
+         *     | `department_name` | No | `Department.name` | May be left blank |
+         *     | `grade_level_code` | Yes | `GradeLevel.code` | e.g. `GL-08` |
+         *     | `rank_title` | Yes | `Rank.title` | e.g. `Assistant Director` |
+         *     | `posting_reason_name` | Yes | `PostingReason.name` | Required for this bulk-upload endpoint |
+         *     | `start_date` | No | `StaffPosting.start_date` | `YYYY-MM-DD`; defaults to today if blank |
+         *     | `remarks` | No | `StaffPosting.remarks` | Free text |
+         */
+        post: operations["organization_postings_bulk_upload_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organization/postings/current/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["organization_postings_current_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organization/ranks/": {
         parameters: {
             query?: never;
@@ -394,6 +864,159 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/training/activities/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description API endpoint for managing Activities (Bottom Layer - Videos, PDFs, Text). */
+        get: operations["training_activities_list"];
+        put?: never;
+        /** @description API endpoint for managing Activities (Bottom Layer - Videos, PDFs, Text). */
+        post: operations["training_activities_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/activities/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description API endpoint for managing Activities (Bottom Layer - Videos, PDFs, Text). */
+        get: operations["training_activities_retrieve"];
+        /** @description API endpoint for managing Activities (Bottom Layer - Videos, PDFs, Text). */
+        put: operations["training_activities_update"];
+        post?: never;
+        /** @description API endpoint for managing Activities (Bottom Layer - Videos, PDFs, Text). */
+        delete: operations["training_activities_destroy"];
+        options?: never;
+        head?: never;
+        /** @description API endpoint for managing Activities (Bottom Layer - Videos, PDFs, Text). */
+        patch: operations["training_activities_partial_update"];
+        trace?: never;
+    };
+    "/api/training/activities/reorder/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Drag-and-drop reordering for activities. */
+        patch: operations["reorder_activities"];
+        trace?: never;
+    };
+    "/api/training/assessments/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description API endpoint for viewing and submitting Assessments. */
+        get: operations["training_assessments_list"];
+        put?: never;
+        /** @description API endpoint for viewing and submitting Assessments. */
+        post: operations["training_assessments_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/assessments/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description API endpoint for viewing and submitting Assessments. */
+        get: operations["training_assessments_retrieve"];
+        /** @description API endpoint for viewing and submitting Assessments. */
+        put: operations["training_assessments_update"];
+        post?: never;
+        /** @description API endpoint for viewing and submitting Assessments. */
+        delete: operations["training_assessments_destroy"];
+        options?: never;
+        head?: never;
+        /** @description API endpoint for viewing and submitting Assessments. */
+        patch: operations["training_assessments_partial_update"];
+        trace?: never;
+    };
+    "/api/training/assessments/{id}/add-question/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Single Question Manually
+         * @description API endpoint for viewing and submitting Assessments.
+         */
+        post: operations["add_manual_question"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/assessments/{id}/submit/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Assessment Answers
+         * @description Submit an array of answers for grading.
+         */
+        post: operations["submit_assessment_exam"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/assessments/{id}/upload-questions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Upload Questions (CSV)
+         * @description API endpoint for viewing and submitting Assessments.
+         */
+        post: operations["upload_assessment_questions_csv"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/training/categories/": {
         parameters: {
             query?: never;
@@ -462,6 +1085,79 @@ export interface paths {
         patch: operations["training_categories_partial_update"];
         trace?: never;
     };
+    "/api/training/certificates/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description Intercepts the standard DRF list response and wraps it in the
+         *     exact {success, message, data} JSON format the frontend requires.
+         */
+        get: operations["training_certificates_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/certificates/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Uniform data envelope formatting for single certificate inspection. */
+        get: operations["training_certificates_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/certificates/verify/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * @description PUBLIC ENDPOINT: Allows external verification.
+         *     URL: /api/training/certificates/verify/?certificate_id=NYSC-TRN-8A3X9B2P4Q
+         */
+        get: operations["training_certificates_verify_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/cloudinary-signature/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["training_cloudinary_signature_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/training/cohort-courses/": {
         parameters: {
             query?: never;
@@ -469,10 +1165,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description API endpoint to assign a course to a cohort's curriculum. */
+        /**
+         * @description API endpoint for managing Training Programmes (CohortCourses).
+         *     Replaces the old Cohort and CohortCourse dual-setup.
+         */
         get: operations["training_cohort_courses_list"];
         put?: never;
-        /** @description API endpoint to assign a course to a cohort's curriculum. */
+        /**
+         * @description API endpoint for managing Training Programmes (CohortCourses).
+         *     Replaces the old Cohort and CohortCourse dual-setup.
+         */
         post: operations["training_cohort_courses_create"];
         delete?: never;
         options?: never;
@@ -487,165 +1189,66 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** @description API endpoint to assign a course to a cohort's curriculum. */
+        /**
+         * @description API endpoint for managing Training Programmes (CohortCourses).
+         *     Replaces the old Cohort and CohortCourse dual-setup.
+         */
         get: operations["training_cohort_courses_retrieve"];
-        /** @description API endpoint to assign a course to a cohort's curriculum. */
+        /**
+         * @description API endpoint for managing Training Programmes (CohortCourses).
+         *     Replaces the old Cohort and CohortCourse dual-setup.
+         */
         put: operations["training_cohort_courses_update"];
         post?: never;
-        /** @description API endpoint to assign a course to a cohort's curriculum. */
+        /**
+         * @description API endpoint for managing Training Programmes (CohortCourses).
+         *     Replaces the old Cohort and CohortCourse dual-setup.
+         */
         delete: operations["training_cohort_courses_destroy"];
         options?: never;
         head?: never;
-        /** @description API endpoint to assign a course to a cohort's curriculum. */
+        /**
+         * @description API endpoint for managing Training Programmes (CohortCourses).
+         *     Replaces the old Cohort and CohortCourse dual-setup.
+         */
         patch: operations["training_cohort_courses_partial_update"];
         trace?: never;
     };
-    "/api/training/cohort-staff/": {
+    "/api/training/cohort-courses/{id}/bulk-enroll/": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * @description API endpoint to assign staff members to a cohort.
-         *
-         *     Read access is allowed for authenticated users; mutations require
-         *     an admin. When creating an assignment, the view records the admin
-         *     who performed the assignment in `assigned_by`.
-         */
-        get: operations["training_cohort_staff_list"];
+        get?: never;
         put?: never;
         /**
-         * @description API endpoint to assign staff members to a cohort.
-         *
-         *     Read access is allowed for authenticated users; mutations require
-         *     an admin. When creating an assignment, the view records the admin
-         *     who performed the assignment in `assigned_by`.
+         * Bulk Enroll Staff (CSV)
+         * @description Upload a CSV with a "file_number" column. Skips already-enrolled staff, flags invalid rows, and enrolls the rest in one database hit. After the insert each newly enrolled staff member receives an enrollment confirmation **email** and, if a phone number is on their profile, an **SMS**. Notifications are dispatched asynchronously via Celery (one independent task per recipient, up to 3 retries with exponential back-off) so the API responds immediately without waiting for delivery.
          */
-        post: operations["training_cohort_staff_create"];
+        post: operations["bulk_enroll_csv"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/training/cohort-staff/{id}/": {
+    "/api/training/cohort-courses/bulk-assign/": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * @description API endpoint to assign staff members to a cohort.
-         *
-         *     Read access is allowed for authenticated users; mutations require
-         *     an admin. When creating an assignment, the view records the admin
-         *     who performed the assignment in `assigned_by`.
-         */
-        get: operations["training_cohort_staff_retrieve"];
-        /**
-         * @description API endpoint to assign staff members to a cohort.
-         *
-         *     Read access is allowed for authenticated users; mutations require
-         *     an admin. When creating an assignment, the view records the admin
-         *     who performed the assignment in `assigned_by`.
-         */
-        put: operations["training_cohort_staff_update"];
-        post?: never;
-        /**
-         * @description API endpoint to assign staff members to a cohort.
-         *
-         *     Read access is allowed for authenticated users; mutations require
-         *     an admin. When creating an assignment, the view records the admin
-         *     who performed the assignment in `assigned_by`.
-         */
-        delete: operations["training_cohort_staff_destroy"];
-        options?: never;
-        head?: never;
-        /**
-         * @description API endpoint to assign staff members to a cohort.
-         *
-         *     Read access is allowed for authenticated users; mutations require
-         *     an admin. When creating an assignment, the view records the admin
-         *     who performed the assignment in `assigned_by`.
-         */
-        patch: operations["training_cohort_staff_partial_update"];
-        trace?: never;
-    };
-    "/api/training/cohorts/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * @description API endpoint for admins to create and manage Training Cohorts.
-         *
-         *     Read operations are available to any authenticated user while
-         *     create/update/delete are restricted to admin users via
-         *     `IsAdminUser` permission.
-         */
-        get: operations["training_cohorts_list"];
+        get?: never;
         put?: never;
-        /**
-         * @description API endpoint for admins to create and manage Training Cohorts.
-         *
-         *     Read operations are available to any authenticated user while
-         *     create/update/delete are restricted to admin users via
-         *     `IsAdminUser` permission.
-         */
-        post: operations["training_cohorts_create"];
+        /** @description Assign all active staff from a specific department to a Training Programme. Skips staff already enrolled. After the database insert each newly enrolled staff member receives an enrollment confirmation **email** and, if a phone number is on their profile, an **SMS**. Notifications are dispatched asynchronously via Celery (one independent task per recipient, up to 3 retries with exponential back-off) so the API responds immediately without waiting for delivery. */
+        post: operations["bulk_assign_department_staff"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/training/cohorts/{id}/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * @description API endpoint for admins to create and manage Training Cohorts.
-         *
-         *     Read operations are available to any authenticated user while
-         *     create/update/delete are restricted to admin users via
-         *     `IsAdminUser` permission.
-         */
-        get: operations["training_cohorts_retrieve"];
-        /**
-         * @description API endpoint for admins to create and manage Training Cohorts.
-         *
-         *     Read operations are available to any authenticated user while
-         *     create/update/delete are restricted to admin users via
-         *     `IsAdminUser` permission.
-         */
-        put: operations["training_cohorts_update"];
-        post?: never;
-        /**
-         * @description API endpoint for admins to create and manage Training Cohorts.
-         *
-         *     Read operations are available to any authenticated user while
-         *     create/update/delete are restricted to admin users via
-         *     `IsAdminUser` permission.
-         */
-        delete: operations["training_cohorts_destroy"];
-        options?: never;
-        head?: never;
-        /**
-         * @description API endpoint for admins to create and manage Training Cohorts.
-         *
-         *     Read operations are available to any authenticated user while
-         *     create/update/delete are restricted to admin users via
-         *     `IsAdminUser` permission.
-         */
-        patch: operations["training_cohorts_partial_update"];
         trace?: never;
     };
     "/api/training/courses/": {
@@ -655,20 +1258,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * @description API endpoint that allows courses to be viewed or edited.
-         *
-         *     Uses a read-optimized serializer for listing and detail views and a
-         *     write serializer when creating or updating courses.
-         */
+        /** @description API endpoint for the NEW top-level Courses. */
         get: operations["training_courses_list"];
         put?: never;
-        /**
-         * @description API endpoint that allows courses to be viewed or edited.
-         *
-         *     Uses a read-optimized serializer for listing and detail views and a
-         *     write serializer when creating or updating courses.
-         */
+        /** @description API endpoint for the NEW top-level Courses. */
         post: operations["training_courses_create"];
         delete?: never;
         options?: never;
@@ -683,96 +1276,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * @description API endpoint that allows courses to be viewed or edited.
-         *
-         *     Uses a read-optimized serializer for listing and detail views and a
-         *     write serializer when creating or updating courses.
-         */
+        /** @description API endpoint for the NEW top-level Courses. */
         get: operations["training_courses_retrieve"];
-        /**
-         * @description API endpoint that allows courses to be viewed or edited.
-         *
-         *     Uses a read-optimized serializer for listing and detail views and a
-         *     write serializer when creating or updating courses.
-         */
+        /** @description API endpoint for the NEW top-level Courses. */
         put: operations["training_courses_update"];
         post?: never;
-        /**
-         * @description API endpoint that allows courses to be viewed or edited.
-         *
-         *     Uses a read-optimized serializer for listing and detail views and a
-         *     write serializer when creating or updating courses.
-         */
+        /** @description API endpoint for the NEW top-level Courses. */
         delete: operations["training_courses_destroy"];
         options?: never;
         head?: never;
-        /**
-         * @description API endpoint that allows courses to be viewed or edited.
-         *
-         *     Uses a read-optimized serializer for listing and detail views and a
-         *     write serializer when creating or updating courses.
-         */
+        /** @description API endpoint for the NEW top-level Courses. */
         patch: operations["training_courses_partial_update"];
         trace?: never;
     };
-    "/api/training/module-docs/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * @description API endpoint for managing individual documents (Videos, PDFs, etc.)
-         *     attached to specific modules.
-         */
-        get: operations["training_module_docs_list"];
-        put?: never;
-        /**
-         * @description API endpoint for managing individual documents (Videos, PDFs, etc.)
-         *     attached to specific modules.
-         */
-        post: operations["training_module_docs_create"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/training/module-docs/{id}/": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * @description API endpoint for managing individual documents (Videos, PDFs, etc.)
-         *     attached to specific modules.
-         */
-        get: operations["training_module_docs_retrieve"];
-        /**
-         * @description API endpoint for managing individual documents (Videos, PDFs, etc.)
-         *     attached to specific modules.
-         */
-        put: operations["training_module_docs_update"];
-        post?: never;
-        /**
-         * @description API endpoint for managing individual documents (Videos, PDFs, etc.)
-         *     attached to specific modules.
-         */
-        delete: operations["training_module_docs_destroy"];
-        options?: never;
-        head?: never;
-        /**
-         * @description API endpoint for managing individual documents (Videos, PDFs, etc.)
-         *     attached to specific modules.
-         */
-        patch: operations["training_module_docs_partial_update"];
-        trace?: never;
-    };
-    "/api/training/module-docs/reorder/": {
+    "/api/training/courses/{id}/reorder-modules/": {
         parameters: {
             query?: never;
             header?: never;
@@ -781,15 +1298,186 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** @description Atomically reorder all modules within a specific course. */
+        post: operations["reorder_course_modules"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/enrollments/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description API endpoint for managing course enrollments and progress tracking. */
+        get: operations["training_enrollments_list"];
+        put?: never;
+        /** @description API endpoint for managing course enrollments and progress tracking. */
+        post: operations["training_enrollments_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/enrollments/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description API endpoint for managing course enrollments and progress tracking. */
+        get: operations["training_enrollments_retrieve"];
+        /** @description API endpoint for managing course enrollments and progress tracking. */
+        put: operations["training_enrollments_update"];
+        post?: never;
+        /** @description API endpoint for managing course enrollments and progress tracking. */
+        delete: operations["training_enrollments_destroy"];
+        options?: never;
+        head?: never;
+        /** @description API endpoint for managing course enrollments and progress tracking. */
+        patch: operations["training_enrollments_partial_update"];
+        trace?: never;
+    };
+    "/api/training/enrollments/{id}/complete-activity/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark an Activity as Complete
+         * @description Marks an activity (video/pdf/text) as complete and runs the Epic 3 mathematical progress engine to update module and course percentages.
+         */
+        post: operations["complete_course_activity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/evaluations/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description API endpoint for submitting end-of-course reviews. */
+        get: operations["training_evaluations_list"];
+        put?: never;
+        /** @description API endpoint for submitting end-of-course reviews. */
+        post: operations["training_evaluations_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/evaluations/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description API endpoint for submitting end-of-course reviews. */
+        get: operations["training_evaluations_retrieve"];
+        /** @description API endpoint for submitting end-of-course reviews. */
+        put: operations["training_evaluations_update"];
+        post?: never;
+        /** @description API endpoint for submitting end-of-course reviews. */
+        delete: operations["training_evaluations_destroy"];
+        options?: never;
+        head?: never;
+        /** @description API endpoint for submitting end-of-course reviews. */
+        patch: operations["training_evaluations_partial_update"];
+        trace?: never;
+    };
+    "/api/training/live-sessions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Live Sessions
+         * @description Retrieve a list of live Zoom sessions. Staff only see sessions for their enrolled cohorts.
+         */
+        get: operations["training_live_sessions_list"];
+        put?: never;
+        /** @description API endpoint for scheduling and joining Zoom/Google Meet sessions. */
+        post: operations["training_live_sessions_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/live-sessions/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description API endpoint for scheduling and joining Zoom/Google Meet sessions. */
+        get: operations["training_live_sessions_retrieve"];
+        /** @description API endpoint for scheduling and joining Zoom/Google Meet sessions. */
+        put: operations["training_live_sessions_update"];
+        post?: never;
+        /** @description API endpoint for scheduling and joining Zoom/Google Meet sessions. */
+        delete: operations["training_live_sessions_destroy"];
+        options?: never;
+        head?: never;
+        /** @description API endpoint for scheduling and joining Zoom/Google Meet sessions. */
+        patch: operations["training_live_sessions_partial_update"];
+        trace?: never;
+    };
+    "/api/training/live-sessions/{id}/attendance/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * View Attendance (Admins Only)
+         * @description API endpoint for scheduling and joining Zoom/Google Meet sessions.
+         */
+        get: operations["training_live_sessions_attendance_retrieve"];
+        put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * @description Endpoint to handle drag-and-drop reordering of documents inside a module.
-         *     Expects a JSON array: [{"id": 1, "order": 2}, {"id": 2, "order": 1}]
-         */
-        patch: operations["training_module_docs_reorder_partial_update"];
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/live-sessions/{id}/join/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Logs attendance securely and returns the Zoom meeting URL. */
+        post: operations["join_live_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/training/modules/": {
@@ -799,16 +1487,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * @description API endpoint for managing Course Modules.
-         *     Automatically includes all attached videos and PDFs due to the nested serializer.
-         */
+        /** @description API endpoint for managing the NEW Modules (Middle Layer). */
         get: operations["training_modules_list"];
         put?: never;
-        /**
-         * @description API endpoint for managing Course Modules.
-         *     Automatically includes all attached videos and PDFs due to the nested serializer.
-         */
+        /** @description API endpoint for managing the NEW Modules (Middle Layer). */
         post: operations["training_modules_create"];
         delete?: never;
         options?: never;
@@ -823,28 +1505,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * @description API endpoint for managing Course Modules.
-         *     Automatically includes all attached videos and PDFs due to the nested serializer.
-         */
+        /** @description API endpoint for managing the NEW Modules (Middle Layer). */
         get: operations["training_modules_retrieve"];
-        /**
-         * @description API endpoint for managing Course Modules.
-         *     Automatically includes all attached videos and PDFs due to the nested serializer.
-         */
+        /** @description API endpoint for managing the NEW Modules (Middle Layer). */
         put: operations["training_modules_update"];
         post?: never;
-        /**
-         * @description API endpoint for managing Course Modules.
-         *     Automatically includes all attached videos and PDFs due to the nested serializer.
-         */
+        /** @description API endpoint for managing the NEW Modules (Middle Layer). */
         delete: operations["training_modules_destroy"];
         options?: never;
         head?: never;
-        /**
-         * @description API endpoint for managing Course Modules.
-         *     Automatically includes all attached videos and PDFs due to the nested serializer.
-         */
+        /** @description API endpoint for managing the NEW Modules (Middle Layer). */
         patch: operations["training_modules_partial_update"];
         trace?: never;
     };
@@ -861,11 +1531,167 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** @description Drag-and-drop reordering. */
+        patch: operations["reorder_modules"];
+        trace?: never;
+    };
+    "/api/training/proctoring/sessions/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description GET /proctoring/sessions/  — admin overview of all sessions. */
+        get: operations["training_proctoring_sessions_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/proctoring/sessions/{id}/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description GET /proctoring/sessions/{id}/  — full session detail with all events. */
+        get: operations["training_proctoring_sessions_retrieve"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/proctoring/sessions/{id}/browser-event/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
         /**
-         * @description Endpoint to handle drag-and-drop reordering of modules from the frontend.
-         *     Expects a JSON array: [{"id": 1, "order": 2}, {"id": 2, "order": 1}]
+         * @description POST /proctoring/sessions/{id}/browser-event/
+         *
+         *     Reports a browser-detected event (tab switch, window blur, etc.).
+         *     These are lightweight and do not hit AWS Rekognition.
+         *
+         *     Request body:
+         *         event_type (str) one of: CAMERA_DISABLED, FULLSCREEN_EXIT, TAB_SWITCH, WINDOW_BLUR
          */
-        patch: operations["training_modules_reorder_partial_update"];
+        post: operations["training_proctoring_sessions_browser_event_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/proctoring/sessions/{id}/close/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description POST /proctoring/sessions/{id}/close/
+         *
+         *     Called by the frontend when the staff member submits their assessment.
+         *     Marks the proctoring session as ended and transitions status to CLEAN
+         *     if no flags were raised.
+         */
+        post: operations["training_proctoring_sessions_close_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/proctoring/sessions/{id}/frame/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description POST /proctoring/sessions/{id}/frame/
+         *
+         *     Accepts a periodic camera frame during an active assessment.
+         *     Runs face detection and identity check via AWS Rekognition.
+         *     Records any anomalies as ProctoringEvents.
+         *
+         *     Request body:
+         *         image_data (str) base64-encoded JPEG or PNG
+         *
+         *     Response:
+         *         events_detected (list[str]) — event types raised this frame, if any
+         */
+        post: operations["training_proctoring_sessions_frame_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/proctoring/sessions/{id}/review/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin Manual Override
+         * @description Allows admins to manually change the status of a proctoring session (e.g., to CLEAN or INVALIDATED) if the AI made a mistake.
+         */
+        post: operations["review_proctoring_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/training/proctoring/sessions/start/": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description POST /proctoring/sessions/start/
+         *
+         *     Verifies the staff member's identity against their registered profile
+         *     picture and, on success, creates both an AssessmentResult and a
+         *     ProctoringSession atomically.
+         *
+         *     Request body:
+         *         assessment_id   (int)
+         *         enrollment_id   (int)
+         *         image_data      (str) base64-encoded JPEG or PNG
+         */
+        post: operations["training_proctoring_sessions_start_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/training/trainers/": {
@@ -881,7 +1707,7 @@ export interface paths {
          *     Trainers can be listed and retrieved by any authenticated user; all
          *     mutation operations are restricted to admin users.
          */
-        get: operations["training_trainers_retrieve"];
+        get: operations["training_trainers_list"];
         put?: never;
         /**
          * @description API endpoint that allows trainers to be viewed or edited.
@@ -909,7 +1735,7 @@ export interface paths {
          *     Trainers can be listed and retrieved by any authenticated user; all
          *     mutation operations are restricted to admin users.
          */
-        get: operations["training_trainers_retrieve_2"];
+        get: operations["training_trainers_retrieve"];
         /**
          * @description API endpoint that allows trainers to be viewed or edited.
          *
@@ -957,12 +1783,249 @@ export interface components {
             message: string;
             data: components["schemas"]["AuthDataSchema"];
         };
+        /**
+         * @description FORMERLY ModuleDocSerializer.
+         *     This now handles Videos, PDFs, Texts, etc.
+         */
+        Activity: {
+            readonly id: number;
+            module: number;
+            title: string;
+            content_type: components["schemas"]["ContentTypeEnum"];
+            content_url?: (string) | null;
+            /** @description Used only if content_type is TEXT */
+            text_content?: string | null;
+            cloudinary_public_id?: string | null;
+            /** @default 0 */
+            order: number;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
+        /**
+         * @description Serializes the completion status of individual videos, PDFs, and texts.
+         *     Formerly 'DocumentProgressSerializer'.
+         */
+        ActivityCompletion: {
+            readonly id: number;
+            enrollment: number;
+            activity: number;
+            readonly activity_title: string;
+            readonly activity_type: string;
+            is_completed?: boolean;
+            /** Format: date-time */
+            readonly completed_at: string;
+        };
+        ActivityCompletionData: {
+            /** Format: decimal */
+            new_percentage: string;
+            course_status: string;
+        };
+        ActivityCompletionRequest: {
+            /** @description The ID of the Activity being marked as complete. */
+            activity_id: number;
+        };
+        ActivityCompletionResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["ActivityCompletionData"];
+        };
+        AdminStaffPostingUpdate: {
+            state?: number | null;
+            department?: number | null;
+            grade_level?: number | null;
+            rank?: number | null;
+            posting_reason?: number | null;
+            /** Format: date */
+            start_date?: string;
+            /** Format: date */
+            end_date?: string | null;
+            remarks?: string;
+            status?: components["schemas"]["Status07aEnum"];
+        };
+        AdminStaffProfileUpdate: {
+            phone_number?: string;
+            /** Format: uri */
+            profile_picture_url?: string | null;
+            sex?: components["schemas"]["SexEnum"] | components["schemas"]["BlankEnum"];
+            /** Format: date */
+            date_of_birth?: string | null;
+            /** Format: date */
+            employment_date?: string | null;
+        };
+        AdminStaffUpdateSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description The master payload for Next.js to render the CBT interface. */
+        Assessment: {
+            readonly id: number;
+            course: number;
+            readonly course_title: string;
+            type: components["schemas"]["TypeEnum"];
+            title: string;
+            description?: string | null;
+            /**
+             * Format: decimal
+             * @description Passing percentage
+             */
+            pass_mark?: string;
+            max_attempts?: number;
+            readonly questions: components["schemas"]["Question"][];
+            /** @description Duration of the assessment in minutes */
+            duration?: number;
+        };
+        /**
+         * @description FORMERLY AssessmentResultSerializer.
+         *     Used for the Next.js Results Page.
+         */
+        AssessmentAttempt: {
+            readonly id: number;
+            enrollment: number;
+            assessment: number;
+            readonly course_title: string;
+            readonly assessment_type: string;
+            readonly staff_name: string;
+            readonly attempt_number: number;
+            readonly score: number;
+            /** Format: decimal */
+            readonly percentage: string;
+            readonly passed: boolean;
+            /** Format: date-time */
+            readonly submitted_at: string;
+        };
+        /** @description Handles secure backend grading for Next.js quiz submissions. */
+        AssessmentSubmission: {
+            answers: unknown;
+        };
+        AssessmentUploadResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["UploadData"];
+        };
+        AuditLog: {
+            readonly id: number;
+            readonly user: components["schemas"]["AuditLogUser"];
+            action: string;
+            description: string;
+            ip_address?: string | null;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
+        AuditLogListSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["AuditLog"][];
+        };
+        AuditLogUser: {
+            id: number;
+            /** Format: email */
+            email: string;
+            first_name: string;
+            last_name: string;
+        };
         AuthDataSchema: {
             tokens: components["schemas"]["TokenPairSchema"];
             user: components["schemas"]["UserDetail"];
         };
         /** @enum {unknown} */
         BlankEnum: "";
+        BlockingStaffSchema: {
+            file_number: string;
+            first_name: string;
+            last_name: string;
+        };
+        BulkPostingUpload: {
+            /** Format: uri */
+            file: string;
+        };
+        BulkPostingUploadErrorResponse: {
+            /** @default false */
+            success: boolean;
+            message: string;
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        BulkPostingUploadSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        BulkStaffRecordUpload: {
+            /** Format: uri */
+            file: string;
+        };
+        BulkStaffRecordUploadErrorResponse: {
+            /** @default false */
+            success: boolean;
+            message: string;
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        BulkStaffRecordUploadSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        CSVUpload: {
+            /**
+             * Format: uri
+             * @description CSV file containing questions and options.
+             */
+            file: string;
+        };
+        /**
+         * @description Standard serializer for the Staff Dashboard.
+         *     Includes the internal 'id' for frontend routing/keys.
+         */
+        Certificate: {
+            readonly id: number;
+            /** @description Publicly verifiable ID for employers */
+            certificate_id?: string;
+            readonly staff_name: string;
+            readonly file_number: string;
+            readonly course_title: string;
+            /** Format: date-time */
+            readonly issued_at: string;
+            pdf_url?: (string) | null;
+        };
+        CertificateBreakdown: {
+            cohort_course_id: number;
+            programme: string;
+            count: number;
+        };
+        CertificateReport: {
+            year: number;
+            total: number;
+            breakdown?: components["schemas"]["CertificateBreakdown"][];
+        };
+        ChangeEmailRequestSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            /** @example null */
+            readonly data: Record<string, never> | null;
+        };
+        ChangeEmailVerifySuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["UserDetail"];
+        };
         ChangePassword: {
             old_password: string;
             new_password: string;
@@ -976,81 +2039,70 @@ export interface components {
             readonly data: Record<string, never> | null;
         };
         /**
-         * @description Serializer for the `Cohort` model.
-         *
-         *     Provides the common read/write fields for cohorts. `created_by`
-         *     and `created_at` are read-only and set by the view on create.
-         */
-        Cohort: {
-            readonly id: number;
-            name: string;
-            batch: string;
-            description?: string | null;
-            /** Format: date */
-            start_date: string;
-            /** Format: date */
-            end_date: string;
-            status?: components["schemas"]["CohortStatusEnum"];
-            readonly created_by: number | null;
-            /** Format: date-time */
-            readonly created_at: string;
-        };
-        /**
-         * @description Serializer for assigning courses to a `Cohort` curriculum.
-         *
-         *     Exposes nested `course_details` for read operations while accepting
-         *     the `course` foreign key on write. `assigned_by` and `assigned_at`
-         *     are maintained by the view layer.
+         * @description Serializer for the Training Programme (CohortCourse).
+         *     Replaces the old dynamic Cohort concept.
          */
         CohortCourse: {
             readonly id: number;
-            cohort: number;
-            readonly cohort_name: string;
             course: number;
             readonly course_details: components["schemas"]["Course"];
+            cohort: components["schemas"]["CohortEnum"];
+            readonly cohort_display: string;
+            /** @description e.g., 2027 */
+            year: number;
+            /** Format: date */
+            start_date?: string | null;
+            /** Format: date */
+            end_date?: string | null;
             readonly assigned_by: number | null;
             /** Format: date-time */
             readonly assigned_at: string;
         };
         /**
-         * @description Serializer for assigning staff members to a `Cohort`.
-         *
-         *     Includes a nested `staff_details` block for convenient display in
-         *     read operations and exposes `staff` as the writable foreign key.
-         */
-        CohortStaff: {
-            readonly id: number;
-            cohort: number;
-            readonly cohort_name: string;
-            staff: number;
-            readonly staff_details: components["schemas"]["StaffBasic"];
-            readonly assigned_by: number | null;
-            /** Format: date-time */
-            readonly assigned_at: string;
-        };
-        /**
-         * @description * `UPCOMING` - Upcoming
-         *     * `ACTIVE` - Active
-         *     * `COMPLETED` - Completed
+         * @description * `BATCH A` - Batch A
+         *     * `BATCH B` - Batch B
+         *     * `BATCH C` - Batch C
          * @enum {string}
          */
-        CohortStatusEnum: "UPCOMING" | "ACTIVE" | "COMPLETED";
+        CohortEnum: "BATCH A" | "BATCH B" | "BATCH C";
+        CompletionRateItem: {
+            cohort_course_id: number;
+            programme: string;
+            year: number;
+            /** Format: double */
+            average_completion_rate: number;
+            total_enrolled: number;
+        };
         /**
-         * @description Read serializer for `Course` including nested trainer data.
-         *
-         *     Uses `category_name` and nested `trainers` for convenient display
-         *     in list and detail endpoints.
+         * @description * `VIDEO` - Video
+         *     * `PDF` - PDF Document
+         *     * `PPT` - PowerPoint
+         *     * `TEXT` - Text Document
+         *     * `AUDIO` - Audio
+         *     * `EXTERNAL` - External Link
+         *     * `ASSESSMENT` - Assessment
+         * @enum {string}
+         */
+        ContentTypeEnum: "VIDEO" | "PDF" | "PPT" | "TEXT" | "AUDIO" | "EXTERNAL" | "ASSESSMENT";
+        /**
+         * @description * `A` - A
+         *     * `B` - B
+         *     * `C` - C
+         *     * `D` - D
+         * @enum {string}
+         */
+        CorrectOptionEnum: "A" | "B" | "C" | "D";
+        /**
+         * @description Read serializer for the NEW top-level Course.
+         *     Note: Prerequisites and lock logic have been removed per Mr. Titus's request.
          */
         Course: {
             readonly id: number;
             title: string;
             description: string;
-            /** Format: uri */
-            thumbnail_url?: string | null;
             status?: components["schemas"]["Status3bdEnum"];
             category?: number | null;
             readonly category_name: string;
-            readonly created_by: number;
             readonly trainers: components["schemas"]["Trainer"][];
             /** Format: date-time */
             readonly created_at: string;
@@ -1063,27 +2115,118 @@ export interface components {
             /** Format: date-time */
             readonly created_at: string;
         };
-        /**
-         * @description Write serializer for `Course` used when creating or updating.
-         *
-         *     Accepts `trainer_ids` (list of trainer PKs) and creates the
-         *     intermediate `CourseTrainer` relations during `create()`.
-         */
+        /** @description Write serializer for the NEW Course. */
         CourseCreateUpdate: {
             readonly id: number;
             title: string;
             description: string;
-            /** Format: uri */
-            thumbnail_url?: string | null;
             status?: components["schemas"]["Status3bdEnum"];
             category?: number | null;
             readonly created_by: number;
             trainer_ids?: number[];
         };
+        /** @description The master payload for a Staff member's course journey. */
+        CourseEnrollment: {
+            readonly id: number;
+            staff: number;
+            cohort_course?: number | null;
+            readonly course_title: string;
+            readonly cohort_name: string;
+            readonly status: components["schemas"]["CourseEnrollmentStatusEnum"];
+            /** Format: decimal */
+            readonly completion_percentage: string;
+            readonly activity_completions: components["schemas"]["ActivityCompletion"][];
+            readonly evaluation: components["schemas"]["CourseEvaluation"];
+            /** Format: date-time */
+            readonly last_accessed: string;
+            /** Format: date-time */
+            readonly enrolled_at: string;
+            /** Format: date-time */
+            readonly completed_at: string | null;
+            readonly post_test_passed: string;
+            readonly evaluation_submitted: string;
+        };
+        /**
+         * @description * `NOT_STARTED` - Not Started
+         *     * `IN_PROGRESS` - In Progress
+         *     * `COMPLETED` - Completed
+         * @enum {string}
+         */
+        CourseEnrollmentStatusEnum: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+        /** @description Serializes the end-of-course rating and feedback. */
+        CourseEvaluation: {
+            readonly id: number;
+            enrollment: number;
+            readonly staff_name: string;
+            /** @description Rating out of 5 stars */
+            rating: number;
+            feedback?: string | null;
+            /** Format: date-time */
+            readonly submitted_at: string;
+        };
+        CreateStaffRecord: {
+            file_number: string;
+            first_name: string;
+            middle_name?: string;
+            last_name: string;
+            sex: components["schemas"]["SexEnum"];
+            /** Format: date */
+            date_of_birth?: string | null;
+            /** Format: date */
+            employment_date?: string;
+            state: number;
+            department?: number | null;
+            grade_level: number;
+            rank: number;
+        };
+        CreateStaffRecordSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["StaffRecordDataSchema"];
+        };
+        DashboardAnalytics: {
+            totalNumberOfStaff: number;
+            totalNumberOfActiveCourses: number;
+            totalNumberOfTrainingProgrammes: number;
+            totalNumberOfActiveTrainingProgrammes: number;
+            totalNumberOfCertificatesAssigned: number;
+            totalNumberOfDepartments: number;
+            totalUpcomingLiveSessionsWithinMonth: number;
+            upcomingLiveClasses: components["schemas"]["UpcomingLiveClass"][];
+        };
+        DeleteStaffRecordSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            /** @example null */
+            readonly data: Record<string, never> | null;
+        };
+        DeleteStaffSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            /** @example null */
+            readonly data: Record<string, never> | null;
+        };
         Department: {
             readonly id: number;
             name: string;
+            short_form: string;
             description?: string;
+        };
+        DepartmentBulkRequest: {
+            /** @description ID of the Training Programme (CohortCourse) */
+            cohort_course_id: number;
+            department: number;
+            /** @default true */
+            active_staff_only: boolean;
+        };
+        DepartmentBulkResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["DeptBulkData"];
         };
         DepartmentDeleteSuccessResponse: {
             /** @default true */
@@ -1108,21 +2251,35 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
-        /**
-         * @description * `VIDEO` - Video
-         *     * `PDF` - PDF Document
-         *     * `PPT` - PowerPoint
-         *     * `IMAGE` - Image
-         *     * `OTHER` - Other
-         * @enum {string}
-         */
-        DocTypeEnum: "VIDEO" | "PDF" | "PPT" | "IMAGE" | "OTHER";
+        DeptBulkData: {
+            total_found: number;
+            assigned_count: number;
+            skipped_existing: number;
+        };
         ErrorApiResponse: {
             /** @default false */
             success: boolean;
             message: string;
             /** @example null */
             readonly data: Record<string, never> | null;
+        };
+        /**
+         * @description * `NO_FACE` - No Face Detected
+         *     * `MULTIPLE_FACES` - Multiple Faces Detected
+         *     * `IDENTITY_MISMATCH` - Identity Mismatch
+         *     * `SUSPICIOUS_MOUTH` - Suspicious Mouth Activity
+         *     * `CAMERA_DISABLED` - Camera Disabled
+         *     * `TAB_SWITCH` - Tab Switch
+         *     * `WINDOW_BLUR` - Window Focus Loss
+         *     * `FULLSCREEN_EXIT` - Fullscreen Exit
+         * @enum {string}
+         */
+        EventTypeEnum: "NO_FACE" | "MULTIPLE_FACES" | "IDENTITY_MISMATCH" | "SUSPICIOUS_MOUTH" | "CAMERA_DISABLED" | "TAB_SWITCH" | "WINDOW_BLUR" | "FULLSCREEN_EXIT";
+        ExamSubmissionResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["AssessmentAttempt"];
         };
         FileLookup: {
             file_number: string;
@@ -1132,6 +2289,10 @@ export interface components {
             success: boolean;
             message: string;
             data: components["schemas"]["StaffLookupDataSchema"];
+        };
+        ForgotPassword: {
+            /** @description File number or email address */
+            login: string;
         };
         GradeLevel: {
             readonly id: number;
@@ -1175,11 +2336,64 @@ export interface components {
             /** @example null */
             readonly data: Record<string, never> | null;
         };
+        JoinSessionResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["MeetingUrlData"];
+        };
+        /**
+         * @description The master payload for Live Sessions.
+         *     Includes a dynamic 'has_joined' flag so the Next.js frontend knows
+         *     whether to render a green "Joined" badge or a blue "Join Class" button.
+         */
+        LiveSession: {
+            readonly id: number;
+            cohort_course: number;
+            readonly course_title: string;
+            readonly cohort_name: string;
+            title: string;
+            description?: string | null;
+            /**
+             * Format: uri
+             * @description Zoom, Google Meet, or Team link
+             */
+            meeting_url: string;
+            /** Format: date-time */
+            start_time: string;
+            /** Format: date-time */
+            end_time: string;
+            status?: components["schemas"]["LiveSessionStatusEnum"];
+            /** Format: date-time */
+            readonly created_at: string;
+            readonly has_joined: string;
+        };
+        /**
+         * @description * `SCHEDULED` - Scheduled
+         *     * `ONGOING` - Ongoing
+         *     * `COMPLETED` - Completed
+         *     * `CANCELLED` - Cancelled
+         * @enum {string}
+         */
+        LiveSessionStatusEnum: "SCHEDULED" | "ONGOING" | "COMPLETED" | "CANCELLED";
         Login: {
             /** @description File number or email address */
             login: string;
             password: string;
+            /**
+             * @description Portal context: 'staff' for the staff portal, 'admin' for the admin portal.
+             *
+             *     * `staff` - staff
+             *     * `admin` - admin
+             */
+            role: components["schemas"]["LoginRoleEnum"];
         };
+        /**
+         * @description * `staff` - staff
+         *     * `admin` - admin
+         * @enum {string}
+         */
+        LoginRoleEnum: "staff" | "admin";
         LoginSuccessResponse: {
             /** @default true */
             success: boolean;
@@ -1197,87 +2411,166 @@ export interface components {
             /** @example null */
             readonly data: Record<string, never> | null;
         };
+        /** @description Payload for admins creating a single question manually to fit the UI */
+        ManualQuestionCreate: {
+            question_text: string;
+            /** @default 1 */
+            points: number;
+            option_a: string;
+            option_b: string;
+            option_c: string;
+            option_d: string;
+            correct_option: components["schemas"]["CorrectOptionEnum"];
+        };
+        MarkAllReadSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            /** @example null */
+            readonly data: Record<string, never> | null;
+        };
+        MeetingUrlData: {
+            /** Format: uri */
+            meeting_url: string;
+        };
         /**
-         * @description Serializes the module
-         *     Very Important: it nests the moduledocs inside of it for the front-end
-         *     it gets everything in one single request
+         * @description FORMERLY Course. Now the middle layer.
+         *     Nests the activities (videos/pdfs/text) inside it automatically!
          */
         Module: {
             readonly id: number;
             course: number;
             title: string;
-            description?: string | null;
-            /** @description Text-based explanation or instructor notes for this module */
-            notes?: string | null;
+            description?: string;
+            thumbnail_url?: (string) | null;
+            cloudinary_public_id?: string | null;
             /** @default 0 */
             order: number;
-            readonly documents: components["schemas"]["ModuleDoc"][];
+            readonly activities: components["schemas"]["Activity"][];
             /** Format: date-time */
             readonly created_at: string;
-            /** Format: date-time */
-            readonly updated_at: string;
         };
-        /** @description Serializes the individual videos, PDFS and all */
-        ModuleDoc: {
+        ModuleReorderRequest: {
+            /** @description An array of Module IDs in their new desired order. */
+            module_ids: number[];
+        };
+        ModuleReorderResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data?: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description Serializes learning resources for the digital library. */
+        NYSCBook: {
             readonly id: number;
-            /** @description e.g 'Intro Video' or 'Chapter one' */
             title: string;
-            doc_type: components["schemas"]["DocTypeEnum"];
-            /** Format: uri */
+            description?: string | null;
+            /**
+             * Format: uri
+             * @description Cloudinary secure URL
+             */
             file_url: string;
-            order?: number;
+            cloudinary_public_id?: string | null;
+            /** Format: date-time */
+            readonly uploaded_at: string;
+            cover_image_url?: (string) | null;
+            /** @description Used to delete the cover from Cloudinary. */
+            cover_cloudinary_public_id?: string | null;
             /** Format: date-time */
             readonly created_at: string;
+        };
+        Notification: {
+            readonly id: number;
+            readonly title: string;
+            readonly message: string;
+            readonly link: string | null;
+            is_read?: boolean;
+            /** Format: date-time */
+            readonly created_at: string;
+        };
+        NotificationDetailSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["Notification"];
+        };
+        NotificationListSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["Notification"][];
         };
         /**
-         * @description Serializer for the `Cohort` model.
-         *
-         *     Provides the common read/write fields for cohorts. `created_by`
-         *     and `created_at` are read-only and set by the view on create.
+         * @description Serializes multiple choice options.
+         *     ANTI-CHEAT: We strictly define fields to explicitly EXCLUDE 'is_correct'.
+         *     The frontend Next.js app will never see which option is right.
          */
-        PatchedCohort: {
+        Option: {
+            readonly id: number;
+            text: string;
+        };
+        /**
+         * @description FORMERLY ModuleDocSerializer.
+         *     This now handles Videos, PDFs, Texts, etc.
+         */
+        PatchedActivity: {
             readonly id?: number;
-            name?: string;
-            batch?: string;
-            description?: string | null;
-            /** Format: date */
-            start_date?: string;
-            /** Format: date */
-            end_date?: string;
-            status?: components["schemas"]["CohortStatusEnum"];
-            readonly created_by?: number | null;
+            module?: number;
+            title?: string;
+            content_type?: components["schemas"]["ContentTypeEnum"];
+            content_url?: (string) | null;
+            /** @description Used only if content_type is TEXT */
+            text_content?: string | null;
+            cloudinary_public_id?: string | null;
+            /** @default 0 */
+            order: number;
             /** Format: date-time */
             readonly created_at?: string;
         };
+        PatchedAdminStaffUpdate: {
+            first_name?: string;
+            middle_name?: string;
+            last_name?: string;
+            is_active?: boolean;
+            profile?: components["schemas"]["AdminStaffProfileUpdate"];
+            posting?: components["schemas"]["AdminStaffPostingUpdate"];
+        };
+        /** @description The master payload for Next.js to render the CBT interface. */
+        PatchedAssessment: {
+            readonly id?: number;
+            course?: number;
+            readonly course_title?: string;
+            type?: components["schemas"]["TypeEnum"];
+            title?: string;
+            description?: string | null;
+            /**
+             * Format: decimal
+             * @description Passing percentage
+             */
+            pass_mark?: string;
+            max_attempts?: number;
+            readonly questions?: components["schemas"]["Question"][];
+            /** @description Duration of the assessment in minutes */
+            duration?: number;
+        };
         /**
-         * @description Serializer for assigning courses to a `Cohort` curriculum.
-         *
-         *     Exposes nested `course_details` for read operations while accepting
-         *     the `course` foreign key on write. `assigned_by` and `assigned_at`
-         *     are maintained by the view layer.
+         * @description Serializer for the Training Programme (CohortCourse).
+         *     Replaces the old dynamic Cohort concept.
          */
         PatchedCohortCourse: {
             readonly id?: number;
-            cohort?: number;
-            readonly cohort_name?: string;
             course?: number;
             readonly course_details?: components["schemas"]["Course"];
-            readonly assigned_by?: number | null;
-            /** Format: date-time */
-            readonly assigned_at?: string;
-        };
-        /**
-         * @description Serializer for assigning staff members to a `Cohort`.
-         *
-         *     Includes a nested `staff_details` block for convenient display in
-         *     read operations and exposes `staff` as the writable foreign key.
-         */
-        PatchedCohortStaff: {
-            readonly id?: number;
-            cohort?: number;
-            readonly cohort_name?: string;
-            staff?: number;
-            readonly staff_details?: components["schemas"]["StaffBasic"];
+            cohort?: components["schemas"]["CohortEnum"];
+            readonly cohort_display?: string;
+            /** @description e.g., 2027 */
+            year?: number;
+            /** Format: date */
+            start_date?: string | null;
+            /** Format: date */
+            end_date?: string | null;
             readonly assigned_by?: number | null;
             /** Format: date-time */
             readonly assigned_at?: string;
@@ -1290,26 +2583,52 @@ export interface components {
             /** Format: date-time */
             readonly created_at?: string;
         };
-        /**
-         * @description Write serializer for `Course` used when creating or updating.
-         *
-         *     Accepts `trainer_ids` (list of trainer PKs) and creates the
-         *     intermediate `CourseTrainer` relations during `create()`.
-         */
+        /** @description Write serializer for the NEW Course. */
         PatchedCourseCreateUpdate: {
             readonly id?: number;
             title?: string;
             description?: string;
-            /** Format: uri */
-            thumbnail_url?: string | null;
             status?: components["schemas"]["Status3bdEnum"];
             category?: number | null;
             readonly created_by?: number;
             trainer_ids?: number[];
         };
+        /** @description The master payload for a Staff member's course journey. */
+        PatchedCourseEnrollment: {
+            readonly id?: number;
+            staff?: number;
+            cohort_course?: number | null;
+            readonly course_title?: string;
+            readonly cohort_name?: string;
+            readonly status?: components["schemas"]["CourseEnrollmentStatusEnum"];
+            /** Format: decimal */
+            readonly completion_percentage?: string;
+            readonly activity_completions?: components["schemas"]["ActivityCompletion"][];
+            readonly evaluation?: components["schemas"]["CourseEvaluation"];
+            /** Format: date-time */
+            readonly last_accessed?: string;
+            /** Format: date-time */
+            readonly enrolled_at?: string;
+            /** Format: date-time */
+            readonly completed_at?: string | null;
+            readonly post_test_passed?: string;
+            readonly evaluation_submitted?: string;
+        };
+        /** @description Serializes the end-of-course rating and feedback. */
+        PatchedCourseEvaluation: {
+            readonly id?: number;
+            enrollment?: number;
+            readonly staff_name?: string;
+            /** @description Rating out of 5 stars */
+            rating?: number;
+            feedback?: string | null;
+            /** Format: date-time */
+            readonly submitted_at?: string;
+        };
         PatchedDepartment: {
             readonly id?: number;
             name?: string;
+            short_form?: string;
             description?: string;
         };
         PatchedGradeLevel: {
@@ -1319,34 +2638,64 @@ export interface components {
             description?: string;
         };
         /**
-         * @description Serializes the module
-         *     Very Important: it nests the moduledocs inside of it for the front-end
-         *     it gets everything in one single request
+         * @description The master payload for Live Sessions.
+         *     Includes a dynamic 'has_joined' flag so the Next.js frontend knows
+         *     whether to render a green "Joined" badge or a blue "Join Class" button.
+         */
+        PatchedLiveSession: {
+            readonly id?: number;
+            cohort_course?: number;
+            readonly course_title?: string;
+            readonly cohort_name?: string;
+            title?: string;
+            description?: string | null;
+            /**
+             * Format: uri
+             * @description Zoom, Google Meet, or Team link
+             */
+            meeting_url?: string;
+            /** Format: date-time */
+            start_time?: string;
+            /** Format: date-time */
+            end_time?: string;
+            status?: components["schemas"]["LiveSessionStatusEnum"];
+            /** Format: date-time */
+            readonly created_at?: string;
+            readonly has_joined?: string;
+        };
+        /**
+         * @description FORMERLY Course. Now the middle layer.
+         *     Nests the activities (videos/pdfs/text) inside it automatically!
          */
         PatchedModule: {
             readonly id?: number;
             course?: number;
             title?: string;
-            description?: string | null;
-            /** @description Text-based explanation or instructor notes for this module */
-            notes?: string | null;
+            description?: string;
+            thumbnail_url?: (string) | null;
+            cloudinary_public_id?: string | null;
             /** @default 0 */
             order: number;
-            readonly documents?: components["schemas"]["ModuleDoc"][];
+            readonly activities?: components["schemas"]["Activity"][];
             /** Format: date-time */
             readonly created_at?: string;
-            /** Format: date-time */
-            readonly updated_at?: string;
         };
-        /** @description Serializes the individual videos, PDFS and all */
-        PatchedModuleDoc: {
+        /** @description Serializes learning resources for the digital library. */
+        PatchedNYSCBook: {
             readonly id?: number;
-            /** @description e.g 'Intro Video' or 'Chapter one' */
             title?: string;
-            doc_type?: components["schemas"]["DocTypeEnum"];
-            /** Format: uri */
+            description?: string | null;
+            /**
+             * Format: uri
+             * @description Cloudinary secure URL
+             */
             file_url?: string;
-            order?: number;
+            cloudinary_public_id?: string | null;
+            /** Format: date-time */
+            readonly uploaded_at?: string;
+            cover_image_url?: (string) | null;
+            /** @description Used to delete the cover from Cloudinary. */
+            cover_cloudinary_public_id?: string | null;
             /** Format: date-time */
             readonly created_at?: string;
         };
@@ -1363,7 +2712,7 @@ export interface components {
         PatchedStaffPostingUpdate: {
             /** Format: date */
             end_date?: string | null;
-            status?: components["schemas"]["StaffPostingUpdateStatusEnum"];
+            status?: components["schemas"]["Status07aEnum"];
             remarks?: string;
         };
         PatchedState: {
@@ -1371,9 +2720,32 @@ export interface components {
             name?: string;
             code?: string;
         };
+        /** @description Serialize the `Trainer` model used to represent course instructors. */
+        PatchedTrainer: {
+            readonly id?: number;
+            full_name?: string;
+            designation?: string;
+            organization?: string;
+            bio?: string | null;
+        };
         PatchedUpdateProfile: {
             middle_name?: string;
             profile?: components["schemas"]["UserProfile"];
+        };
+        PatchedUpdateStaffRecord: {
+            file_number?: string;
+            first_name?: string;
+            middle_name?: string;
+            last_name?: string;
+            sex?: components["schemas"]["SexEnum"];
+            /** Format: date */
+            date_of_birth?: string | null;
+            /** Format: date */
+            employment_date?: string;
+            state?: number;
+            department?: number | null;
+            grade_level?: number;
+            rank?: number;
         };
         PostingReason: {
             readonly id: number;
@@ -1403,6 +2775,89 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        ProctoringEvent: {
+            readonly id: number;
+            readonly event_type: components["schemas"]["EventTypeEnum"];
+            readonly event_type_display: string;
+            /** Format: decimal */
+            readonly confidence_score: string | null;
+            /** Format: date-time */
+            readonly occurrence_time: string;
+            /** Format: uri */
+            readonly evidence_url: string | null;
+            /** @description Raw Rekognition response or browser event details */
+            readonly metadata: unknown;
+            readonly review_status: components["schemas"]["ReviewStatusEnum"];
+            readonly review_status_display: string;
+        };
+        ProctoringReviewRequest: {
+            status: components["schemas"]["ProctoringReviewRequestStatusEnum"];
+        };
+        /**
+         * @description * `CLEAN` - CLEAN
+         *     * `INVALIDATED` - INVALIDATED
+         *     * `FLAGGED` - FLAGGED
+         *     * `ACTIVE` - ACTIVE
+         * @enum {string}
+         */
+        ProctoringReviewRequestStatusEnum: "CLEAN" | "INVALIDATED" | "FLAGGED" | "ACTIVE";
+        /** @description Full session detail — admin use only. */
+        ProctoringSession: {
+            readonly id: number;
+            readonly attempt_id: number;
+            readonly staff_email: string;
+            readonly identity_verified: boolean;
+            /**
+             * Format: decimal
+             * @description Face similarity score from AWS Rekognition (0–100)
+             */
+            readonly verification_similarity: string | null;
+            readonly status: components["schemas"]["StatusD81Enum"];
+            readonly status_display: string;
+            /** Format: date-time */
+            readonly start_time: string;
+            /** Format: date-time */
+            readonly end_time: string | null;
+            readonly total_flags: number;
+            readonly reviewer: number | null;
+            readonly events: components["schemas"]["ProctoringEvent"][];
+        };
+        /** @description Lightweight summary for list views. */
+        ProctoringSessionSummary: {
+            readonly id: number;
+            readonly staff_email: string;
+            readonly status: components["schemas"]["StatusD81Enum"];
+            readonly status_display: string;
+            readonly total_flags: number;
+            /** Format: date-time */
+            readonly start_time: string;
+            /** Format: date-time */
+            readonly end_time: string | null;
+        };
+        /**
+         * @description Public verification serializer for external employers.
+         *     Strips the internal DB 'id' to prevent enumeration attacks,
+         *     but keeps the essential verification data so the employer knows WHO passed the course.
+         */
+        PublicCertificateVerify: {
+            /** @description Publicly verifiable ID for employers */
+            certificate_id?: string;
+            /** @default VERIFIED_AUTHENTIC */
+            readonly verification_status: string;
+            readonly staff_name: string;
+            readonly file_number: string;
+            readonly course_title: string;
+            /** Format: date-time */
+            readonly issued_at: string;
+        };
+        /** @description Serializes a question and automatically nests its options. */
+        Question: {
+            readonly id: number;
+            text: string;
+            points?: number;
+            order?: number;
+            readonly options: components["schemas"]["Option"][];
+        };
         Rank: {
             readonly id: number;
             title: string;
@@ -1431,6 +2886,25 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        ReferenceDeleteBlockedDataSchema: {
+            blocking_staff: components["schemas"]["BlockingStaffSchema"][];
+        };
+        ReferenceDeleteBlockedResponse: {
+            /** @default false */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["ReferenceDeleteBlockedDataSchema"];
+        };
+        RefreshToken: {
+            /** @description Refresh token issued at login (or by a previous refresh call) */
+            refresh: string;
+        };
+        RefreshTokenSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["TokenPairSchema"];
+        };
         RegisterSuccessResponse: {
             /** @default true */
             success: boolean;
@@ -1447,6 +2921,25 @@ export interface components {
             /** Format: binary */
             profile_picture_url?: string | null;
         };
+        ReorderItem: {
+            /** @description The ID of the item. */
+            id: number;
+            /** @description The new position (0-indexed). */
+            order: number;
+        };
+        ReorderResponse: {
+            /** @default true */
+            success: boolean;
+            /** @default Reordered successfully! */
+            message: string;
+            data?: {
+                [key: string]: unknown;
+            };
+        };
+        RequestEmailChange: {
+            /** Format: email */
+            new_email: string;
+        };
         ResendOTP: {
             /** Format: email */
             email: string;
@@ -1458,31 +2951,46 @@ export interface components {
             /** @example null */
             readonly data: Record<string, never> | null;
         };
+        ResetPassword: {
+            /** Format: email */
+            email: string;
+            otp: string;
+            new_password: string;
+            confirm_password: string;
+        };
         /**
-         * @description * `staff` - Staff
-         *     * `admin` - Admin
-         *     * `superadmin` - Super Admin
+         * @description * `PENDING` - Pending Review
+         *     * `REVIEWED` - Reviewed
+         *     * `DISMISSED` - Dismissed
          * @enum {string}
          */
-        RoleEnum: "staff" | "admin" | "superadmin";
+        ReviewStatusEnum: "PENDING" | "REVIEWED" | "DISMISSED";
         /**
          * @description * `male` - Male
          *     * `female` - Female
          * @enum {string}
          */
         SexEnum: "male" | "female";
-        /**
-         * @description Serialize basic `User` information for staff listings.
-         *
-         *     Used when embedding staff details inside cohort-related serializers.
-         */
-        StaffBasic: {
-            readonly id: number;
-            /** Format: email */
-            email: string;
-            first_name?: string;
-            last_name?: string;
-            file_number?: string | null;
+        StaffCompletion: {
+            staff_name: string;
+            file_number: string | null;
+            course_title: string;
+            cohort: string;
+            year: number;
+            /** Format: date-time */
+            completed_at: string | null;
+        };
+        StaffListDataSchema: {
+            count: number;
+            next: string | null;
+            previous: string | null;
+            results: components["schemas"]["UserDetail"][];
+        };
+        StaffListSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["StaffListDataSchema"];
         };
         StaffLookupDataSchema: {
             first_name: string;
@@ -1513,12 +3021,6 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
-        /**
-         * @description * `active` - Active
-         *     * `retired` - Retired
-         * @enum {string}
-         */
-        StaffPostingUpdateStatusEnum: "active" | "retired";
         StaffPostingUpdateSuccessResponse: {
             /** @default true */
             success: boolean;
@@ -1539,6 +3041,44 @@ export interface components {
             /** Format: date */
             end_date?: string | null;
             remarks?: string;
+        };
+        StaffRecordDataSchema: {
+            file_number: string;
+            first_name: string;
+            middle_name: string;
+            last_name: string;
+            sex: string;
+            /** Format: date */
+            date_of_birth: string | null;
+            /** Format: date */
+            employment_date: string;
+            state: number;
+            department: number;
+            grade_level: number;
+            rank: number;
+            is_registered: boolean;
+        };
+        StaffRecordDetailSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        StaffRecordListDataSchema: {
+            count: number;
+            next: string | null;
+            previous: string | null;
+            results: {
+                [key: string]: unknown;
+            }[];
+        };
+        StaffRecordListSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["StaffRecordListDataSchema"];
         };
         State: {
             readonly id: number;
@@ -1569,15 +3109,38 @@ export interface components {
             }[];
         };
         /**
+         * @description * `active` - Active
+         *     * `retired` - Retired
+         * @enum {string}
+         */
+        Status07aEnum: "active" | "retired";
+        /**
          * @description * `DRAFT` - Draft
          *     * `PUBLISHED` - Published
          *     * `ARCHIVED` - Archived
          * @enum {string}
          */
         Status3bdEnum: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+        /**
+         * @description * `ACTIVE` - Active
+         *     * `CLEAN` - Clean
+         *     * `FLAGGED` - Flagged
+         *     * `INVALIDATED` - Invalidated
+         * @enum {string}
+         */
+        StatusD81Enum: "ACTIVE" | "CLEAN" | "FLAGGED" | "INVALIDATED";
         TokenPairSchema: {
             access: string;
             refresh: string;
+        };
+        TopPerformer: {
+            staff_name: string;
+            file_number: string | null;
+            course_title: string;
+            cohort: string;
+            year: number;
+            /** Format: double */
+            best_post_test_score: number;
         };
         /** @description Serialize the `Trainer` model used to represent course instructors. */
         Trainer: {
@@ -1587,11 +3150,51 @@ export interface components {
             organization: string;
             bio?: string | null;
         };
+        /**
+         * @description * `PRE_TEST` - Pre-Test
+         *     * `POST_TEST` - Post-Test
+         * @enum {string}
+         */
+        TypeEnum: "PRE_TEST" | "POST_TEST";
+        UnreadCountSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: {
+                [key: string]: unknown;
+            };
+        };
+        UpcomingLiveClass: {
+            id: number;
+            cohort_course: number;
+            course_title: string;
+            cohort_name: string;
+            title: string;
+            description: string | null;
+            /** Format: uri */
+            meeting_url: string;
+            /** Format: date-time */
+            start_time: string;
+            /** Format: date-time */
+            end_time: string;
+            status: string;
+            /** Format: date-time */
+            created_at: string;
+        };
         UpdateProfileSuccessResponse: {
             /** @default true */
             success: boolean;
             message: string;
             data: components["schemas"]["UserDetail"];
+        };
+        UpdateStaffRecordSuccessResponse: {
+            /** @default true */
+            success: boolean;
+            message: string;
+            data: components["schemas"]["StaffRecordDataSchema"];
+        };
+        UploadData: {
+            questions_imported: number;
         };
         UserDetail: {
             readonly id: number;
@@ -1601,7 +3204,7 @@ export interface components {
             readonly first_name: string;
             middle_name?: string;
             readonly last_name: string;
-            readonly role: components["schemas"]["RoleEnum"];
+            readonly role: components["schemas"]["UserDetailRoleEnum"];
             readonly is_active: boolean;
             readonly profile: string;
             /** Format: date-time */
@@ -1609,6 +3212,13 @@ export interface components {
             /** Format: date-time */
             readonly updated_at: string;
         };
+        /**
+         * @description * `staff` - Staff
+         *     * `admin` - Admin
+         *     * `superadmin` - Super Admin
+         * @enum {string}
+         */
+        UserDetailRoleEnum: "staff" | "admin" | "superadmin";
         UserDetailSuccessResponse: {
             /** @default true */
             success: boolean;
@@ -1628,6 +3238,11 @@ export interface components {
         VerifyEmail: {
             /** Format: email */
             email: string;
+            otp: string;
+        };
+        VerifyEmailChange: {
+            /** Format: email */
+            new_email: string;
             otp: string;
         };
         VerifyEmailSuccessResponse: {
@@ -1742,6 +3357,30 @@ export interface operations {
             };
         };
     };
+    accounts_auth_forgot_password_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ForgotPassword"];
+                "application/x-www-form-urlencoded": components["schemas"]["ForgotPassword"];
+                "multipart/form-data": components["schemas"]["ForgotPassword"];
+            };
+        };
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     accounts_auth_login_create: {
         parameters: {
             query?: never;
@@ -1833,6 +3472,39 @@ export interface operations {
             };
         };
     };
+    accounts_auth_refresh_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RefreshToken"];
+                "application/x-www-form-urlencoded": components["schemas"]["RefreshToken"];
+                "multipart/form-data": components["schemas"]["RefreshToken"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RefreshTokenSuccessResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
     accounts_auth_register_create: {
         parameters: {
             query?: never;
@@ -1897,6 +3569,38 @@ export interface operations {
             };
         };
     };
+    accounts_auth_reset_password_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResetPassword"];
+                "application/x-www-form-urlencoded": components["schemas"]["ResetPassword"];
+                "multipart/form-data": components["schemas"]["ResetPassword"];
+            };
+        };
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
     accounts_auth_verify_email_create: {
         parameters: {
             query?: never;
@@ -1949,6 +3653,72 @@ export interface operations {
             };
         };
     };
+    accounts_me_change_email_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestEmailChange"];
+                "application/x-www-form-urlencoded": components["schemas"]["RequestEmailChange"];
+                "multipart/form-data": components["schemas"]["RequestEmailChange"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeEmailRequestSuccessResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
+    accounts_me_change_email_verify_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VerifyEmailChange"];
+                "application/x-www-form-urlencoded": components["schemas"]["VerifyEmailChange"];
+                "multipart/form-data": components["schemas"]["VerifyEmailChange"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeEmailVerifySuccessResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
     accounts_me_update_partial_update: {
         parameters: {
             query?: never;
@@ -1978,6 +3748,654 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
+    accounts_staff_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Page number to retrieve. */
+                page?: number;
+                /** @description Number of results per page (default 20, max 100). */
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffListSuccessResponse"];
+                };
+            };
+        };
+    };
+    accounts_staff_records_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Page number to retrieve. */
+                page?: number;
+                /** @description Number of results per page (default 20, max 100). */
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffRecordListSuccessResponse"];
+                };
+            };
+        };
+    };
+    accounts_staff_records_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStaffRecord"];
+                "application/x-www-form-urlencoded": components["schemas"]["CreateStaffRecord"];
+                "multipart/form-data": components["schemas"]["CreateStaffRecord"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateStaffRecordSuccessResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
+    accounts_staff_records_retrieve_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffRecordDetailSuccessResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
+    accounts_staff_records_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteStaffRecordSuccessResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
+    accounts_staff_records_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedUpdateStaffRecord"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedUpdateStaffRecord"];
+                "multipart/form-data": components["schemas"]["PatchedUpdateStaffRecord"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpdateStaffRecordSuccessResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
+    accounts_staff_records_bulk_upload_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["BulkStaffRecordUpload"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkStaffRecordUploadSuccessResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkStaffRecordUploadErrorResponse"];
+                };
+            };
+        };
+    };
+    accounts_staff_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeleteStaffSuccessResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
+    accounts_staff_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedAdminStaffUpdate"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedAdminStaffUpdate"];
+                "multipart/form-data": components["schemas"]["PatchedAdminStaffUpdate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminStaffUpdateSuccessResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
+    analytics_dashboard_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardAnalytics"];
+                };
+            };
+        };
+    };
+    analytics_reports_certificates_retrieve: {
+        parameters: {
+            query?: {
+                /** @description Training Programme ID — overrides year when provided */
+                cohort_course?: number;
+                /** @description Year (required unless cohort_course is provided) */
+                year?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CertificateReport"];
+                };
+            };
+        };
+    };
+    analytics_reports_completion_rate_list: {
+        parameters: {
+            query?: {
+                /** @description Training Programme ID — overrides year when provided */
+                cohort_course?: number;
+                /** @description Year (required unless cohort_course is provided) */
+                year?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompletionRateItem"][];
+                };
+            };
+        };
+    };
+    analytics_reports_completions_list: {
+        parameters: {
+            query?: {
+                /** @description Training Programme ID — overrides course + year when provided */
+                cohort_course?: number;
+                /** @description Course ID (required unless cohort_course is provided) */
+                course?: number;
+                /** @description Year of the training programme (required unless cohort_course is provided) */
+                year?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCompletion"][];
+                };
+            };
+        };
+    };
+    analytics_reports_top_performers_list: {
+        parameters: {
+            query: {
+                /** @description Training Programme ID */
+                cohort_course: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopPerformer"][];
+                };
+            };
+        };
+    };
+    audit_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogListSuccessResponse"];
+                };
+            };
+        };
+    };
+    learning_books_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NYSCBook"][];
+                };
+            };
+        };
+    };
+    learning_books_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NYSCBook"];
+                "application/x-www-form-urlencoded": components["schemas"]["NYSCBook"];
+                "multipart/form-data": components["schemas"]["NYSCBook"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NYSCBook"];
+                };
+            };
+        };
+    };
+    learning_books_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this nysc book. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NYSCBook"];
+                };
+            };
+        };
+    };
+    learning_books_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this nysc book. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NYSCBook"];
+                "application/x-www-form-urlencoded": components["schemas"]["NYSCBook"];
+                "multipart/form-data": components["schemas"]["NYSCBook"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NYSCBook"];
+                };
+            };
+        };
+    };
+    learning_books_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this nysc book. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    learning_books_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this nysc book. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedNYSCBook"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedNYSCBook"];
+                "multipart/form-data": components["schemas"]["PatchedNYSCBook"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NYSCBook"];
+                };
+            };
+        };
+    };
+    notifications_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationListSuccessResponse"];
+                };
+            };
+        };
+    };
+    notifications_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationDetailSuccessResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
+    notifications_mark_all_read_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkAllReadSuccessResponse"];
+                };
+            };
+        };
+    };
+    notifications_unread_count_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnreadCountSuccessResponse"];
                 };
             };
         };
@@ -2088,6 +4506,14 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceDeleteBlockedResponse"];
                 };
             };
         };
@@ -2241,6 +4667,14 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceDeleteBlockedResponse"];
                 };
             };
         };
@@ -2565,6 +4999,64 @@ export interface operations {
             };
         };
     };
+    organization_postings_bulk_upload_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["BulkPostingUpload"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkPostingUploadSuccessResponse"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkPostingUploadErrorResponse"];
+                };
+            };
+        };
+    };
+    organization_postings_current_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffPostingDetailSuccessResponse"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+        };
+    };
     organization_ranks_retrieve: {
         parameters: {
             query?: never;
@@ -2671,6 +5163,14 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorApiResponse"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceDeleteBlockedResponse"];
                 };
             };
         };
@@ -2826,6 +5326,14 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorApiResponse"];
                 };
             };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceDeleteBlockedResponse"];
+                };
+            };
         };
     };
     organization_states_partial_update: {
@@ -2900,6 +5408,399 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    training_activities_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"][];
+                };
+            };
+        };
+    };
+    training_activities_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Activity"];
+                "application/x-www-form-urlencoded": components["schemas"]["Activity"];
+                "multipart/form-data": components["schemas"]["Activity"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+        };
+    };
+    training_activities_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this activity. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+        };
+    };
+    training_activities_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this activity. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Activity"];
+                "application/x-www-form-urlencoded": components["schemas"]["Activity"];
+                "multipart/form-data": components["schemas"]["Activity"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+        };
+    };
+    training_activities_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this activity. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    training_activities_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this activity. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedActivity"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedActivity"];
+                "multipart/form-data": components["schemas"]["PatchedActivity"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Activity"];
+                };
+            };
+        };
+    };
+    reorder_activities: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReorderItem"][];
+                "application/x-www-form-urlencoded": components["schemas"]["ReorderItem"][];
+                "multipart/form-data": components["schemas"]["ReorderItem"][];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReorderResponse"];
+                };
+            };
+        };
+    };
+    training_assessments_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Assessment"][];
+                };
+            };
+        };
+    };
+    training_assessments_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Assessment"];
+                "application/x-www-form-urlencoded": components["schemas"]["Assessment"];
+                "multipart/form-data": components["schemas"]["Assessment"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Assessment"];
+                };
+            };
+        };
+    };
+    training_assessments_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this assessment. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Assessment"];
+                };
+            };
+        };
+    };
+    training_assessments_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this assessment. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Assessment"];
+                "application/x-www-form-urlencoded": components["schemas"]["Assessment"];
+                "multipart/form-data": components["schemas"]["Assessment"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Assessment"];
+                };
+            };
+        };
+    };
+    training_assessments_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this assessment. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    training_assessments_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this assessment. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedAssessment"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedAssessment"];
+                "multipart/form-data": components["schemas"]["PatchedAssessment"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Assessment"];
+                };
+            };
+        };
+    };
+    add_manual_question: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this assessment. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualQuestionCreate"];
+                "application/x-www-form-urlencoded": components["schemas"]["ManualQuestionCreate"];
+                "multipart/form-data": components["schemas"]["ManualQuestionCreate"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Assessment"];
+                };
+            };
+        };
+    };
+    submit_assessment_exam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this assessment. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssessmentSubmission"];
+                "application/x-www-form-urlencoded": components["schemas"]["AssessmentSubmission"];
+                "multipart/form-data": components["schemas"]["AssessmentSubmission"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExamSubmissionResponse"];
+                };
+            };
+        };
+    };
+    upload_assessment_questions_csv: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this assessment. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["CSVUpload"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AssessmentUploadResponse"];
                 };
             };
         };
@@ -3047,6 +5948,84 @@ export interface operations {
             };
         };
     };
+    training_certificates_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Certificate"][];
+                };
+            };
+        };
+    };
+    training_certificates_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this certificate. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Certificate"];
+                };
+            };
+        };
+    };
+    training_certificates_verify_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicCertificateVerify"];
+                };
+            };
+        };
+    };
+    training_cloudinary_signature_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     training_cohort_courses_list: {
         parameters: {
             query?: never;
@@ -3190,26 +6169,33 @@ export interface operations {
             };
         };
     };
-    training_cohort_staff_list: {
+    bulk_enroll_csv: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description A unique integer value identifying this cohort course. */
+                id: number;
+            };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["CohortCourse"];
+            };
+        };
         responses: {
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CohortStaff"][];
+                    "application/json": components["schemas"]["CohortCourse"];
                 };
             };
         };
     };
-    training_cohort_staff_create: {
+    bulk_assign_department_staff: {
         parameters: {
             query?: never;
             header?: never;
@@ -3218,9 +6204,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["CohortStaff"];
-                "application/x-www-form-urlencoded": components["schemas"]["CohortStaff"];
-                "multipart/form-data": components["schemas"]["CohortStaff"];
+                "application/json": components["schemas"]["DepartmentBulkRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["DepartmentBulkRequest"];
+                "multipart/form-data": components["schemas"]["DepartmentBulkRequest"];
             };
         };
         responses: {
@@ -3229,249 +6215,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["CohortStaff"];
-                };
-            };
-        };
-    };
-    training_cohort_staff_retrieve: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this cohort staff. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CohortStaff"];
-                };
-            };
-        };
-    };
-    training_cohort_staff_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this cohort staff. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CohortStaff"];
-                "application/x-www-form-urlencoded": components["schemas"]["CohortStaff"];
-                "multipart/form-data": components["schemas"]["CohortStaff"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CohortStaff"];
-                };
-            };
-        };
-    };
-    training_cohort_staff_destroy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this cohort staff. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description No response body */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    training_cohort_staff_partial_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this cohort staff. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["PatchedCohortStaff"];
-                "application/x-www-form-urlencoded": components["schemas"]["PatchedCohortStaff"];
-                "multipart/form-data": components["schemas"]["PatchedCohortStaff"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CohortStaff"];
-                };
-            };
-        };
-    };
-    training_cohorts_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Cohort"][];
-                };
-            };
-        };
-    };
-    training_cohorts_create: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Cohort"];
-                "application/x-www-form-urlencoded": components["schemas"]["Cohort"];
-                "multipart/form-data": components["schemas"]["Cohort"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Cohort"];
-                };
-            };
-        };
-    };
-    training_cohorts_retrieve: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this cohort. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Cohort"];
-                };
-            };
-        };
-    };
-    training_cohorts_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this cohort. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["Cohort"];
-                "application/x-www-form-urlencoded": components["schemas"]["Cohort"];
-                "multipart/form-data": components["schemas"]["Cohort"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Cohort"];
-                };
-            };
-        };
-    };
-    training_cohorts_destroy: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this cohort. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description No response body */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    training_cohorts_partial_update: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description A unique integer value identifying this cohort. */
-                id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["PatchedCohort"];
-                "application/x-www-form-urlencoded": components["schemas"]["PatchedCohort"];
-                "multipart/form-data": components["schemas"]["PatchedCohort"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Cohort"];
+                    "application/json": components["schemas"]["DepartmentBulkResponse"];
                 };
             };
         };
@@ -3619,7 +6363,35 @@ export interface operations {
             };
         };
     };
-    training_module_docs_list: {
+    reorder_course_modules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this course. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModuleReorderRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["ModuleReorderRequest"];
+                "multipart/form-data": components["schemas"]["ModuleReorderRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModuleReorderResponse"];
+                };
+            };
+        };
+    };
+    training_enrollments_list: {
         parameters: {
             query?: never;
             header?: never;
@@ -3633,12 +6405,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModuleDoc"][];
+                    "application/json": components["schemas"]["CourseEnrollment"][];
                 };
             };
         };
     };
-    training_module_docs_create: {
+    training_enrollments_create: {
         parameters: {
             query?: never;
             header?: never;
@@ -3647,9 +6419,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ModuleDoc"];
-                "application/x-www-form-urlencoded": components["schemas"]["ModuleDoc"];
-                "multipart/form-data": components["schemas"]["ModuleDoc"];
+                "application/json": components["schemas"]["CourseEnrollment"];
+                "application/x-www-form-urlencoded": components["schemas"]["CourseEnrollment"];
+                "multipart/form-data": components["schemas"]["CourseEnrollment"];
             };
         };
         responses: {
@@ -3658,18 +6430,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModuleDoc"];
+                    "application/json": components["schemas"]["CourseEnrollment"];
                 };
             };
         };
     };
-    training_module_docs_retrieve: {
+    training_enrollments_retrieve: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A unique integer value identifying this module doc. */
-                id: number;
+                id: string;
             };
             cookie?: never;
         };
@@ -3680,26 +6451,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModuleDoc"];
+                    "application/json": components["schemas"]["CourseEnrollment"];
                 };
             };
         };
     };
-    training_module_docs_update: {
+    training_enrollments_update: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A unique integer value identifying this module doc. */
-                id: number;
+                id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ModuleDoc"];
-                "application/x-www-form-urlencoded": components["schemas"]["ModuleDoc"];
-                "multipart/form-data": components["schemas"]["ModuleDoc"];
+                "application/json": components["schemas"]["CourseEnrollment"];
+                "application/x-www-form-urlencoded": components["schemas"]["CourseEnrollment"];
+                "multipart/form-data": components["schemas"]["CourseEnrollment"];
             };
         };
         responses: {
@@ -3708,18 +6478,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModuleDoc"];
+                    "application/json": components["schemas"]["CourseEnrollment"];
                 };
             };
         };
     };
-    training_module_docs_destroy: {
+    training_enrollments_destroy: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A unique integer value identifying this module doc. */
-                id: number;
+                id: string;
             };
             cookie?: never;
         };
@@ -3734,21 +6503,20 @@ export interface operations {
             };
         };
     };
-    training_module_docs_partial_update: {
+    training_enrollments_partial_update: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                /** @description A unique integer value identifying this module doc. */
-                id: number;
+                id: string;
             };
             cookie?: never;
         };
         requestBody?: {
             content: {
-                "application/json": components["schemas"]["PatchedModuleDoc"];
-                "application/x-www-form-urlencoded": components["schemas"]["PatchedModuleDoc"];
-                "multipart/form-data": components["schemas"]["PatchedModuleDoc"];
+                "application/json": components["schemas"]["PatchedCourseEnrollment"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedCourseEnrollment"];
+                "multipart/form-data": components["schemas"]["PatchedCourseEnrollment"];
             };
         };
         responses: {
@@ -3757,23 +6525,117 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModuleDoc"];
+                    "application/json": components["schemas"]["CourseEnrollment"];
                 };
             };
         };
     };
-    training_module_docs_reorder_partial_update: {
+    complete_course_activity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivityCompletionRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["ActivityCompletionRequest"];
+                "multipart/form-data": components["schemas"]["ActivityCompletionRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityCompletionResponse"];
+                };
+            };
+        };
+    };
+    training_evaluations_list: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseEvaluation"][];
+                };
+            };
+        };
+    };
+    training_evaluations_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
             content: {
-                "application/json": components["schemas"]["PatchedModuleDoc"];
-                "application/x-www-form-urlencoded": components["schemas"]["PatchedModuleDoc"];
-                "multipart/form-data": components["schemas"]["PatchedModuleDoc"];
+                "application/json": components["schemas"]["CourseEvaluation"];
+                "application/x-www-form-urlencoded": components["schemas"]["CourseEvaluation"];
+                "multipart/form-data": components["schemas"]["CourseEvaluation"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseEvaluation"];
+                };
+            };
+        };
+    };
+    training_evaluations_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseEvaluation"];
+                };
+            };
+        };
+    };
+    training_evaluations_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseEvaluation"];
+                "application/x-www-form-urlencoded": components["schemas"]["CourseEvaluation"];
+                "multipart/form-data": components["schemas"]["CourseEvaluation"];
             };
         };
         responses: {
@@ -3782,7 +6644,238 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModuleDoc"];
+                    "application/json": components["schemas"]["CourseEvaluation"];
+                };
+            };
+        };
+    };
+    training_evaluations_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    training_evaluations_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedCourseEvaluation"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedCourseEvaluation"];
+                "multipart/form-data": components["schemas"]["PatchedCourseEvaluation"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseEvaluation"];
+                };
+            };
+        };
+    };
+    training_live_sessions_list: {
+        parameters: {
+            query?: {
+                /** @description Filter sessions by a specific Training Programme ID */
+                cohort_course_id?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveSession"][];
+                };
+            };
+        };
+    };
+    training_live_sessions_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveSession"];
+                "application/x-www-form-urlencoded": components["schemas"]["LiveSession"];
+                "multipart/form-data": components["schemas"]["LiveSession"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveSession"];
+                };
+            };
+        };
+    };
+    training_live_sessions_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveSession"];
+                };
+            };
+        };
+    };
+    training_live_sessions_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiveSession"];
+                "application/x-www-form-urlencoded": components["schemas"]["LiveSession"];
+                "multipart/form-data": components["schemas"]["LiveSession"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveSession"];
+                };
+            };
+        };
+    };
+    training_live_sessions_destroy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No response body */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    training_live_sessions_partial_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedLiveSession"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedLiveSession"];
+                "multipart/form-data": components["schemas"]["PatchedLiveSession"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveSession"];
+                };
+            };
+        };
+    };
+    training_live_sessions_attendance_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiveSession"];
+                };
+            };
+        };
+    };
+    join_live_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JoinSessionResponse"];
                 };
             };
         };
@@ -3930,18 +7023,18 @@ export interface operations {
             };
         };
     };
-    training_modules_reorder_partial_update: {
+    reorder_modules: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
-                "application/json": components["schemas"]["PatchedModule"];
-                "application/x-www-form-urlencoded": components["schemas"]["PatchedModule"];
-                "multipart/form-data": components["schemas"]["PatchedModule"];
+                "application/json": components["schemas"]["ReorderItem"][];
+                "application/x-www-form-urlencoded": components["schemas"]["ReorderItem"][];
+                "multipart/form-data": components["schemas"]["ReorderItem"][];
             };
         };
         responses: {
@@ -3950,12 +7043,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Module"];
+                    "application/json": components["schemas"]["ReorderResponse"];
                 };
             };
         };
     };
-    training_trainers_retrieve: {
+    training_proctoring_sessions_list: {
         parameters: {
             query?: never;
             header?: never;
@@ -3964,12 +7057,191 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ProctoringSession"][];
+                };
+            };
+        };
+    };
+    training_proctoring_sessions_retrieve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this proctoring session. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProctoringSession"];
+                };
+            };
+        };
+    };
+    training_proctoring_sessions_browser_event_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this proctoring session. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProctoringSessionSummary"];
+                "application/x-www-form-urlencoded": components["schemas"]["ProctoringSessionSummary"];
+                "multipart/form-data": components["schemas"]["ProctoringSessionSummary"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProctoringSessionSummary"];
+                };
+            };
+        };
+    };
+    training_proctoring_sessions_close_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this proctoring session. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProctoringSessionSummary"];
+                "application/x-www-form-urlencoded": components["schemas"]["ProctoringSessionSummary"];
+                "multipart/form-data": components["schemas"]["ProctoringSessionSummary"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProctoringSessionSummary"];
+                };
+            };
+        };
+    };
+    training_proctoring_sessions_frame_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this proctoring session. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProctoringSessionSummary"];
+                "application/x-www-form-urlencoded": components["schemas"]["ProctoringSessionSummary"];
+                "multipart/form-data": components["schemas"]["ProctoringSessionSummary"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProctoringSessionSummary"];
+                };
+            };
+        };
+    };
+    review_proctoring_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A unique integer value identifying this proctoring session. */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProctoringReviewRequest"];
+                "application/x-www-form-urlencoded": components["schemas"]["ProctoringReviewRequest"];
+                "multipart/form-data": components["schemas"]["ProctoringReviewRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProctoringSessionSummary"];
+                };
+            };
+        };
+    };
+    training_proctoring_sessions_start_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProctoringSessionSummary"];
+                "application/x-www-form-urlencoded": components["schemas"]["ProctoringSessionSummary"];
+                "multipart/form-data": components["schemas"]["ProctoringSessionSummary"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProctoringSessionSummary"];
+                };
+            };
+        };
+    };
+    training_trainers_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Trainer"][];
+                };
             };
         };
     };
@@ -3980,18 +7252,25 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Trainer"];
+                "application/x-www-form-urlencoded": components["schemas"]["Trainer"];
+                "multipart/form-data": components["schemas"]["Trainer"];
+            };
+        };
         responses: {
-            /** @description No response body */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Trainer"];
+                };
             };
         };
     };
-    training_trainers_retrieve_2: {
+    training_trainers_retrieve: {
         parameters: {
             query?: never;
             header?: never;
@@ -4003,12 +7282,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Trainer"];
+                };
             };
         };
     };
@@ -4022,14 +7302,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Trainer"];
+                "application/x-www-form-urlencoded": components["schemas"]["Trainer"];
+                "multipart/form-data": components["schemas"]["Trainer"];
+            };
+        };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Trainer"];
+                };
             };
         };
     };
@@ -4064,14 +7351,21 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PatchedTrainer"];
+                "application/x-www-form-urlencoded": components["schemas"]["PatchedTrainer"];
+                "multipart/form-data": components["schemas"]["PatchedTrainer"];
+            };
+        };
         responses: {
-            /** @description No response body */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["Trainer"];
+                };
             };
         };
     };

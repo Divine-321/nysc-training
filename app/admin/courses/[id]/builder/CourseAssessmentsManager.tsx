@@ -385,7 +385,7 @@ export default function CourseAssessmentsManager({
             onChange={(event) =>
               setForm({ ...form, title: event.target.value })
             }
-            placeholder="For example: Course Pre-Test"
+            placeholder="For example: Module Pre-Test"
             className="w-full rounded-lg border px-4 py-2.5 text-sm"
           />
         </div>
@@ -464,7 +464,7 @@ export default function CourseAssessmentsManager({
           <p className="p-4 text-sm text-gray-500">Loading assessments...</p>
         ) : assessments.length === 0 ? (
           <p className="p-4 text-sm text-gray-500">
-            No assessments have been created for this course.
+            No assessments have been created for this module.
           </p>
         ) : (
           <div className="divide-y divide-gray-100">

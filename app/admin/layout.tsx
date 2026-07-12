@@ -32,12 +32,14 @@ const navItems = [
     icon: LayoutDashboard,
   },
   {
+    // Content authoring: Course -> Module -> Activity.
     label: "Courses",
     href: "/admin/courses",
     icon: BookOpen,
   },
   {
-    label: "Training Programmes",
+    // Where a Course is assigned to a cohort (month) + year.
+    label: "Cohorts",
     href: "/admin/cohorts",
     icon: Layers,
   },

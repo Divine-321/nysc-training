@@ -6,30 +6,34 @@ import Link from "next/link";
 import {
   BookOpen,
   CalendarPlus,
+  ClipboardList,
   Layers,
   Plus,
   Trash2,
   UserPlus,
+  Users,
   Video,
   X,
 } from "lucide-react";
 import {
   extractErrorMessage,
   readApiList,
+  type AuthUser,
   type Course,
 } from "@/app/lib/portal-api";
 import {
   cohortCourseBatchLabel,
+  toPercentage,
   type CohortCourse,
+  type CourseEnrollment,
   type LiveSession,
 } from "@/app/lib/staff-learning";
-import type { Batch } from "@/app/lib/training-types";
-import BatchSelect from "@/app/components/BatchSelect";
 import { formatDateTime } from "@/app/lib/format";
 import { useConfirm } from "@/app/components/useConfirm";
 
-// A Training Programme = one Course delivered to one fixed Batch (A/B/C) in
-// one year. The backend enforces uniqueness on (course, cohort, year).
+// A Course = a set of Modules delivered to a Cohort (month) in a given year.
+// Each selected module becomes one cohort-course record on the backend,
+// which enforces uniqueness on (module, cohort, year).
 
 const BATCH_CHIP_STYLES: Record<string, string> = {
   "BATCH A": "bg-green-100 text-green-700",
@@ -37,9 +41,26 @@ const BATCH_CHIP_STYLES: Record<string, string> = {
   "BATCH C": "bg-amber-100 text-amber-700",
 };
 
+// Cohorts are now months (stakeholder change, 2026-07-11). NOTE: the
+// deployed backend still validates cohort as BATCH A/B/C — creating with a
+// month fails until its CohortEnum is updated; the error is surfaced clearly.
+const COHORT_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
 const emptyForm = {
-  course: "",
-  cohort: "" as Batch | "",
+  cohort: "",
   year: String(new Date().getFullYear()),
   start_date: "",
   end_date: "",
@@ -53,13 +74,65 @@ const emptySessionForm = {
   end_time: "",
 };
 
+// Attendance rows are parsed tolerantly — the endpoint is new and its
+// serializer shape may still move.
+type AttendanceRow = {
+  id?: number;
+  staff_name?: string;
+  staff_email?: string;
+  file_number?: string;
+  enrollment?: number;
+  first_joined_at?: string;
+  first_joined?: string;
+  last_joined_at?: string;
+  last_joined?: string;
+  join_count?: number;
+  status?: string;
+};
+
+type StaffDirectoryEntry = { name: string; fileNumber: string };
+
+async function loadStaffDirectory(): Promise<Map<number, StaffDirectoryEntry>> {
+  const directory = new Map<number, StaffDirectoryEntry>();
+  let page = 1;
+  let hasMore = true;
+
+  while (hasMore && page <= 20) {
+    const response = await fetch(
+      `/api/accounts/staff?page=${page}&page_size=100`,
+      { cache: "no-store" },
+    );
+
+    if (!response.ok) break;
+
+    const payload = (await response.json().catch(() => null)) as {
+      data?: { results?: AuthUser[]; next?: string | null };
+    } | null;
+
+    for (const user of payload?.data?.results ?? []) {
+      directory.set(user.id, {
+        name:
+          [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+          user.email,
+        fileNumber: user.file_number || "—",
+      });
+    }
+
+    hasMore = Boolean(payload?.data?.next);
+    page += 1;
+  }
+
+  return directory;
+}
+
 function friendlyCreateError(rawMessage: string, form: typeof emptyForm) {
   if (/unique/i.test(rawMessage)) {
-    return `${form.cohort || "This batch"} already has this course for ${
-      form.year
-    }. Each course can only run once per batch per year.`;
+    return `already runs for ${form.cohort} ${form.year}. Each module can only run once per cohort per year.`;
   }
-  return rawMessage;
+  if (/valid choice/i.test(rawMessage)) {
+    return `was rejected: the backend does not accept "${form.cohort}" as a cohort yet (it still only allows Batch A/B/C). The backend team needs to switch the cohort choices to months.`;
+  }
+  return `failed: ${rawMessage}`;
 }
 
 export default function TrainingProgrammesManager() {
@@ -68,6 +141,7 @@ export default function TrainingProgrammesManager() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [allSessions, setAllSessions] = useState<LiveSession[]>([]);
   const [form, setForm] = useState(emptyForm);
+  const [selectedCourseId, setSelectedCourseId] = useState<number | "">("");
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -80,6 +154,25 @@ export default function TrainingProgrammesManager() {
   const [sessionForm, setSessionForm] = useState(emptySessionForm);
   const [savingSession, setSavingSession] = useState(false);
   const [sessionError, setSessionError] = useState("");
+
+  // Attendance viewer (per live session, inside the sessions modal).
+  const [attendanceForId, setAttendanceForId] = useState<number | null>(null);
+  const [attendanceRows, setAttendanceRows] = useState<AttendanceRow[]>([]);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+
+  // Enrolled-staff management for one programme (modal).
+  const [staffFor, setStaffFor] = useState<CohortCourse | null>(null);
+  const [programmeEnrollments, setProgrammeEnrollments] = useState<
+    CourseEnrollment[]
+  >([]);
+  const [staffDirectory, setStaffDirectory] = useState<
+    Map<number, StaffDirectoryEntry>
+  >(new Map());
+  const [loadingStaffList, setLoadingStaffList] = useState(false);
+  const [removingEnrollmentId, setRemovingEnrollmentId] = useState<
+    number | null
+  >(null);
+  const [staffListError, setStaffListError] = useState("");
 
   const loadData = useCallback(async () => {
     try {
@@ -101,7 +194,7 @@ export default function TrainingProgrammesManager() {
         throw new Error(
           extractErrorMessage(
             programmePayload,
-            "Could not load training programmes.",
+            "Could not load courses.",
           ),
         );
       }
@@ -116,7 +209,7 @@ export default function TrainingProgrammesManager() {
       setError(
         loadError instanceof Error
           ? loadError.message
-          : "Could not load training programmes.",
+          : "Could not load courses.",
       );
     } finally {
       setLoading(false);
@@ -158,8 +251,15 @@ export default function TrainingProgrammesManager() {
     );
   }, [programmes]);
 
+  // Creates one Programme: a single Course delivered to a cohort (month) + year.
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
+
+    if (!selectedCourseId) {
+      setError("Please select a course for this programme.");
+      return;
+    }
+
     setSaving(true);
     setError("");
     setNotice("");
@@ -169,7 +269,7 @@ export default function TrainingProgrammesManager() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          course: Number(form.course),
+          course: Number(selectedCourseId),
           cohort: form.cohort,
           year: Number(form.year),
           start_date: form.start_date,
@@ -179,37 +279,41 @@ export default function TrainingProgrammesManager() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(
+        setError(
           friendlyCreateError(
             extractErrorMessage(
               payload,
-              "Could not create this training programme.",
+              "This programme could not be created.",
             ),
             form,
           ),
         );
+      } else {
+        const courseTitle =
+          courses.find((course) => course.id === Number(selectedCourseId))
+            ?.title ?? "Programme";
+        setNotice(
+          `"${courseTitle}" assigned to ${form.cohort} ${form.year}.`,
+        );
+        setForm(emptyForm);
+        setSelectedCourseId("");
+        setShowForm(false);
       }
-
-      setForm(emptyForm);
-      setShowForm(false);
-      setNotice("Training programme created successfully.");
-      await loadData();
-    } catch (createError) {
-      setError(
-        createError instanceof Error
-          ? createError.message
-          : "Could not create this training programme.",
-      );
-    } finally {
-      setSaving(false);
+    } catch {
+      setError("Could not reach the server. Please try again.");
     }
+
+    await loadData();
+    setSaving(false);
   };
 
   const handleDelete = async (programme: CohortCourse) => {
+    // Backend uses SET_NULL (confirmed 2026-07-10): enrollments, progress
+    // and certificates survive the delete; only the course link clears.
     const confirmed = await confirm(
-      `Delete "${programme.course_details?.title}" for ${cohortCourseBatchLabel(
+      `Remove "${programme.course_details?.title}" from ${cohortCourseBatchLabel(
         programme,
-      )}${programme.year ? ` ${programme.year}` : ""}? Staff enrollments under it will no longer be reachable.`,
+      )}${programme.year ? ` ${programme.year}` : ""}? Staff enrollments, progress and certificates are kept for history, but this cohort assignment (and its live sessions) will no longer be manageable.`,
       { danger: true },
     );
 
@@ -232,13 +336,13 @@ export default function TrainingProgrammesManager() {
         );
       }
 
-      setNotice("Training programme deleted.");
+      setNotice("Module removed from the course.");
       await loadData();
     } catch (deleteError) {
       setError(
         deleteError instanceof Error
           ? deleteError.message
-          : "Could not delete this programme.",
+          : "Could not delete this course entry.",
       );
     } finally {
       setDeletingId(null);
@@ -248,6 +352,122 @@ export default function TrainingProgrammesManager() {
   const programmeSessions = sessionsFor
     ? allSessions.filter((session) => session.cohort_course === sessionsFor.id)
     : [];
+
+  const handleToggleAttendance = async (sessionId: number) => {
+    if (attendanceForId === sessionId) {
+      setAttendanceForId(null);
+      return;
+    }
+
+    setAttendanceForId(sessionId);
+    setAttendanceRows([]);
+    setLoadingAttendance(true);
+
+    try {
+      const response = await fetch(
+        `/api/training/live-sessions/${sessionId}/attendance`,
+        { cache: "no-store" },
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not load attendance."),
+        );
+      }
+
+      setAttendanceRows(readApiList<AttendanceRow>(payload));
+      setSessionError("");
+    } catch (attendanceError) {
+      setSessionError(
+        attendanceError instanceof Error
+          ? attendanceError.message
+          : "Could not load attendance.",
+      );
+    } finally {
+      setLoadingAttendance(false);
+    }
+  };
+
+  const openStaffModal = async (programme: CohortCourse) => {
+    setStaffFor(programme);
+    setProgrammeEnrollments([]);
+    setStaffListError("");
+    setLoadingStaffList(true);
+
+    try {
+      const [enrollmentResponse, directory] = await Promise.all([
+        fetch("/api/training/enrollments", { cache: "no-store" }),
+        staffDirectory.size > 0
+          ? Promise.resolve(staffDirectory)
+          : loadStaffDirectory(),
+      ]);
+
+      const payload = await enrollmentResponse.json().catch(() => null);
+
+      if (!enrollmentResponse.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not load enrollments."),
+        );
+      }
+
+      setStaffDirectory(directory);
+      setProgrammeEnrollments(
+        readApiList<CourseEnrollment>(payload).filter(
+          (enrollment) => enrollment.cohort_course === programme.id,
+        ),
+      );
+    } catch (staffError) {
+      setStaffListError(
+        staffError instanceof Error
+          ? staffError.message
+          : "Could not load the enrolled staff list.",
+      );
+    } finally {
+      setLoadingStaffList(false);
+    }
+  };
+
+  const handleUnenroll = async (enrollment: CourseEnrollment) => {
+    const staffLabel =
+      staffDirectory.get(enrollment.staff)?.name ??
+      `Staff #${enrollment.staff}`;
+    const confirmed = await confirm(
+      `Remove ${staffLabel} from this course? Their progress record for it will be deleted.`,
+      { danger: true },
+    );
+
+    if (!confirmed) return;
+
+    setRemovingEnrollmentId(enrollment.id);
+    setStaffListError("");
+
+    try {
+      const response = await fetch(
+        `/api/training/enrollments/${enrollment.id}`,
+        { method: "DELETE" },
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          extractErrorMessage(payload, "Could not remove this staff member."),
+        );
+      }
+
+      setProgrammeEnrollments((current) =>
+        current.filter((item) => item.id !== enrollment.id),
+      );
+    } catch (removeError) {
+      setStaffListError(
+        removeError instanceof Error
+          ? removeError.message
+          : "Could not remove this staff member.",
+      );
+    } finally {
+      setRemovingEnrollmentId(null);
+    }
+  };
 
   const handleScheduleSession = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -333,12 +553,10 @@ export default function TrainingProgrammesManager() {
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">
-            Training Programmes
-          </h2>
+          <h2 className="text-2xl font-bold text-gray-800">Cohorts</h2>
           <p className="text-sm text-gray-500">
-            A programme delivers one course to one batch (A, B or C) in a
-            given year.
+            A course is assigned to a cohort for a given year (e.g. January
+            2026).
           </p>
         </div>
 
@@ -346,13 +564,14 @@ export default function TrainingProgrammesManager() {
           onClick={() => {
             setShowForm((current) => !current);
             setForm(emptyForm);
+            setSelectedCourseId("");
             setError("");
             setNotice("");
           }}
           className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530]"
         >
           <Plus size={18} />
-          {showForm ? "Close form" : "New programme"}
+          {showForm ? "Close form" : "Assign a course"}
         </button>
       </div>
 
@@ -374,40 +593,30 @@ export default function TrainingProgrammesManager() {
           className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-2"
         >
           <h3 className="flex items-center gap-2 text-lg font-bold text-[#1a6b3c] md:col-span-2">
-            <Layers size={20} /> New Training Programme
+            <Layers size={20} /> Assign a course to a cohort
           </h3>
-
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Course
-            </label>
-            <select
-              required
-              value={form.course}
-              onChange={(event) =>
-                setForm({ ...form, course: event.target.value })
-              }
-              className="w-full rounded-lg border px-4 py-2.5 text-sm"
-            >
-              <option value="">Select the course to deliver...</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.title}
-                </option>
-              ))}
-            </select>
-          </div>
 
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Cohort batch
+              Cohort
             </label>
-            <BatchSelect
+            <select
               required
               value={form.cohort}
-              onChange={(batch) => setForm({ ...form, cohort: batch })}
-              className="w-full px-4 py-2.5"
-            />
+              onChange={(event) =>
+                setForm({ ...form, cohort: event.target.value })
+              }
+              className="w-full rounded-lg border px-4 py-2.5 text-sm"
+            >
+              <option value="" disabled>
+                Select a cohort month...
+              </option>
+              {COHORT_MONTHS.map((month) => (
+                <option key={month} value={month}>
+                  {month}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>
@@ -457,25 +666,59 @@ export default function TrainingProgrammesManager() {
             />
           </div>
 
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Course
+            </label>
+            <p className="mb-2 text-xs text-gray-500">
+              Pick the course to deliver for this cohort. The course already
+              contains its modules and activities.
+            </p>
+            {courses.length === 0 ? (
+              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                No courses exist yet — create them under Courses first.
+              </p>
+            ) : (
+              <select
+                required
+                value={selectedCourseId}
+                onChange={(event) =>
+                  setSelectedCourseId(
+                    event.target.value ? Number(event.target.value) : "",
+                  )
+                }
+                className="w-full rounded-lg border px-4 py-2.5 text-sm"
+              >
+                <option value="" disabled>
+                  Select a course...
+                </option>
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.title}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
           <button
-            disabled={saving}
+            disabled={saving || !selectedCourseId}
             className="rounded-lg bg-[#1a6b3c] px-6 py-3 font-semibold text-white transition hover:bg-[#145530] disabled:opacity-60 md:col-span-2"
           >
-            {saving ? "Creating..." : "Create programme"}
+            {saving ? "Assigning..." : "Assign course"}
           </button>
         </form>
       )}
 
       {loading ? (
         <p className="rounded-2xl bg-white p-6 text-sm text-gray-500 shadow-sm">
-          Loading training programmes...
+          Loading courses...
         </p>
       ) : programmes.length === 0 ? (
         <div className="rounded-2xl bg-white p-10 text-center shadow-sm">
           <Layers size={30} className="mx-auto mb-3 text-gray-300" />
           <p className="text-sm text-gray-500">
-            No training programmes yet. Create one to deliver a course to a
-            batch.
+            No courses yet. Create one to deliver modules to a cohort.
           </p>
         </div>
       ) : (
@@ -490,7 +733,7 @@ export default function TrainingProgrammesManager() {
                 <thead className="bg-gray-50 text-gray-500">
                   <tr>
                     <th className="p-4">Course</th>
-                    <th className="p-4">Batch</th>
+                    <th className="p-4">Cohort</th>
                     <th className="p-4">Start</th>
                     <th className="p-4">End</th>
                     <th className="p-4">Live sessions</th>
@@ -520,7 +763,7 @@ export default function TrainingProgrammesManager() {
                           <span
                             className={`rounded-full px-3 py-1 text-xs font-semibold ${
                               BATCH_CHIP_STYLES[batch] ??
-                              "bg-gray-100 text-gray-600"
+                              "bg-[#e3f2ea] text-[#1a6b3c]"
                             }`}
                           >
                             {batch || "—"}
@@ -550,14 +793,15 @@ export default function TrainingProgrammesManager() {
                         </td>
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <Link
-                              href="/admin/users"
-                              title="Assign staff to this programme from the Staff page"
-                              aria-label="Assign staff"
+                            <button
+                              type="button"
+                              onClick={() => void openStaffModal(programme)}
+                              title="View and manage enrolled staff"
+                              aria-label="Enrolled staff"
                               className="text-[#1a6b3c]"
                             >
-                              <UserPlus size={17} />
-                            </Link>
+                              <Users size={17} />
+                            </button>
                             <button
                               onClick={() => handleDelete(programme)}
                               disabled={deletingId === programme.id}
@@ -687,31 +931,183 @@ export default function TrainingProgrammesManager() {
             {programmeSessions.length > 0 && (
               <div className="mt-5 space-y-2 border-t border-gray-100 pt-4">
                 {programmeSessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center justify-between gap-4 rounded-lg bg-gray-50 p-3"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-gray-800">
-                        {session.title}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {formatDateTime(session.start_time)} —{" "}
-                        {formatDateTime(session.end_time)} · {session.status}
-                      </p>
+                  <div key={session.id} className="rounded-lg bg-gray-50 p-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">
+                          {session.title}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {formatDateTime(session.start_time)} —{" "}
+                          {formatDateTime(session.end_time)} · {session.status}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleToggleAttendance(session.id)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[#1a6b3c] px-3 py-1.5 text-xs font-semibold text-[#1a6b3c] transition hover:bg-green-50"
+                        >
+                          <ClipboardList size={13} />
+                          {attendanceForId === session.id
+                            ? "Hide attendance"
+                            : "Attendance"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSession(session)}
+                          className="text-red-600"
+                          aria-label={`Delete ${session.title}`}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteSession(session)}
-                      className="text-red-600"
-                      aria-label={`Delete ${session.title}`}
-                    >
-                      <Trash2 size={16} />
-                    </button>
+
+                    {attendanceForId === session.id && (
+                      <div className="mt-3 border-t border-gray-200 pt-3">
+                        {loadingAttendance ? (
+                          <p className="text-xs text-gray-400">
+                            Loading attendance...
+                          </p>
+                        ) : attendanceRows.length === 0 ? (
+                          <p className="text-xs text-gray-400">
+                            Nobody has joined this session through the portal
+                            yet.
+                          </p>
+                        ) : (
+                          <ul className="space-y-1.5">
+                            {attendanceRows.map((row, index) => (
+                              <li
+                                key={row.id ?? index}
+                                className="flex items-center justify-between gap-3 rounded-md bg-white px-3 py-2 text-xs"
+                              >
+                                <span className="min-w-0">
+                                  <span className="block truncate font-semibold text-gray-800">
+                                    {row.staff_name ??
+                                      row.staff_email ??
+                                      (row.enrollment
+                                        ? `Enrollment #${row.enrollment}`
+                                        : "Staff member")}
+                                  </span>
+                                  <span className="text-gray-400">
+                                    {row.file_number ?? ""}
+                                  </span>
+                                </span>
+                                <span className="shrink-0 text-right text-gray-500">
+                                  <span className="block">
+                                    First joined:{" "}
+                                    {row.first_joined_at ?? row.first_joined
+                                      ? formatDateTime(
+                                          (row.first_joined_at ??
+                                            row.first_joined) as string,
+                                        )
+                                      : "—"}
+                                  </span>
+                                  <span className="block">
+                                    Joins: {row.join_count ?? 1}
+                                    {row.status ? ` · ${row.status}` : ""}
+                                  </span>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {staffFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-lg font-bold text-gray-800">
+                  <Users size={20} className="text-[#1a6b3c]" />
+                  Enrolled Staff
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {staffFor.course_details?.title} —{" "}
+                  {cohortCourseBatchLabel(staffFor)}
+                  {staffFor.year ? ` ${staffFor.year}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setStaffFor(null)}
+                aria-label="Close"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {staffListError && (
+              <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                {staffListError}
+              </div>
+            )}
+
+            {loadingStaffList ? (
+              <p className="text-sm text-gray-400">Loading enrolled staff...</p>
+            ) : programmeEnrollments.length === 0 ? (
+              <p className="text-sm text-gray-500">
+                Nobody is enrolled in this course yet.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {programmeEnrollments.map((enrollment) => {
+                  const entry = staffDirectory.get(enrollment.staff);
+
+                  return (
+                    <li
+                      key={enrollment.id}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-gray-50 px-4 py-3 text-sm"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-semibold text-gray-800">
+                          {entry?.name ?? `Staff #${enrollment.staff}`}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {entry?.fileNumber ?? "—"} ·{" "}
+                          {toPercentage(enrollment.completion_percentage)}%
+                          complete · {enrollment.status.replace("_", " ")}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleUnenroll(enrollment)}
+                        disabled={removingEnrollmentId === enrollment.id}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <Trash2 size={13} />
+                        {removingEnrollmentId === enrollment.id
+                          ? "Removing..."
+                          : "Remove"}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            <p className="mt-5 border-t border-gray-100 pt-4 text-xs text-gray-500">
+              To add staff, use{" "}
+              <Link
+                href="/admin/users"
+                className="inline-flex items-center gap-1 font-semibold text-[#1a6b3c] hover:underline"
+              >
+                <UserPlus size={12} /> the Staff page
+              </Link>{" "}
+              — select staff there and assign them to this course, upload a
+              CSV, or assign a whole department.
+            </p>
           </div>
         </div>
       )}

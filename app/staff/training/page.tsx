@@ -236,7 +236,7 @@ export default function StaffTraining() {
 
                     <p className="mb-4 line-clamp-2 flex-1 text-sm leading-relaxed text-gray-500">
                       {item.course?.description ||
-                        "Open this course to view modules and materials."}
+                        "Open this course to view activities and materials."}
                     </p>
 
                     <p className="mb-2 text-xs font-medium text-gray-500">

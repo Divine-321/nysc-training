@@ -42,6 +42,16 @@ export default function ActivityViewer({ activity }: ActivityViewerProps) {
     );
   }
 
+  if (activity.content_type === "ASSESSMENT") {
+    return (
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-600">
+        <FileText size={26} className="mx-auto mb-3 text-[#1a6b3c]" />
+        This activity opens a proctored assessment. Staff take it from this
+        point in the module flow inside the course player.
+      </div>
+    );
+  }
+
   if (
     activity.content_type === "EXTERNAL" ||
     activity.content_type === "PPT"

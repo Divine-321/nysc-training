@@ -64,7 +64,14 @@ function documentUrl(doc: ModuleDocument) {
  * What this material actually is, preferring the new-model content_type and
  * falling back to the legacy doc_type (with an audio sniff for OTHER).
  */
-type DocumentKind = "VIDEO" | "PDF" | "IMAGE" | "AUDIO" | "TEXT" | "OTHER";
+type DocumentKind =
+  | "VIDEO"
+  | "PDF"
+  | "IMAGE"
+  | "AUDIO"
+  | "TEXT"
+  | "ASSESSMENT"
+  | "OTHER";
 
 function documentKind(doc: ModuleDocument): DocumentKind {
   switch (doc.content_type) {
@@ -76,9 +83,10 @@ function documentKind(doc: ModuleDocument): DocumentKind {
       return "AUDIO";
     case "TEXT":
       return "TEXT";
+    case "ASSESSMENT":
+      return "ASSESSMENT";
     case "PPT":
     case "EXTERNAL":
-    case "ASSESSMENT":
       return "OTHER";
   }
 
@@ -108,6 +116,8 @@ function documentIcon(doc: ModuleDocument) {
       return ImageIcon;
     case "AUDIO":
       return Headphones;
+    case "ASSESSMENT":
+      return ClipboardCheck;
     default:
       return doc.doc_type === "PPT" ? Presentation : ExternalLink;
   }
@@ -407,7 +417,12 @@ function CoursePlayer() {
   };
 
   const goNext = () => {
-    if (currentItem?.kind === "doc") {
+    // Assessment activities complete by passing the assessment, not by
+    // clicking past them.
+    if (
+      currentItem?.kind === "doc" &&
+      documentKind(currentItem.doc) !== "ASSESSMENT"
+    ) {
       void markComplete(currentItem.doc);
     }
 
@@ -703,35 +718,85 @@ function CoursePlayer() {
                 </div>
               )}
 
-              {currentItem?.kind === "doc" && (
-                <>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                    {currentItem.moduleTitle}
-                  </p>
-                  <div className="mb-5 mt-1 flex flex-wrap items-center justify-between gap-3">
-                    <h2 className="text-xl font-bold text-gray-800 sm:text-2xl">
-                      {currentItem.doc.title}
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={() => void markComplete(currentItem.doc)}
-                      disabled={completedIds.has(currentItem.doc.id)}
-                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                        completedIds.has(currentItem.doc.id)
-                          ? "bg-green-100 text-green-700"
-                          : "border border-[#1a6b3c] text-[#1a6b3c] hover:bg-green-50"
-                      }`}
-                    >
-                      <CheckCircle2 size={14} />
-                      {completedIds.has(currentItem.doc.id)
-                        ? "Completed"
-                        : "Mark as complete"}
-                    </button>
-                  </div>
+              {currentItem?.kind === "doc" &&
+                (documentKind(currentItem.doc) === "ASSESSMENT" ? (
+                  (() => {
+                    const linkedAssessment = assessments.find(
+                      (assessment) =>
+                        assessment.id ===
+                        (currentItem.doc.assessment_id ??
+                          currentItem.doc.assessment),
+                    );
 
-                  <DocumentContent doc={currentItem.doc} />
-                </>
-              )}
+                    return (
+                      <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-12">
+                        <ClipboardCheck
+                          size={36}
+                          className="mx-auto mb-4 text-[#1a6b3c]"
+                        />
+                        <p className="text-xs font-semibold uppercase tracking-widest text-[#1a6b3c]">
+                          {currentItem.moduleTitle}
+                        </p>
+                        <h2 className="mt-2 text-xl font-bold text-gray-800 sm:text-2xl">
+                          {currentItem.doc.title}
+                        </h2>
+                        {linkedAssessment ? (
+                          <>
+                            <p className="mx-auto mt-3 max-w-md text-sm text-gray-500">
+                              {linkedAssessment.questions.length} question(s) •
+                              Pass mark {linkedAssessment.pass_mark}%. Your
+                              camera will verify your identity before it
+                              starts.
+                            </p>
+                            <Link
+                              href={`/staff/course/${courseId}/assessment/${
+                                linkedAssessment.type === "PRE_TEST"
+                                  ? "pre-test"
+                                  : "post-test"
+                              }`}
+                              className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#1a6b3c] px-8 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
+                            >
+                              <PlayCircle size={17} /> Take Assessment
+                            </Link>
+                          </>
+                        ) : (
+                          <p className="mx-auto mt-3 max-w-md text-sm text-gray-500">
+                            This assessment has not been fully configured yet.
+                            Please check back later.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()
+                ) : (
+                  <>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                      {currentItem.moduleTitle}
+                    </p>
+                    <div className="mb-5 mt-1 flex flex-wrap items-center justify-between gap-3">
+                      <h2 className="text-xl font-bold text-gray-800 sm:text-2xl">
+                        {currentItem.doc.title}
+                      </h2>
+                      <button
+                        type="button"
+                        onClick={() => void markComplete(currentItem.doc)}
+                        disabled={completedIds.has(currentItem.doc.id)}
+                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                          completedIds.has(currentItem.doc.id)
+                            ? "bg-green-100 text-green-700"
+                            : "border border-[#1a6b3c] text-[#1a6b3c] hover:bg-green-50"
+                        }`}
+                      >
+                        <CheckCircle2 size={14} />
+                        {completedIds.has(currentItem.doc.id)
+                          ? "Completed"
+                          : "Mark as complete"}
+                      </button>
+                    </div>
+
+                    <DocumentContent doc={currentItem.doc} />
+                  </>
+                ))}
 
               {currentItem?.kind === "assessment" && (
                 <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-12">

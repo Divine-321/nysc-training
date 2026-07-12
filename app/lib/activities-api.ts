@@ -38,6 +38,9 @@ export type AdminActivity = {
   content_type?: ActivityContentType;
   content_url?: string | null;
   text_content?: string | null;
+  /** Linked assessment for ASSESSMENT-type activities (either spelling). */
+  assessment?: number | null;
+  assessment_id?: number | null;
 };
 
 export type ActivityWriteInput = {
@@ -49,6 +52,7 @@ export type ActivityWriteInput = {
   text_content: string | null;
   doc_type: LegacyDocType;
   cloudinary_public_id: string | null;
+  assessment_id?: number | null;
 };
 
 // Cached for the lifetime of the page load; the answer only changes when the
@@ -90,6 +94,9 @@ function toPayload(input: ActivityWriteInput) {
     content_type: input.content_type,
     content_url: input.content_url,
     text_content: input.text_content,
+    // both spellings until the serializer field name is confirmed
+    assessment_id: input.assessment_id ?? null,
+    assessment: input.assessment_id ?? null,
   };
 }
 

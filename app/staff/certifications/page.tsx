@@ -91,11 +91,11 @@ function buildRequirements(
 
   const items: RequirementItem[] = [
     {
-      label: "Complete every module",
+      label: "Complete every activity",
       met:
         modulesWithContent.length > 0 &&
         completedModules === modulesWithContent.length,
-      detail: `${completedModules} of ${modulesWithContent.length} module(s) at 100%`,
+      detail: `${completedModules} of ${modulesWithContent.length} activity(ies) at 100%`,
     },
     {
       label: "Complete all learning materials",

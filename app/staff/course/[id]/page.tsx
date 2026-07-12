@@ -53,7 +53,7 @@ function AssessmentCard({
     >
       <ClipboardCheck className="mb-3 text-[#1a6b3c]" size={28} />
       <p className="text-xs font-semibold uppercase tracking-wide text-[#1a6b3c]">
-        {isPreTest ? "Before modules" : "After modules"}
+        {isPreTest ? "Before the modules" : "After the modules"}
       </p>
       <h3 className="mt-1 font-bold text-gray-800">{assessment.title}</h3>
       <p className="mt-1 text-sm text-gray-500">

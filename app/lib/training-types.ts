@@ -121,12 +121,44 @@ export type AssessmentAttempt = {
 };
 
 // ---------------------------------------------------------------------------
-// Cohort is now a fixed classification (Batch A / B / C)
+// Cohort is a fixed classification. The deployed backend (verified 2026-07-11
+// from /api/schema/ CohortEnum) uses the 12 MONTHS: "January" .. "December".
+// The old "BATCH A/B/C" values are kept only so older data still renders.
 // ---------------------------------------------------------------------------
 
-// Exact backend values (confirmed 2026-07-10): a space, not an underscore.
+export type Month =
+  | "January"
+  | "February"
+  | "March"
+  | "April"
+  | "May"
+  | "June"
+  | "July"
+  | "August"
+  | "September"
+  | "October"
+  | "November"
+  | "December";
+
+export const MONTH_OPTIONS: { value: Month; label: string }[] = [
+  { value: "January", label: "January" },
+  { value: "February", label: "February" },
+  { value: "March", label: "March" },
+  { value: "April", label: "April" },
+  { value: "May", label: "May" },
+  { value: "June", label: "June" },
+  { value: "July", label: "July" },
+  { value: "August", label: "August" },
+  { value: "September", label: "September" },
+  { value: "October", label: "October" },
+  { value: "November", label: "November" },
+  { value: "December", label: "December" },
+];
+
+/** @deprecated The backend switched cohort from Batch A/B/C to the 12 months. */
 export type Batch = "BATCH A" | "BATCH B" | "BATCH C";
 
+/** @deprecated Use MONTH_OPTIONS. Kept so pre-migration Batch data still renders. */
 export const BATCH_OPTIONS: { value: Batch; label: string }[] = [
   { value: "BATCH A", label: "Batch A" },
   { value: "BATCH B", label: "Batch B" },

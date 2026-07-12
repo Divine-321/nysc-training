@@ -214,7 +214,7 @@ const createdCourse = readApiItem<Course>(payload);
 
 if (!createdCourse) {
   throw new Error(
-    "The course was created, but its ID was not returned."
+    "The module was created, but its ID was not returned."
   );
 }
 
@@ -236,7 +236,7 @@ router.push(
         </Link>
         <h2 className="text-2xl font-bold text-gray-800">Create Course</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Create a course before adding its modules and activities.
+          Create a course before adding its modules.
         </p>
       </div>
 
@@ -277,7 +277,7 @@ router.push(
             />
           </label>
           <p className="mt-1 text-xs text-gray-500">
-            Upload an image. This appears on the staff course card, course overview, and module header.
+            Upload an image. This appears on the staff course card and course overview.
           </p>
           {isUploadingThumbnail && (
             <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">

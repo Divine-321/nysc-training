@@ -280,7 +280,7 @@ export default function AdminDashboardPage() {
           <h3 className="text-lg font-bold">Manage Cohorts</h3>
 
           <p className="mt-1 text-sm text-yellow-100">
-            Create and manage training cohorts.
+            Assign courses to cohorts (e.g. January 2026).
           </p>
         </Link>
 

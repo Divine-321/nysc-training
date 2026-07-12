@@ -291,13 +291,13 @@ export default function AdminReportsPage() {
           </label>
 
           <label className="flex-1 text-sm text-gray-600">
-            Training Programme (optional — unlocks per-staff reports)
+            Course (optional — unlocks per-staff reports)
             <select
               value={selectedProgrammeId}
               onChange={(event) => setSelectedProgrammeId(event.target.value)}
               className="mt-1 block w-full rounded-lg border border-gray-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
             >
-              <option value="">All programmes in {year}</option>
+              <option value="">All courses in {year}</option>
               {programmes.map((programme) => (
                 <option key={programme.id} value={String(programme.id)}>
                   {programme.course_details?.title ??
@@ -321,8 +321,8 @@ export default function AdminReportsPage() {
           <p className="mt-1 text-sm font-bold text-gray-600">
             Certificates issued{" "}
             {selectedProgramme
-              ? "for this programme"
-              : `across ${year} programmes`}
+              ? "for this course"
+              : `across ${year} courses`}
           </p>
         </div>
 
@@ -340,8 +340,8 @@ export default function AdminReportsPage() {
           </p>
           <p className="mt-1 text-sm font-bold text-gray-600">
             {selectedProgramme
-              ? "Staff who completed this programme"
-              : `Staff enrolled across ${year} programmes`}
+              ? "Staff who completed this course"
+              : `Staff enrolled across ${year} courses`}
           </p>
         </div>
       </div>
@@ -352,7 +352,7 @@ export default function AdminReportsPage() {
           <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
             <h3 className="mb-1 flex items-center gap-2 font-bold text-gray-800">
               <Award size={18} className="text-[#1a6b3c]" />
-              Certificates issued per programme — {year}
+              Certificates issued per course — {year}
             </h3>
             <p className="mb-4 text-xs text-gray-500">
               Exact counts from the analytics service.
@@ -361,7 +361,7 @@ export default function AdminReportsPage() {
               <table className="w-full text-left text-sm">
                 <thead className="text-gray-500">
                   <tr className="border-b border-gray-100">
-                    <th className="py-2 pr-4">Programme</th>
+                    <th className="py-2 pr-4">Course</th>
                     <th className="py-2">Certificates</th>
                   </tr>
                 </thead>
@@ -389,8 +389,8 @@ export default function AdminReportsPage() {
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
         <h3 className="mb-1 flex items-center gap-2 font-bold text-gray-800">
           <Layers size={18} className="text-[#1a6b3c]" />
-          Course completion rate{" "}
-          {selectedProgramme ? "— this programme" : `by programme — ${year}`}
+          Completion rate{" "}
+          {selectedProgramme ? "— this course" : `by course — ${year}`}
         </h3>
         <p className="mb-6 text-xs text-gray-500">
           Average enrollment completion percentage.
@@ -440,7 +440,7 @@ export default function AdminReportsPage() {
               Top performers — post-test
             </h3>
             <p className="mb-4 text-xs text-gray-500">
-              Best post-test score per staff member in this programme.
+              Best post-test score per staff member in this course.
             </p>
             {topPerformers.length === 0 ? (
               <p className="text-sm text-gray-400">
@@ -489,7 +489,7 @@ export default function AdminReportsPage() {
               Staff who completed
             </h3>
             <p className="mb-4 text-xs text-gray-500">
-              Everyone who finished this programme.
+              Everyone who finished this course.
             </p>
             {completions.length === 0 ? (
               <p className="text-sm text-gray-400">No completions yet.</p>
@@ -530,8 +530,8 @@ export default function AdminReportsPage() {
           <span className="font-semibold text-gray-700">
             Best performing staff and completion lists:
           </span>{" "}
-          pick a Training Programme in the filter above to see its top
-          post-test performers and every staff member who completed it.
+          pick a Course in the filter above to see its top post-test
+          performers and every staff member who completed it.
         </div>
       )}
 
@@ -543,7 +543,7 @@ export default function AdminReportsPage() {
         </h3>
         <p className="mb-6 text-xs text-gray-500">
           How many certificates were generated each month, across all
-          programmes.
+          courses.
         </p>
 
         <div className="flex h-40 items-end gap-2">

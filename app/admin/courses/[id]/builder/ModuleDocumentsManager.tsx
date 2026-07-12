@@ -25,6 +25,8 @@ import {
   type LegacyDocType,
 } from "@/app/lib/activities-api";
 import type { ActivityContentType } from "@/app/lib/training-types";
+import { readApiList } from "@/app/lib/portal-api";
+import type { Assessment as CourseAssessment } from "@/app/lib/staff-learning";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import ActivityViewer from "@/app/components/ActivityViewer";
 import RichTextEditor from "@/app/components/RichTextEditor";
@@ -35,6 +37,7 @@ export type Activity = AdminActivity;
 
 type ModuleActivitiesManagerProps = {
   moduleId: number;
+  courseId: number;
   activities: Activity[];
   onChanged: () => Promise<void>;
 };
@@ -43,7 +46,7 @@ type ContentTypeConfig = {
   value: ActivityContentType;
   label: string;
   /** How the admin supplies the content. */
-  input: "upload" | "url" | "text";
+  input: "upload" | "url" | "text" | "assessment";
   /** Best-effort mapping to the legacy backend doc_type. */
   docType: LegacyDocType;
   accept?: string;
@@ -56,6 +59,7 @@ const CONTENT_TYPES: ContentTypeConfig[] = [
   { value: "AUDIO", label: "Audio", input: "upload", docType: "OTHER", accept: "audio/*" },
   { value: "EXTERNAL", label: "External Link", input: "url", docType: "OTHER" },
   { value: "TEXT", label: "Text lesson", input: "text", docType: "OTHER" },
+  { value: "ASSESSMENT", label: "Assessment", input: "assessment", docType: "OTHER" },
 ];
 
 function configFor(type: ActivityContentType): ContentTypeConfig {
@@ -76,6 +80,7 @@ function richTextIsEmpty(html: string) {
 
 export default function ModuleActivitiesManager({
   moduleId,
+  courseId,
   activities,
   onChanged,
 }: ModuleActivitiesManagerProps) {
@@ -85,6 +90,10 @@ export default function ModuleActivitiesManager({
   const [file, setFile] = useState<File | null>(null);
   const [externalUrl, setExternalUrl] = useState("");
   const [textContent, setTextContent] = useState("");
+  const [assessmentId, setAssessmentId] = useState("");
+  const [courseAssessments, setCourseAssessments] = useState<
+    CourseAssessment[] | null
+  >(null);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [previewActivity, setPreviewActivity] = useState<Activity | null>(null);
   const [saving, setSaving] = useState(false);
@@ -110,6 +119,38 @@ export default function ModuleActivitiesManager({
     };
   }, []);
 
+  // The course's assessments, loaded once the admin first picks the
+  // Assessment activity type.
+  useEffect(() => {
+    if (contentType !== "ASSESSMENT" || courseAssessments !== null) return;
+
+    let active = true;
+
+    const loadAssessmentOptions = async () => {
+      try {
+        const response = await fetch("/api/training/assessments", {
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+        const list = response.ok
+          ? readApiList<CourseAssessment>(payload).filter(
+              (assessment) => assessment.course === courseId,
+            )
+          : [];
+
+        if (active) setCourseAssessments(list);
+      } catch {
+        if (active) setCourseAssessments([]);
+      }
+    };
+
+    void loadAssessmentOptions();
+
+    return () => {
+      active = false;
+    };
+  }, [contentType, courseAssessments, courseId]);
+
   const config = configFor(contentType);
   const sortedActivities = activities
     .slice()
@@ -125,6 +166,7 @@ export default function ModuleActivitiesManager({
     setFile(null);
     setExternalUrl("");
     setTextContent("");
+    setAssessmentId("");
     setEditingId(null);
     setProgress(0);
     setFileInputKey((current) => current + 1);
@@ -139,6 +181,11 @@ export default function ModuleActivitiesManager({
     setFile(null);
     setExternalUrl(kind === "EXTERNAL" ? activityUrl(activity) : "");
     setTextContent(activity.text_content ?? "");
+    setAssessmentId(
+      kind === "ASSESSMENT"
+        ? String(activity.assessment_id ?? activity.assessment ?? "")
+        : "",
+    );
     setError("");
     setNotice("");
     setFileInputKey((current) => current + 1);
@@ -165,6 +212,10 @@ export default function ModuleActivitiesManager({
     }
     if (config.input === "text" && richTextIsEmpty(textContent)) {
       setError("Please enter the lesson content.");
+      return;
+    }
+    if (config.input === "assessment" && !assessmentId) {
+      setError("Please select which assessment this activity opens.");
       return;
     }
 
@@ -199,14 +250,16 @@ export default function ModuleActivitiesManager({
         text_content: config.input === "text" ? textContent : null,
         doc_type: config.docType,
         cloudinary_public_id: cloudinaryPublicId,
+        assessment_id:
+          config.input === "assessment" ? Number(assessmentId) : null,
       };
 
       if (editingActivity) {
         await updateActivity(editingActivity.id, input);
-        setNotice("Activity updated successfully.");
+        setNotice("Content updated successfully.");
       } else {
         await createActivity(input);
-        setNotice("Activity added successfully.");
+        setNotice("Content added successfully.");
       }
 
       resetForm();
@@ -224,7 +277,7 @@ export default function ModuleActivitiesManager({
 
   const handleDelete = async (activity: Activity) => {
     const confirmed = await confirm(
-      `Delete "${activity.title}" from this module?`,
+      `Delete "${activity.title}" from this activity?`,
       { danger: true },
     );
 
@@ -239,7 +292,7 @@ export default function ModuleActivitiesManager({
 
       if (editingId === activity.id) resetForm();
 
-      setNotice("Activity deleted successfully.");
+      setNotice("Content deleted successfully.");
       await onChanged();
     } catch (deleteError) {
       setError(
@@ -280,8 +333,8 @@ export default function ModuleActivitiesManager({
       <div>
         <p className="text-sm font-semibold text-gray-700">Activities</p>
         <p className="text-xs text-gray-500">
-          Add the learning resources for this module: video, PDF, audio, an
-          external link, or text.
+          Add the learning resources for this activity: video, PDF, slides,
+          audio, an external link, a text lesson, or an assessment.
         </p>
       </div>
 
@@ -387,7 +440,7 @@ export default function ModuleActivitiesManager({
           required
           value={title}
           onChange={(event) => setTitle(event.target.value)}
-          placeholder="Activity title"
+          placeholder="Content title"
           className="rounded-lg border px-3 py-2 text-sm"
         />
 
@@ -398,6 +451,7 @@ export default function ModuleActivitiesManager({
             setFile(null);
             setExternalUrl("");
             setTextContent("");
+            setAssessmentId("");
             setFileInputKey((current) => current + 1);
           }}
           className="rounded-lg border px-3 py-2 text-sm"
@@ -446,6 +500,39 @@ export default function ModuleActivitiesManager({
             placeholder="https://example.com/resource"
             className="rounded-lg border px-3 py-2 text-sm sm:col-span-2"
           />
+        )}
+
+        {config.input === "assessment" && (
+          <div className="space-y-2 sm:col-span-2">
+            <select
+              required
+              value={assessmentId}
+              onChange={(event) => setAssessmentId(event.target.value)}
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+            >
+              <option value="">
+                {courseAssessments === null
+                  ? "Loading assessments..."
+                  : "Select the assessment this activity opens..."}
+              </option>
+              {(courseAssessments ?? []).map((assessment) => (
+                <option key={assessment.id} value={String(assessment.id)}>
+                  {assessment.title} (
+                  {assessment.type === "PRE_TEST" ? "Pre-test" : "Post-test"})
+                </option>
+              ))}
+            </select>
+            {courseAssessments !== null && courseAssessments.length === 0 && (
+              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                This module has no assessments yet — create one in the
+                Assessments tab first.
+              </p>
+            )}
+            <p className="text-xs text-gray-400">
+              Staff will open this assessment from its place in the module
+              flow.
+            </p>
+          </div>
         )}
 
         {config.input === "text" && (

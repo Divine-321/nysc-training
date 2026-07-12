@@ -20,3 +20,13 @@ export async function PATCH(request: Request, { params }: Params) {
     request,
   });
 }
+
+// Admin-only un-assignment (confirmed by backend 2026-07-10): removes a
+// staff member from a Training Programme.
+export async function DELETE(_request: Request, { params }: Params) {
+  const { id } = await params;
+
+  return proxyApi("DELETE", {
+    path: `/api/training/enrollments/${id}/`,
+  });
+}

@@ -276,7 +276,7 @@ function formatCohortAssignmentError(message: string) {
     (normalizedMessage.includes("staff") &&
       normalizedMessage.includes("unique"))
   ) {
-    return "This staff member is already assigned to the selected training programme.";
+    return "This staff member is already assigned to the selected course.";
   }
 
   if (
@@ -284,7 +284,7 @@ function formatCohortAssignmentError(message: string) {
     normalizedMessage.includes("already assigned") ||
     normalizedMessage.includes("already exists")
   ) {
-    return "This staff member is already assigned to the selected training programme.";
+    return "This staff member is already assigned to the selected course.";
   }
 
   return message;
@@ -360,6 +360,8 @@ export default function AdminUsersPage() {
   const [assignmentError, setAssignmentError] = useState("");
   const [assignmentNotice, setAssignmentNotice] = useState("");
   const [cohortFile, setCohortFile] = useState<File | null>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+  const [bulkAssigning, setBulkAssigning] = useState(false);
   const [fileError, setFileError] = useState("");
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkUploadData | null>(null);
@@ -758,14 +760,12 @@ export default function AdminUsersPage() {
         id: cohort.id,
         label: `${cohort.name} - ${cohort.batch}`,
       }));
-  const targetLabel = programmeMode ? "Training Programme" : "Cohort";
+  const targetLabel = programmeMode ? "Course" : "Cohort";
 
   const handleAssignSelectedStaff = async () => {
     if (!selectedCohort) {
       setAssignmentError(
-        programmeMode
-          ? "Please select a training programme."
-          : "Please select a cohort.",
+        programmeMode ? "Please select a course." : "Please select a cohort.",
       );
       return;
     }
@@ -795,6 +795,9 @@ export default function AdminUsersPage() {
               body: JSON.stringify(
                 programmeMode
                   ? {
+                      // Backend renamed the FK to `programme`; send both so the
+                      // new serializer and any older one both accept it.
+                      programme: Number(selectedCohort),
                       cohort_course: Number(selectedCohort),
                       staff: Number(staffId),
                     }
@@ -856,6 +859,56 @@ export default function AdminUsersPage() {
     }
 
     setAssigningStaff(false);
+  };
+
+  // One call enrolls every active staff member of a department into the
+  // selected Training Programme; the backend skips already-enrolled staff
+  // and notifies each new enrollee by email/SMS.
+  const handleDepartmentAssign = async () => {
+    if (!selectedCohort) {
+      setAssignmentError("Please select a course.");
+      return;
+    }
+    if (!selectedDepartment) {
+      setAssignmentError("Please select a department.");
+      return;
+    }
+
+    setBulkAssigning(true);
+    setAssignmentError("");
+    setAssignmentNotice("");
+
+    try {
+      const response = await fetch("/api/training/cohort-courses/bulk-assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cohort_course_id: Number(selectedCohort),
+          department: Number(selectedDepartment),
+          active_staff_only: true,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not assign this department."),
+        );
+      }
+
+      setAssignmentNotice(
+        payload?.message || "Department assigned successfully.",
+      );
+      setSelectedDepartment("");
+    } catch (assignError) {
+      setAssignmentError(
+        assignError instanceof Error
+          ? assignError.message
+          : "Could not assign this department.",
+      );
+    } finally {
+      setBulkAssigning(false);
+    }
   };
 
   const handleBulkUpload = async () => {
@@ -2987,6 +3040,50 @@ export default function AdminUsersPage() {
                       </p>
                     </div>
                   </div>
+
+                  {programmeMode && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Or assign a whole department
+                      </label>
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <select
+                          value={selectedDepartment}
+                          onChange={(event) =>
+                            setSelectedDepartment(event.target.value)
+                          }
+                          className="w-full flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                        >
+                          <option value="">Select department...</option>
+                          {orgOptions.departments.map((department) => (
+                            <option
+                              key={department.id}
+                              value={String(department.id)}
+                            >
+                              {department.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={handleDepartmentAssign}
+                          disabled={
+                            bulkAssigning ||
+                            !selectedCohort ||
+                            !selectedDepartment
+                          }
+                          className="shrink-0 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-bold text-white transition hover:bg-[#145530] disabled:opacity-50"
+                        >
+                          {bulkAssigning ? "Assigning..." : "Assign Department"}
+                        </button>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-500">
+                        Enrolls every active staff member of the department into
+                        the selected course. Staff already enrolled are
+                        skipped.
+                      </p>
+                    </div>
+                  )}
 
                   {bulkResult && (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

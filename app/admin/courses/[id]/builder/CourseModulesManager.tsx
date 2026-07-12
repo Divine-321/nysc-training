@@ -230,7 +230,7 @@ export default function CourseModulesManager({
     });
 
     if (!response.ok) {
-      setError(`Could not delete module (HTTP ${response.status}).`);
+      setError(`Could not delete activity (HTTP ${response.status}).`);
       return;
     }
 
@@ -290,7 +290,7 @@ export default function CourseModulesManager({
 
         <div>
           <label className="mb-1 block text-sm font-medium">
-            Module title
+            Activity title
           </label>
 
           <input
@@ -360,8 +360,8 @@ export default function CourseModulesManager({
             Or assign an existing module
           </h4>
           <p className="mb-3 text-xs text-gray-500">
-            Move a module that already exists (in another course) into this
-            course, together with its activities.
+            Move an activity that already exists (in another module) into
+            this module, together with its contents.
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
             <select
@@ -372,7 +372,7 @@ export default function CourseModulesManager({
               <option value="">Select a module to assign</option>
               {otherModules.map((module) => (
                 <option key={module.id} value={module.id}>
-                  {module.title} ({getModuleActivities(module).length} activity(ies))
+                  {module.title} ({getModuleActivities(module).length} item(s))
                 </option>
               ))}
             </select>
@@ -387,7 +387,7 @@ export default function CourseModulesManager({
           </div>
           {otherModules.length === 0 && (
             <p className="mt-2 text-xs text-gray-400">
-              No modules from other courses are available.
+              No activities from other modules are available.
             </p>
           )}
         </div>
@@ -402,7 +402,7 @@ export default function CourseModulesManager({
           <p className="text-sm text-gray-500">Loading modules...</p>
         ) : modules.length === 0 ? (
           <p className="text-sm text-gray-500">
-            No modules have been added.
+            No activities have been added.
           </p>
         ) : (
           <div className="space-y-3">
@@ -418,7 +418,7 @@ export default function CourseModulesManager({
                       {module.description || "No description"}
                     </p>
                     <p className="mt-2 text-xs text-gray-400">
-                      {getModuleActivities(module).length} activity(ies)
+                      {getModuleActivities(module).length} content item(s)
                     </p>
                   </div>
 
@@ -461,6 +461,7 @@ export default function CourseModulesManager({
 
                 <ModuleActivitiesManager
                   moduleId={module.id}
+                  courseId={courseId}
                   activities={getModuleActivities(module)}
                   onChanged={loadModules}
                 />

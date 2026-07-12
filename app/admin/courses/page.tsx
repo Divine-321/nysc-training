@@ -102,7 +102,7 @@ export default function AdminCoursesPage() {
 
     if (!response.ok) {
       setError(
-        `Could not delete course (HTTP ${response.status}).`
+        `Could not delete module (HTTP ${response.status}).`
       );
       return;
     }
@@ -194,7 +194,7 @@ export default function AdminCoursesPage() {
                           href={`/admin/courses/${course.id}/builder`}
                           className="flex items-center gap-1 font-semibold text-[#1a6b3c]"
                         >
-                          Build Course
+                          View Course
                           <ArrowRight size={16} />
                         </Link>
 

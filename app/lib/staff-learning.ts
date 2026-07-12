@@ -19,9 +19,10 @@ import type {
   AssessmentAttempt,
   AssessmentAttemptStatus,
   Batch,
+  Month,
 } from "@/app/lib/training-types";
 
-export { BATCH_OPTIONS } from "@/app/lib/training-types";
+export { BATCH_OPTIONS, MONTH_OPTIONS } from "@/app/lib/training-types";
 export type {
   Activity,
   ActivityContentType,
@@ -29,6 +30,7 @@ export type {
   AssessmentAttempt,
   AssessmentAttemptStatus,
   Batch,
+  Month,
 };
 
 /** @deprecated Old model. Replaced by `Activity` in the Course -> Module -> Activity restructure. */
@@ -45,6 +47,9 @@ export type ModuleDocument = {
   content_type?: ActivityContentType;
   content_url?: string | null;
   text_content?: string | null;
+  /** Linked assessment for ASSESSMENT-type activities (either spelling). */
+  assessment?: number | null;
+  assessment_id?: number | null;
 };
 
 /** @deprecated Old model. Replaced by `Module` (from ./training-types) in the restructure. */
@@ -81,7 +86,14 @@ export type CourseEvaluation = {
 export type CourseEnrollment = {
   id: number;
   staff: number;
+  /**
+   * New backend (2026-07): the delivery is a Programme. `normalizeEnrollment`
+   * mirrors it into `cohort_course` so legacy reads keep working.
+   */
+  programme?: number;
   cohort_course: number;
+  /** New backend name for the delivered Course's title. Mirrored to course_title. */
+  programme_title?: string;
   course_title: string;
   cohort_name: string;
   status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
@@ -105,18 +117,19 @@ export function flagIsTrue(value: boolean | string | null | undefined) {
   return typeof value === "string" && value.toLowerCase() === "true";
 }
 
-// CohortCourse is the "Training Programme" (delivery of a Course to a fixed
-// Batch in a year). OLD backend: `cohort` is a Cohort FK (number) and
-// `cohort_name` is derived. NEW backend (confirmed contract, 2026-07-10):
-// `cohort` IS the batch string ("BATCH A" | "BATCH B" | "BATCH C") plus
-// year/start_date/end_date, unique on (course, cohort, year).
+// CohortCourse is the backend "Programme" (the delivery of a Course to a cohort
+// in a year), served at /api/training/cohort-courses/. Deployed contract
+// (verified 2026-07-11 from /api/schema/): `cohort` is one of the 12 MONTHS
+// ("January".."December") plus year/start_date/end_date, a single `course` FK,
+// unique on (course, cohort, year). Older Batch A/B/C values still parse.
 export type CohortCourse = {
   id: number;
-  cohort: number | Batch;
+  cohort: Month | Batch | number;
   cohort_name?: string;
   course: number;
   course_details: Course;
   assigned_at?: string;
+  assigned_by?: number | null;
   year?: number;
   start_date?: string;
   end_date?: string;
@@ -182,6 +195,8 @@ export type AssessmentResult = {
 
 export type LiveSession = {
   id: number;
+  /** New backend (2026-07): sessions belong to a Programme. Mirrored to cohort_course. */
+  programme?: number;
   cohort_course: number;
   course_title: string;
   cohort_name: string;
@@ -198,6 +213,35 @@ export type LiveSession = {
   status: "SCHEDULED" | "ONGOING" | "COMPLETED" | "CANCELLED";
   has_joined: boolean | string;
 };
+
+/**
+ * The July-2026 backend renamed the enrollment's delivery FK from
+ * `cohort_course` to `programme` (and `course_title` to `programme_title`).
+ * Mirror the new names onto the old ones so every existing screen keeps working.
+ */
+export function normalizeEnrollment(
+  enrollment: CourseEnrollment,
+): CourseEnrollment {
+  const programme = enrollment.programme ?? enrollment.cohort_course;
+  const title = enrollment.programme_title ?? enrollment.course_title;
+  return {
+    ...enrollment,
+    programme,
+    cohort_course: programme,
+    programme_title: title,
+    course_title: title,
+  };
+}
+
+/** LiveSessions likewise moved from `cohort_course` to `programme`. */
+export function normalizeLiveSession(session: LiveSession): LiveSession {
+  const programme = session.programme ?? session.cohort_course;
+  return { ...session, programme, cohort_course: programme };
+}
+
+function readEnrollments(payload: unknown): CourseEnrollment[] {
+  return readApiList<CourseEnrollment>(payload).map(normalizeEnrollment);
+}
 
 async function getJson(path: string) {
   const response = await fetch(path, { cache: "no-store" });
@@ -279,7 +323,7 @@ export async function loadStaffCourses() {
       getJson("/api/training/cohort-courses"),
     ]);
 
-  const enrollments = readApiList<CourseEnrollment>(enrollmentPayload);
+  const enrollments = readEnrollments(enrollmentPayload);
   const cohortCourses = readApiList<CohortCourse>(cohortCoursePayload);
   const assignedCourseIds = Array.from(
     new Set(
@@ -339,9 +383,9 @@ export async function loadLiveSessionsForCourse(cohortCourseIds: number[]) {
   const payload = await getJson("/api/training/live-sessions");
   const allowedIds = new Set(cohortCourseIds);
 
-  return readApiList<LiveSession>(payload).filter((session) =>
-    allowedIds.has(session.cohort_course),
-  );
+  return readApiList<LiveSession>(payload)
+    .map(normalizeLiveSession)
+    .filter((session) => allowedIds.has(session.cohort_course));
 }
 
 // The restructure renamed complete-document to complete-activity. Remembered

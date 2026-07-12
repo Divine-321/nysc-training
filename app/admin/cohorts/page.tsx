@@ -80,9 +80,9 @@ export default function CohortsPage() {
   return (
     <div className="space-y-4">
       <div className="mx-auto max-w-7xl rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
-        The backend still runs the old cohort model. Once the Training
-        Programme upgrade (fixed Batch A/B/C) is deployed, this page switches
-        to the new interface automatically.
+        The backend still runs the old cohort model. Once the restructure is
+        deployed, this page switches to the new Courses interface
+        automatically.
       </div>
       <LegacyCohortsManager />
     </div>
