@@ -157,9 +157,16 @@ export default function CourseLiveSessionsPage() {
                 className="flex flex-col justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 p-5 transition hover:bg-white md:flex-row md:items-center"
               >
                 <div>
-                  <h2 className="mb-1 text-lg font-semibold text-gray-800">
-                    {session.title}
-                  </h2>
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold text-gray-800">
+                      {session.title}
+                    </h2>
+                    {session.module_title ? (
+                      <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-[#1a6b3c]">
+                        Module: {session.module_title}
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="mb-3 text-sm text-gray-500">
                     {session.description || "No description provided."}
                   </p>

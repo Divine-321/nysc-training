@@ -13,6 +13,7 @@ import {
   UserPlus,
   BarChart3,
   BookOpen,
+  CalendarRange,
   Layers,
   History,
   Library,
@@ -32,16 +33,22 @@ const navItems = [
     icon: LayoutDashboard,
   },
   {
-    // Content authoring: Course -> Module -> Activity.
+    // Module Library: reusable modules (content) shared across courses.
+    label: "Modules",
+    href: "/admin/modules",
+    icon: Layers,
+  },
+  {
+    // Course templates: attach library modules, assign resource persons.
     label: "Courses",
     href: "/admin/courses",
     icon: BookOpen,
   },
   {
-    // Where a Course is assigned to a cohort (month) + year.
-    label: "Cohorts",
+    // Training: schedule a Course to a cohort (month) + year — the delivery.
+    label: "Training",
     href: "/admin/cohorts",
-    icon: Layers,
+    icon: CalendarRange,
   },
   {
     label: "Staff",

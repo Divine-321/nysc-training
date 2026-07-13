@@ -71,6 +71,28 @@ export type Trainer = {
   bio: string | null;
 };
 
+/** A reusable Module from the Module Library (no longer owned by a Course). */
+export type LibraryModule = {
+  id: number;
+  title: string;
+  description?: string | null;
+  thumbnail_url?: string | null;
+  cloudinary_public_id?: string | null;
+  activities?: unknown[];
+  created_at?: string;
+};
+
+/**
+ * Course↔Module link (reusable-modules restructure, live 2026-07-12).
+ * One row of the M2M through table: which module, at which position.
+ */
+export type CourseModuleLink = {
+  id: number;
+  module: number;
+  order: number;
+  module_details: LibraryModule;
+};
+
 export type Course = {
   id: number;
   title: string;
@@ -82,12 +104,23 @@ export type Course = {
   category_name: string;
   created_by: number;
   trainers: Trainer[];
+  /** Ordered reusable modules attached to this course (M2M through table). */
+  assigned_modules?: CourseModuleLink[];
   created_at: string;
   is_locked?: boolean;
   lock_reason?: string | null;
   prerequisite_ids?: number[];
   prerequisites_data?: { id: number; title: string }[];
 };
+
+/** The course's module links sorted by their per-course order. */
+export function sortedAssignedModules(
+  course: Pick<Course, "assigned_modules"> | null | undefined,
+): CourseModuleLink[] {
+  return (course?.assigned_modules ?? [])
+    .slice()
+    .sort((first, second) => first.order - second.order);
+}
 
 const SESSION_STORAGE_KEY = "nysc-auth-session";
 

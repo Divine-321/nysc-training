@@ -6,9 +6,18 @@ import {
   useState,
 } from "react";
 import type { FormEvent } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  FileStack,
+  Layers,
+  Library,
+  MinusCircle,
   Pencil,
   Plus,
   Trash2,
@@ -16,84 +25,87 @@ import {
 import {
   dedupeById,
   extractErrorMessage,
+  readApiItem,
   readApiList,
+  sortedAssignedModules,
+  type Course,
+  type CourseModuleLink,
+  type LibraryModule,
 } from "@/app/lib/portal-api";
+import { btn, field, fieldLabel } from "@/app/components/ui";
+import { ActionMenu } from "@/app/components/ui-interactive";
 import ModuleActivitiesManager from "./ModuleDocumentsManager";
 import type { Activity } from "./ModuleDocumentsManager";
 import { useConfirm } from "@/app/components/useConfirm";
 
-type CourseModule = {
-  id: number;
-  course: number;
-  title: string;
-  description: string | null;
-  notes: string | null;
-  order: number;
-  /** Legacy serializer name for the module's learning resources. */
-  documents?: Activity[];
-  /** New-model serializer name once the Activities API ships. */
-  activities?: Activity[];
-  created_at: string;
-  updated_at: string;
-};
+/**
+ * Reusable-modules backend (live 2026-07-12): Modules live in a shared
+ * library and are attached to courses through an ordered M2M link.
+ * POST /courses/{id}/assign-modules {module_ids} REPLACES the course's
+ * module list — so attach, remove and reorder all resend the full
+ * ordered id array.
+ */
 
-function getModuleActivities(module: CourseModule): Activity[] {
-  return module.activities ?? module.documents ?? [];
+function linkActivities(link: CourseModuleLink): Activity[] {
+  return (link.module_details?.activities as Activity[] | undefined) ?? [];
+}
+
+function moduleActivities(module: LibraryModule): Activity[] {
+  return (module.activities as Activity[] | undefined) ?? [];
 }
 
 const emptyForm = {
   title: "",
   description: "",
-  notes: "",
 };
-
-function getNextModuleOrder(modules: CourseModule[]) {
-  if (modules.length === 0) return 0;
-
-  return Math.max(...modules.map((module) => module.order)) + 1;
-}
 
 export default function CourseModulesManager({
   courseId,
 }: {
   courseId: number;
 }) {
+  const router = useRouter();
   const { confirm, dialog } = useConfirm();
-  const [modules, setModules] = useState<CourseModule[]>([]);
-  const [otherModules, setOtherModules] = useState<CourseModule[]>([]);
+  const [assigned, setAssigned] = useState<CourseModuleLink[]>([]);
+  const [library, setLibrary] = useState<LibraryModule[]>([]);
   const [selectedAttachId, setSelectedAttachId] = useState("");
   const [attaching, setAttaching] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const loadModules = useCallback(async () => {
     try {
-      const response = await fetch("/api/training/modules", {
-        cache: "no-store",
-      });
+      const [courseResponse, modulesResponse] = await Promise.all([
+        fetch(`/api/training/courses/${courseId}`, { cache: "no-store" }),
+        fetch("/api/training/modules", { cache: "no-store" }),
+      ]);
 
-      const payload = await response.json();
+      const coursePayload = await courseResponse.json().catch(() => null);
 
-      if (!response.ok) {
+      if (!courseResponse.ok) {
         throw new Error(
-          extractErrorMessage(payload, "Could not load modules.")
+          extractErrorMessage(
+            coursePayload,
+            "Could not load the course's modules.",
+          ),
         );
       }
 
-      const allModules = readApiList<CourseModule>(payload);
+      setAssigned(sortedAssignedModules(readApiItem<Course>(coursePayload)));
 
-      setModules(
-        dedupeById(allModules.filter((module) => module.course === courseId))
-          .sort((first, second) => first.order - second.order)
-      );
-      setOtherModules(
-        dedupeById(
-          allModules.filter((module) => module.course !== courseId),
-        ).sort((first, second) => first.title.localeCompare(second.title)),
-      );
+      const modulesPayload = await modulesResponse.json().catch(() => null);
+
+      if (modulesResponse.ok) {
+        setLibrary(
+          dedupeById(readApiList<LibraryModule>(modulesPayload)).sort(
+            (first, second) => first.title.localeCompare(second.title),
+          ),
+        );
+      }
 
       setError("");
     } catch (loadError) {
@@ -115,9 +127,49 @@ export default function CourseModulesManager({
     void fetchData();
   }, [loadModules]);
 
+  const assignedModuleIds = assigned.map((link) => link.module);
+
+  // The library modules not yet attached to this course.
+  const availableModules = library.filter(
+    (module) => !assignedModuleIds.includes(module.id),
+  );
+
+  /** Replaces the course's ordered module list on the backend. */
+  const saveAssignments = async (moduleIds: number[]) => {
+    const response = await fetch(
+      `/api/training/courses/${courseId}/assign-modules`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ module_ids: moduleIds }),
+      },
+    );
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        extractErrorMessage(payload, "Could not update the course's modules."),
+      );
+    }
+  };
+
   const resetForm = () => {
     setForm(emptyForm);
     setEditingId(null);
+  };
+
+  const toggleExpanded = (moduleId: number) => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(moduleId)) {
+        next.delete(moduleId);
+      } else {
+        next.add(moduleId);
+      }
+
+      return next;
+    });
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -137,13 +189,8 @@ export default function CourseModulesManager({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          course: courseId,
           title: form.title,
-          description: form.description || null,
-          notes: form.notes || null,
-          order: isEditing
-            ? modules.find((module) => module.id === editingId)?.order ?? 0
-            : getNextModuleOrder(modules),
+          description: form.description || "",
         }),
       });
 
@@ -153,6 +200,16 @@ export default function CourseModulesManager({
         throw new Error(
           extractErrorMessage(payload, "Could not save module.")
         );
+      }
+
+      // A brand-new module starts life in the library — attach it to this
+      // course right away so "Build Module" behaves as one step.
+      if (!isEditing) {
+        const created = readApiItem<LibraryModule>(payload);
+
+        if (created?.id) {
+          await saveAssignments([...assignedModuleIds, created.id]);
+        }
       }
 
       resetForm();
@@ -168,7 +225,8 @@ export default function CourseModulesManager({
     }
   };
 
-  // Re-parents an existing module (from another course) onto this course.
+  // Attaches a library module to this course (non-destructive — the module
+  // stays available to every other course).
   const handleAttachModule = async () => {
     const moduleId = Number(selectedAttachId);
 
@@ -178,22 +236,7 @@ export default function CourseModulesManager({
     setError("");
 
     try {
-      const response = await fetch(`/api/training/modules/${moduleId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          course: courseId,
-          order: getNextModuleOrder(modules),
-        }),
-      });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          extractErrorMessage(payload, "Could not assign this module."),
-        );
-      }
-
+      await saveAssignments([...assignedModuleIds, moduleId]);
       setSelectedAttachId("");
       await loadModules();
     } catch (attachError) {
@@ -207,30 +250,54 @@ export default function CourseModulesManager({
     }
   };
 
-  const startEditing = (module: CourseModule) => {
-    setEditingId(module.id);
+  const startEditing = (link: CourseModuleLink) => {
+    setEditingId(link.module);
 
     setForm({
-      title: module.title,
-      description: module.description ?? "",
-      notes: module.notes ?? "",
+      title: link.module_details?.title ?? "",
+      description: link.module_details?.description ?? "",
     });
   };
 
-  const handleDelete = async (id: number) => {
+  // Detaches the module from this course only; it stays in the library.
+  const handleRemoveFromCourse = async (link: CourseModuleLink) => {
     const confirmed = await confirm(
-      "Delete this module and its activities?",
+      `Remove "${link.module_details?.title ?? "this module"}" from this course? It stays in the module library and in any other course using it.`,
+    );
+
+    if (!confirmed) return;
+
+    setError("");
+
+    try {
+      await saveAssignments(
+        assignedModuleIds.filter((id) => id !== link.module),
+      );
+      await loadModules();
+    } catch (removeError) {
+      setError(
+        removeError instanceof Error
+          ? removeError.message
+          : "Could not remove this module from the course.",
+      );
+    }
+  };
+
+  // Deletes the module from the LIBRARY — it disappears from every course.
+  const handleDelete = async (link: CourseModuleLink) => {
+    const confirmed = await confirm(
+      `Delete "${link.module_details?.title ?? "this module"}" from the library? This permanently removes the module and all of its activities from EVERY course that uses it — not just this one. This cannot be undone.`,
       { danger: true },
     );
 
     if (!confirmed) return;
 
-    const response = await fetch(`/api/training/modules/${id}`, {
+    const response = await fetch(`/api/training/modules/${link.module}`, {
       method: "DELETE",
     });
 
     if (!response.ok) {
-      setError(`Could not delete activity (HTTP ${response.status}).`);
+      setError(`Could not delete module (HTTP ${response.status}).`);
       return;
     }
 
@@ -241,234 +308,326 @@ export default function CourseModulesManager({
     currentIndex: number,
     newIndex: number
   ) => {
-    if (newIndex < 0 || newIndex >= modules.length) return;
+    if (newIndex < 0 || newIndex >= assigned.length) return;
 
-    const reordered = [...modules];
+    const reordered = [...assigned];
     const [movedModule] = reordered.splice(currentIndex, 1);
 
     reordered.splice(newIndex, 0, movedModule);
 
-    const modulesWithOrder = reordered.map((module, index) => ({
-      ...module,
-      order: index,
-    }));
+    setError("");
 
-    // Deployed contract: {module_ids: [...]} in the desired order.
-    const response = await fetch("/api/training/modules/reorder", {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        module_ids: modulesWithOrder.map((module) => module.id),
-      }),
-    });
-
-    if (!response.ok) {
-      setError("Could not reorder modules.");
-      return;
+    try {
+      // Order = position in the module_ids array.
+      await saveAssignments(reordered.map((link) => link.module));
+      setAssigned(
+        reordered.map((link, index) => ({ ...link, order: index })),
+      );
+    } catch (reorderError) {
+      setError(
+        reorderError instanceof Error
+          ? reorderError.message
+          : "Could not reorder modules.",
+      );
     }
-
-    setModules(modulesWithOrder);
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-4 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm"
-      >
-        <h3 className="text-lg font-bold text-[#1a6b3c]">
-          {editingId ? "Edit Module" : "Add Module"}
-        </h3>
-
-        {error && (
-          <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        <div>
-          <label className="mb-1 block text-sm font-medium">
-            Activity title
-          </label>
-
-          <input
-            required
-            value={form.title}
-            onChange={(event) =>
-              setForm({ ...form, title: event.target.value })
-            }
-            className="w-full rounded-lg border px-4 py-2.5"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium">
-            Description
-          </label>
-
-          <textarea
-            value={form.description}
-            onChange={(event) =>
-              setForm({ ...form, description: event.target.value })
-            }
-            className="h-24 w-full rounded-lg border px-4 py-3"
-          />
-        </div>
-
-        <div>
-          <label className="mb-1 block text-sm font-medium">
-            Instructor notes
-          </label>
-
-          <textarea
-            value={form.notes}
-            onChange={(event) =>
-              setForm({ ...form, notes: event.target.value })
-            }
-            className="h-32 w-full rounded-lg border px-4 py-3"
-          />
-        </div>
-
-        <div className="flex gap-3">
-          <button
-            disabled={saving}
-            className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 font-semibold text-white disabled:opacity-50"
-          >
-            <Plus size={18} />
-            {saving
-              ? "Saving..."
-              : editingId
-                ? "Update module"
-                : "Add module"}
-          </button>
-
-          {editingId && (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="rounded-lg border px-5 py-2.5"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-
-        <div className="border-t border-gray-100 pt-4">
-          <h4 className="mb-1 text-sm font-bold text-gray-800">
-            Or assign an existing module
-          </h4>
-          <p className="mb-3 text-xs text-gray-500">
-            Move an activity that already exists (in another module) into
-            this module, together with its contents.
+    <div className="space-y-5">
+      {/* Library explainer */}
+      <div className="flex items-start gap-3 rounded-2xl border border-green-100 bg-[#f0f7f3] p-4">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-[#1a6b3c] shadow-sm">
+          <Library size={17} />
+        </span>
+        <div className="text-sm text-gray-700">
+          <p className="font-semibold text-gray-900">
+            Modules are reusable — they live in the Module Library.
           </p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
+          <p className="mt-0.5 text-gray-600">
+            Attaching a module here is non-destructive: other courses keep
+            using it, and removing it from this course never deletes it.{" "}
+            <Link
+              href="/admin/modules"
+              className="font-semibold text-[#1a6b3c] underline-offset-2 hover:underline"
+            >
+              Open the Module Library
+            </Link>
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-[minmax(300px,380px)_1fr]">
+        {/* Left: add modules */}
+        <div className="space-y-5">
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
+          >
+            <div>
+              <h3 className="font-bold text-gray-900">
+                {editingId ? "Edit Module" : "Build a New Module"}
+              </h3>
+              {editingId ? (
+                <p className="mt-1 text-xs text-amber-600">
+                  Modules are shared — your edits apply in every course that
+                  uses this module.
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-gray-500">
+                  Created in the shared library and attached to this course
+                  automatically.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className={fieldLabel}>Module title</label>
+              <input
+                required
+                value={form.title}
+                onChange={(event) =>
+                  setForm({ ...form, title: event.target.value })
+                }
+                className={field}
+              />
+            </div>
+
+            <div>
+              <label className={fieldLabel}>Description</label>
+              <textarea
+                value={form.description}
+                onChange={(event) =>
+                  setForm({ ...form, description: event.target.value })
+                }
+                className={`${field} h-24 resize-none`}
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <button disabled={saving} className={`flex-1 ${btn.primary}`}>
+                <Plus size={17} />
+                {saving
+                  ? "Saving..."
+                  : editingId
+                    ? "Update module"
+                    : "Create module"}
+              </button>
+
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className={btn.secondary}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </form>
+
+          <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+            <div>
+              <h3 className="font-bold text-gray-900">Attach from library</h3>
+              <p className="mt-1 text-xs text-gray-500">
+                Reuse an existing module — with its activities and assessments
+                — in this course. Nothing is moved or duplicated.
+              </p>
+            </div>
+
             <select
               value={selectedAttachId}
               onChange={(event) => setSelectedAttachId(event.target.value)}
-              className="w-full rounded-lg border px-4 py-2.5 text-sm"
+              className={field}
             >
-              <option value="">Select a module to assign</option>
-              {otherModules.map((module) => (
+              <option value="">Select a module to attach</option>
+              {availableModules.map((module) => (
                 <option key={module.id} value={module.id}>
-                  {module.title} ({getModuleActivities(module).length} item(s))
+                  {module.title} ({moduleActivities(module).length} item(s))
                 </option>
               ))}
             </select>
+
             <button
               type="button"
               onClick={handleAttachModule}
               disabled={!selectedAttachId || attaching}
-              className="rounded-lg border border-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50 disabled:opacity-50"
+              className={`w-full ${btn.secondary}`}
             >
-              {attaching ? "Assigning..." : "Assign to course"}
+              {attaching ? "Attaching..." : "Attach to course"}
             </button>
+
+            {availableModules.length === 0 && !loading && (
+              <p className="text-xs text-gray-400">
+                Every library module is already attached to this course.
+              </p>
+            )}
           </div>
-          {otherModules.length === 0 && (
-            <p className="mt-2 text-xs text-gray-400">
-              No activities from other modules are available.
-            </p>
+        </div>
+
+        {/* Right: assigned modules */}
+        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-bold text-gray-900">
+                Assigned Modules{" "}
+                <span className="font-normal text-gray-400">
+                  ({assigned.length})
+                </span>
+              </h3>
+              <p className="mt-0.5 text-xs text-gray-500">
+                Staff go through these in order. Use the arrows to reorder.
+              </p>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-20 animate-pulse rounded-xl bg-gray-100"
+                />
+              ))}
+            </div>
+          ) : assigned.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/60 px-6 py-12 text-center">
+              <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-white text-gray-400 shadow-sm ring-1 ring-gray-100">
+                <Layers size={20} />
+              </span>
+              <p className="text-sm font-semibold text-gray-900">
+                No modules attached yet
+              </p>
+              <p className="mt-1 max-w-xs text-sm text-gray-500">
+                Build a new module or attach one from the library to start
+                shaping this course.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {assigned.map((link, index) => {
+                const activities = linkActivities(link);
+                const isExpanded = expandedIds.has(link.module);
+                const isBeingEdited = editingId === link.module;
+
+                return (
+                  <div
+                    key={link.id}
+                    className={`rounded-xl border transition ${
+                      isBeingEdited
+                        ? "border-[#1a6b3c]/40 ring-1 ring-[#1a6b3c]/20"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3 p-4">
+                      <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f0f7f3] text-sm font-bold text-[#1a6b3c]">
+                        {index + 1}
+                      </span>
+
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-semibold text-gray-900">
+                          {link.module_details?.title}
+                        </h4>
+                        <p className="mt-0.5 line-clamp-2 text-sm text-gray-500">
+                          {link.module_details?.description ||
+                            "No description"}
+                        </p>
+                        <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-gray-500">
+                          <FileStack size={13} className="text-gray-400" />
+                          {activities.length} content item
+                          {activities.length === 1 ? "" : "s"}
+                        </p>
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-1">
+                        <button
+                          onClick={() => moveModule(index, index - 1)}
+                          disabled={index === 0}
+                          aria-label="Move module up"
+                          className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                        >
+                          <ArrowUp size={16} />
+                        </button>
+
+                        <button
+                          onClick={() => moveModule(index, index + 1)}
+                          disabled={index === assigned.length - 1}
+                          aria-label="Move module down"
+                          className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 disabled:opacity-30 disabled:hover:bg-transparent"
+                        >
+                          <ArrowDown size={16} />
+                        </button>
+
+                        <ActionMenu
+                          ariaLabel={`Actions for ${link.module_details?.title}`}
+                          items={[
+                            {
+                              label: "Edit module",
+                              icon: Pencil,
+                              onSelect: () => startEditing(link),
+                            },
+                            {
+                              label: "Open in library",
+                              icon: ExternalLink,
+                              onSelect: () =>
+                                router.push(`/admin/modules/${link.module}`),
+                            },
+                            {
+                              label: "Remove from course",
+                              icon: MinusCircle,
+                              onSelect: () =>
+                                void handleRemoveFromCourse(link),
+                            },
+                            {
+                              label: "Delete from library",
+                              icon: Trash2,
+                              danger: true,
+                              onSelect: () => void handleDelete(link),
+                            },
+                          ]}
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(link.module)}
+                      aria-expanded={isExpanded}
+                      className="flex w-full items-center justify-center gap-1.5 border-t border-gray-100 py-2 text-xs font-semibold text-gray-500 transition hover:bg-gray-50 hover:text-[#1a6b3c]"
+                    >
+                      {isExpanded ? (
+                        <>
+                          <ChevronUp size={14} /> Hide activities
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown size={14} /> Manage activities (
+                          {activities.length})
+                        </>
+                      )}
+                    </button>
+
+                    {isExpanded && (
+                      <div className="border-t border-gray-100 px-4 pb-4">
+                        <ModuleActivitiesManager
+                          moduleId={link.module}
+                          courseId={courseId}
+                          activities={activities}
+                          onChanged={loadModules}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
-      </form>
-
-      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <h3 className="mb-4 text-lg font-bold text-[#1a6b3c]">
-          Existing Modules
-        </h3>
-
-        {loading ? (
-          <p className="text-sm text-gray-500">Loading modules...</p>
-        ) : modules.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            No activities have been added.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {modules.map((module, index) => (
-              <div
-                key={module.id}
-                className="rounded-xl border border-gray-200 p-4"
-              >
-                <div className="flex justify-between gap-4">
-                  <div>
-                    <h4 className="font-semibold">{module.title}</h4>
-                    <p className="mt-1 text-sm text-gray-500">
-                      {module.description || "No description"}
-                    </p>
-                    <p className="mt-2 text-xs text-gray-400">
-                      {getModuleActivities(module).length} content item(s)
-                    </p>
-                  </div>
-
-                  <div className="flex items-start gap-2">
-                    <button
-                      onClick={() => moveModule(index, index - 1)}
-                      disabled={index === 0}
-                      aria-label="Move module up"
-                      className="disabled:opacity-30"
-                    >
-                      <ArrowUp size={17} />
-                    </button>
-
-                    <button
-                      onClick={() => moveModule(index, index + 1)}
-                      disabled={index === modules.length - 1}
-                      aria-label="Move module down"
-                      className="disabled:opacity-30"
-                    >
-                      <ArrowDown size={17} />
-                    </button>
-
-                    <button
-                      onClick={() => startEditing(module)}
-                      aria-label={`Edit ${module.title}`}
-                      className="text-[#1a6b3c]"
-                    >
-                      <Pencil size={17} />
-                    </button>
-
-                    <button
-                      onClick={() => handleDelete(module.id)}
-                      aria-label={`Delete ${module.title}`}
-                      className="text-red-600"
-                    >
-                      <Trash2 size={17} />
-                    </button>
-                  </div>
-                </div>
-
-                <ModuleActivitiesManager
-                  moduleId={module.id}
-                  courseId={courseId}
-                  activities={getModuleActivities(module)}
-                  onChanged={loadModules}
-                />
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
       {dialog}

@@ -5,15 +5,19 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  Award,
   BookOpen,
   CheckCircle2,
   ClipboardCheck,
   FileText,
   Info,
+  ListChecks,
   PlayCircle,
+  Timer,
   UserCheck,
   Video,
 } from "lucide-react";
+import { Skeleton } from "@/app/components/ui";
 import {
   documentIsComplete,
   loadAssessments,
@@ -61,6 +65,23 @@ function AssessmentCard({
           ? "Attempt the pre-course assessment before starting the modules."
           : "Attempt the post-course assessment after completing the modules."}
       </p>
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs font-medium text-gray-500">
+        <span className="inline-flex items-center gap-1.5">
+          <ListChecks size={13} className="text-gray-400" />
+          {assessment.questions.length} question
+          {assessment.questions.length === 1 ? "" : "s"}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Award size={13} className="text-gray-400" />
+          Pass mark {assessment.pass_mark}%
+        </span>
+        {assessment.duration ? (
+          <span className="inline-flex items-center gap-1.5">
+            <Timer size={13} className="text-gray-400" />
+            {assessment.duration} min
+          </span>
+        ) : null}
+      </div>
     </Link>
   );
 }
@@ -117,9 +138,13 @@ export default function CourseOverviewPage() {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="rounded-xl bg-white p-6">
-          <h2 className="text-xl font-bold text-gray-800">Loading course...</h2>
+      <div className="space-y-6 p-6">
+        <Skeleton className="h-72 w-full rounded-xl" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <div className="rounded-xl bg-white p-6 shadow-sm">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="mt-4 h-20 w-full rounded-lg" />
+          <Skeleton className="mt-3 h-20 w-full rounded-lg" />
         </div>
       </div>
     );
@@ -314,13 +339,22 @@ export default function CourseOverviewPage() {
           </p>
         ) : (
           <div className="space-y-3">
-            {staffCourse.modules.map((module) => {
+            {staffCourse.modules.map((module, moduleIndex) => {
               const completedDocuments = module.documents.filter((document) =>
                 documentIsComplete(staffCourse.enrollment, document.id),
               ).length;
               const firstDoc = module.documents
                 .slice()
                 .sort((first, second) => first.order - second.order)[0];
+              const isModuleDone =
+                module.documents.length > 0 &&
+                completedDocuments === module.documents.length;
+              const modulePercent =
+                module.documents.length === 0
+                  ? 0
+                  : Math.round(
+                      (completedDocuments / module.documents.length) * 100,
+                    );
 
               return (
                 <Link
@@ -330,41 +364,65 @@ export default function CourseOverviewPage() {
                       ? `/staff/course/${courseId}/learn?doc=${firstDoc.id}`
                       : `/staff/course/${courseId}/learn`
                   }
-                  className="block rounded-lg border p-4 transition hover:bg-gray-50"
+                  className="group block rounded-xl border border-gray-100 p-4 transition hover:border-gray-200 hover:shadow-sm"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <h4 className="font-semibold text-gray-800">
-                        {module.title}
-                      </h4>
-                      <p className="mt-1 text-sm text-gray-500">
+                  <div className="flex items-start gap-4">
+                    {module.thumbnail_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={module.thumbnail_url}
+                        alt=""
+                        className="h-12 w-12 shrink-0 rounded-xl object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#f0f7f3] text-sm font-bold text-[#1a6b3c]">
+                        {moduleIndex + 1}
+                      </span>
+                    )}
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-4">
+                        <h4 className="font-semibold text-gray-800 transition group-hover:text-[#1a6b3c]">
+                          Module {moduleIndex + 1}: {module.title}
+                        </h4>
+
+                        <span
+                          className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
+                            isModuleDone
+                              ? "bg-green-100 text-green-700"
+                              : "bg-yellow-100 text-yellow-700"
+                          }`}
+                        >
+                          {isModuleDone ? (
+                            <span className="inline-flex items-center gap-1">
+                              <CheckCircle2 size={13} />
+                              Done
+                            </span>
+                          ) : (
+                            "Pending"
+                          )}
+                        </span>
+                      </div>
+
+                      <p className="mt-1 line-clamp-2 text-sm text-gray-500">
                         {module.description || "No description"}
                       </p>
-                      <p className="mt-2 flex items-center gap-1 text-xs text-gray-400">
-                        <FileText size={13} />
-                        {completedDocuments} of {module.documents.length}{" "}
-                        material(s) completed
-                      </p>
-                    </div>
 
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs ${
-                        module.documents.length > 0 &&
-                        completedDocuments === module.documents.length
-                          ? "bg-green-100 text-green-700"
-                          : "bg-yellow-100 text-yellow-700"
-                      }`}
-                    >
-                      {module.documents.length > 0 &&
-                      completedDocuments === module.documents.length ? (
-                        <span className="inline-flex items-center gap-1">
-                          <CheckCircle2 size={13} />
-                          Done
+                      <div className="mt-3 flex items-center gap-3">
+                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              isModuleDone ? "bg-green-500" : "bg-[#1a6b3c]"
+                            }`}
+                            style={{ width: `${modulePercent}%` }}
+                          />
+                        </div>
+                        <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-gray-400">
+                          <FileText size={13} />
+                          {completedDocuments}/{module.documents.length}
                         </span>
-                      ) : (
-                        "Pending"
-                      )}
-                    </span>
+                      </div>
+                    </div>
                   </div>
                 </Link>
               );
@@ -398,9 +456,16 @@ export default function CourseOverviewPage() {
                   className="flex flex-col justify-between gap-3 rounded-lg border p-4 sm:flex-row sm:items-center"
                 >
                   <div>
-                    <h4 className="font-semibold text-gray-800">
-                      {session.title}
-                    </h4>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="font-semibold text-gray-800">
+                        {session.title}
+                      </h4>
+                      {session.module_title ? (
+                        <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-[#1a6b3c]">
+                          {session.module_title}
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="mt-1 text-xs text-gray-500">
                       {formatDateTime(session.start_time)} —{" "}
                       {formatDateTime(session.end_time)}

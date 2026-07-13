@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
+  ArrowRight,
   BookOpen,
   CalendarPlus,
   ClipboardList,
+  FileStack,
   Layers,
   Plus,
   Trash2,
@@ -17,12 +20,16 @@ import {
 } from "lucide-react";
 import {
   extractErrorMessage,
+  readApiItem,
   readApiList,
+  sortedAssignedModules,
   type AuthUser,
   type Course,
+  type LibraryModule,
 } from "@/app/lib/portal-api";
 import {
   cohortCourseBatchLabel,
+  normalizeLiveSession,
   toPercentage,
   type CohortCourse,
   type CourseEnrollment,
@@ -67,6 +74,9 @@ const emptyForm = {
 };
 
 const emptySessionForm = {
+  // Which module of the course this session covers ("general" = the whole
+  // training). Backend: LiveSession.module (nullable FK).
+  module: "",
   title: "",
   description: "",
   meeting_url: "",
@@ -136,6 +146,7 @@ function friendlyCreateError(rawMessage: string, form: typeof emptyForm) {
 }
 
 export default function TrainingProgrammesManager() {
+  const router = useRouter();
   const { confirm, dialog } = useConfirm();
   const [programmes, setProgrammes] = useState<CohortCourse[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -159,6 +170,15 @@ export default function TrainingProgrammesManager() {
   const [attendanceForId, setAttendanceForId] = useState<number | null>(null);
   const [attendanceRows, setAttendanceRows] = useState<AttendanceRow[]>([]);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
+
+  // Module viewer/attacher for one training's course (modal). Modules
+  // belong to the course TEMPLATE, so changes apply to every training of it.
+  const [modulesFor, setModulesFor] = useState<CohortCourse | null>(null);
+  const [libraryModules, setLibraryModules] = useState<LibraryModule[]>([]);
+  const [moduleAttachId, setModuleAttachId] = useState("");
+  const [moduleForm, setModuleForm] = useState({ title: "", description: "" });
+  const [savingModule, setSavingModule] = useState(false);
+  const [moduleError, setModuleError] = useState("");
 
   // Enrolled-staff management for one programme (modal).
   const [staffFor, setStaffFor] = useState<CohortCourse | null>(null);
@@ -202,7 +222,11 @@ export default function TrainingProgrammesManager() {
       setProgrammes(readApiList<CohortCourse>(programmePayload));
       if (courseResponse.ok) setCourses(readApiList<Course>(coursePayload));
       if (sessionResponse.ok) {
-        setAllSessions(readApiList<LiveSession>(sessionPayload));
+        // normalizeLiveSession mirrors the new `programme` FK onto the
+        // legacy cohort_course so the per-programme filters keep working.
+        setAllSessions(
+          readApiList<LiveSession>(sessionPayload).map(normalizeLiveSession),
+        );
       }
       setError("");
     } catch (loadError) {
@@ -293,7 +317,7 @@ export default function TrainingProgrammesManager() {
           courses.find((course) => course.id === Number(selectedCourseId))
             ?.title ?? "Programme";
         setNotice(
-          `"${courseTitle}" assigned to ${form.cohort} ${form.year}.`,
+          `Training created — "${courseTitle}" for ${form.cohort} ${form.year}.`,
         );
         setForm(emptyForm);
         setSelectedCourseId("");
@@ -352,6 +376,28 @@ export default function TrainingProgrammesManager() {
   const programmeSessions = sessionsFor
     ? allSessions.filter((session) => session.cohort_course === sessionsFor.id)
     : [];
+
+  // The delivered course's modules — each one should get its own live
+  // session inside this training.
+  const sessionModuleOptions = (
+    sessionsFor?.course_details?.assigned_modules ?? []
+  )
+    .slice()
+    .sort((first, second) => first.order - second.order)
+    .map((link) => ({
+      id: link.module,
+      title: link.module_details?.title ?? `Module ${link.module}`,
+    }));
+
+  const coveredModuleIds = new Set(
+    programmeSessions
+      .map((session) => session.module)
+      .filter((id): id is number => typeof id === "number"),
+  );
+
+  const modulesWithoutSession = sessionModuleOptions.filter(
+    (option) => !coveredModuleIds.has(option.id),
+  );
 
   const handleToggleAttendance = async (sessionId: number) => {
     if (attendanceForId === sessionId) {
@@ -469,6 +515,167 @@ export default function TrainingProgrammesManager() {
     }
   };
 
+  // ----- Course modules (per training row) ---------------------------------
+
+  const openModulesModal = async (programme: CohortCourse) => {
+    setModulesFor(programme);
+    setModuleAttachId("");
+    setModuleForm({ title: "", description: "" });
+    setModuleError("");
+
+    try {
+      const response = await fetch("/api/training/modules", {
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (response.ok) {
+        setLibraryModules(readApiList<LibraryModule>(payload));
+      }
+    } catch {
+      // The attach dropdown just stays empty; the module list still renders.
+    }
+  };
+
+  /** Replaces the course's ordered module list on the backend. */
+  const saveCourseModules = async (courseId: number, moduleIds: number[]) => {
+    const response = await fetch(
+      `/api/training/courses/${courseId}/assign-modules`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ module_ids: moduleIds }),
+      },
+    );
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        extractErrorMessage(payload, "Could not update the course's modules."),
+      );
+    }
+  };
+
+  // The freshest copy of the course being managed (loadData refreshes it).
+  const modulesCourse = modulesFor
+    ? (courses.find((course) => course.id === modulesFor.course) ??
+      modulesFor.course_details ??
+      null)
+    : null;
+  const courseModuleLinks = sortedAssignedModules(modulesCourse);
+  const attachableModules = libraryModules.filter(
+    (module) => !courseModuleLinks.some((link) => link.module === module.id),
+  );
+
+  const handleAttachModuleToCourse = async () => {
+    if (!modulesCourse || !moduleAttachId) return;
+
+    setSavingModule(true);
+    setModuleError("");
+
+    try {
+      await saveCourseModules(modulesCourse.id, [
+        ...courseModuleLinks.map((link) => link.module),
+        Number(moduleAttachId),
+      ]);
+      setModuleAttachId("");
+      await loadData();
+    } catch (attachError) {
+      setModuleError(
+        attachError instanceof Error
+          ? attachError.message
+          : "Could not attach this module.",
+      );
+    } finally {
+      setSavingModule(false);
+    }
+  };
+
+  // Quick-build: creates the module in the shared library, then attaches it
+  // to this course in one step.
+  const handleBuildModuleForCourse = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    if (!modulesCourse || !moduleForm.title.trim()) return;
+
+    setSavingModule(true);
+    setModuleError("");
+
+    try {
+      const response = await fetch("/api/training/modules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: moduleForm.title.trim(),
+          description: moduleForm.description.trim(),
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not create the module."),
+        );
+      }
+
+      const created = readApiItem<LibraryModule>(payload);
+
+      if (created?.id) {
+        await saveCourseModules(modulesCourse.id, [
+          ...courseModuleLinks.map((link) => link.module),
+          created.id,
+        ]);
+
+        // Jump straight into the module builder to add activities.
+        router.push(`/admin/modules/${created.id}`);
+        return;
+      }
+
+      setModuleForm({ title: "", description: "" });
+      await loadData();
+    } catch (buildError) {
+      setModuleError(
+        buildError instanceof Error
+          ? buildError.message
+          : "Could not create the module.",
+      );
+    } finally {
+      setSavingModule(false);
+    }
+  };
+
+  const handleRemoveModuleFromCourse = async (moduleId: number) => {
+    if (!modulesCourse) return;
+
+    const moduleTitle =
+      courseModuleLinks.find((link) => link.module === moduleId)
+        ?.module_details?.title ?? "this module";
+    const confirmed = await confirm(
+      `Remove "${moduleTitle}" from "${modulesCourse.title}"? It stays in the module library — and this affects every training of this course.`,
+    );
+
+    if (!confirmed) return;
+
+    setModuleError("");
+
+    try {
+      await saveCourseModules(
+        modulesCourse.id,
+        courseModuleLinks
+          .map((link) => link.module)
+          .filter((id) => id !== moduleId),
+      );
+      await loadData();
+    } catch (removeError) {
+      setModuleError(
+        removeError instanceof Error
+          ? removeError.message
+          : "Could not remove this module.",
+      );
+    }
+  };
+
   const handleScheduleSession = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!sessionsFor) return;
@@ -486,7 +693,14 @@ export default function TrainingProgrammesManager() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // New backend FK name is `programme`; cohort_course kept so the
+          // payload still parses against any older serializer.
+          programme: sessionsFor.id,
           cohort_course: sessionsFor.id,
+          module:
+            sessionForm.module && sessionForm.module !== "general"
+              ? Number(sessionForm.module)
+              : null,
           title: sessionForm.title.trim(),
           description: sessionForm.description.trim() || null,
           meeting_url: sessionForm.meeting_url.trim(),
@@ -553,10 +767,10 @@ export default function TrainingProgrammesManager() {
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Cohorts</h2>
+          <h2 className="text-2xl font-bold text-gray-800">Training</h2>
           <p className="text-sm text-gray-500">
-            A course is assigned to a cohort for a given year (e.g. January
-            2026).
+            Schedule a course to a cohort and year — each one is a training
+            offering.
           </p>
         </div>
 
@@ -571,7 +785,7 @@ export default function TrainingProgrammesManager() {
           className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530]"
         >
           <Plus size={18} />
-          {showForm ? "Close form" : "Assign a course"}
+          {showForm ? "Close form" : "Create Training"}
         </button>
       </div>
 
@@ -593,7 +807,7 @@ export default function TrainingProgrammesManager() {
           className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-2"
         >
           <h3 className="flex items-center gap-2 text-lg font-bold text-[#1a6b3c] md:col-span-2">
-            <Layers size={20} /> Assign a course to a cohort
+            <Layers size={20} /> Create Training
           </h3>
 
           <div>
@@ -705,7 +919,7 @@ export default function TrainingProgrammesManager() {
             disabled={saving || !selectedCourseId}
             className="rounded-lg bg-[#1a6b3c] px-6 py-3 font-semibold text-white transition hover:bg-[#145530] disabled:opacity-60 md:col-span-2"
           >
-            {saving ? "Assigning..." : "Assign course"}
+            {saving ? "Creating..." : "Create Training"}
           </button>
         </form>
       )}
@@ -736,6 +950,7 @@ export default function TrainingProgrammesManager() {
                     <th className="p-4">Cohort</th>
                     <th className="p-4">Start</th>
                     <th className="p-4">End</th>
+                    <th className="p-4">Modules</th>
                     <th className="p-4">Live sessions</th>
                     <th className="p-4">Action</th>
                   </tr>
@@ -774,6 +989,20 @@ export default function TrainingProgrammesManager() {
                         </td>
                         <td className="p-4 text-gray-600">
                           {programme.end_date ?? "—"}
+                        </td>
+                        <td className="p-4">
+                          <button
+                            type="button"
+                            onClick={() => void openModulesModal(programme)}
+                            title="View, attach or build this course's modules"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-[#1a6b3c] px-3 py-1.5 text-xs font-semibold text-[#1a6b3c] transition hover:bg-green-50"
+                          >
+                            <Layers size={14} />
+                            {(programme.course_details?.assigned_modules
+                              ?.length ?? 0) === 0
+                              ? "Add modules"
+                              : `View (${programme.course_details?.assigned_modules?.length})`}
+                          </button>
                         </td>
                         <td className="p-4">
                           <button
@@ -824,6 +1053,180 @@ export default function TrainingProgrammesManager() {
         ))
       )}
 
+      {modulesFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-lg font-bold text-gray-800">
+                  <Layers size={20} className="text-[#1a6b3c]" />
+                  Course Modules
+                </h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  {modulesCourse?.title ?? modulesFor.course_details?.title} —{" "}
+                  {cohortCourseBatchLabel(modulesFor)}
+                  {modulesFor.year ? ` ${modulesFor.year}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModulesFor(null)}
+                aria-label="Close"
+                className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="mb-4 rounded-lg bg-[#f0f7f3] px-3 py-2 text-xs text-gray-600">
+              Modules belong to the course template — adding or removing one
+              here applies to <span className="font-semibold">every</span>{" "}
+              training of this course.
+            </p>
+
+            {moduleError && (
+              <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                {moduleError}
+              </div>
+            )}
+
+            {/* Current modules */}
+            {courseModuleLinks.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-4 text-sm text-gray-500">
+                No modules in this course yet — attach one from the library or
+                build a new one below.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {courseModuleLinks.map((link, index) => (
+                  <div
+                    key={link.id}
+                    className="flex items-center gap-3 rounded-xl border border-gray-100 p-3 transition hover:border-gray-200"
+                  >
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#f0f7f3] text-sm font-bold text-[#1a6b3c]">
+                      {index + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-gray-800">
+                        {link.module_details?.title}
+                      </p>
+                      <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                        <FileStack size={12} className="text-gray-400" />
+                        {link.module_details?.activities?.length ?? 0} activit
+                        {(link.module_details?.activities?.length ?? 0) === 1
+                          ? "y"
+                          : "ies"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleRemoveModuleFromCourse(link.module)
+                      }
+                      title="Remove from this course (stays in the library)"
+                      aria-label={`Remove ${link.module_details?.title} from this course`}
+                      className="rounded-lg p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Attach from library */}
+            <div className="mt-5 border-t border-gray-100 pt-4">
+              <h4 className="text-sm font-bold text-gray-800">
+                Attach from the Module Library
+              </h4>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto]">
+                <select
+                  value={moduleAttachId}
+                  onChange={(event) => setModuleAttachId(event.target.value)}
+                  className="w-full rounded-lg border px-4 py-2.5 text-sm"
+                >
+                  <option value="">Select a module to attach</option>
+                  {attachableModules.map((module) => (
+                    <option key={module.id} value={module.id}>
+                      {module.title} ({module.activities?.length ?? 0} item(s))
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => void handleAttachModuleToCourse()}
+                  disabled={!moduleAttachId || savingModule}
+                  className="rounded-lg border border-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50 disabled:opacity-50"
+                >
+                  {savingModule ? "Working..." : "Attach"}
+                </button>
+              </div>
+              {attachableModules.length === 0 && (
+                <p className="mt-1.5 text-xs text-gray-400">
+                  Every library module is already in this course.
+                </p>
+              )}
+            </div>
+
+            {/* Build a new module */}
+            <form
+              onSubmit={handleBuildModuleForCourse}
+              className="mt-5 border-t border-gray-100 pt-4"
+            >
+              <h4 className="text-sm font-bold text-gray-800">
+                Or build a new module
+              </h4>
+              <p className="mt-0.5 text-xs text-gray-500">
+                Created in the shared library, attached to this course, and
+                you&apos;re taken straight to the module builder to add its
+                activities.
+              </p>
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                <input
+                  required
+                  value={moduleForm.title}
+                  onChange={(event) =>
+                    setModuleForm({ ...moduleForm, title: event.target.value })
+                  }
+                  placeholder="Module title"
+                  className="w-full rounded-lg border px-4 py-2.5 text-sm"
+                />
+                <textarea
+                  value={moduleForm.description}
+                  onChange={(event) =>
+                    setModuleForm({
+                      ...moduleForm,
+                      description: event.target.value,
+                    })
+                  }
+                  placeholder="Description (optional)"
+                  className="h-16 w-full rounded-lg border px-4 py-2.5 text-sm"
+                />
+                <button
+                  disabled={savingModule || !moduleForm.title.trim()}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530] disabled:opacity-60"
+                >
+                  <Plus size={16} />
+                  {savingModule
+                    ? "Working..."
+                    : "Build module & add activities"}
+                </button>
+              </div>
+            </form>
+
+            {modulesCourse ? (
+              <Link
+                href={`/admin/courses/${modulesCourse.id}/builder`}
+                className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-[#1a6b3c] underline-offset-2 hover:underline"
+              >
+                Open the course builder for activities, assessments &
+                reordering <ArrowRight size={14} />
+              </Link>
+            ) : null}
+          </div>
+        </div>
+      )}
+
       {sessionsFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
@@ -859,6 +1262,45 @@ export default function TrainingProgrammesManager() {
               onSubmit={handleScheduleSession}
               className="grid gap-3 md:grid-cols-2"
             >
+              {sessionModuleOptions.length > 0 ? (
+                <div className="md:col-span-2">
+                  <select
+                    required
+                    value={sessionForm.module}
+                    onChange={(event) =>
+                      setSessionForm({
+                        ...sessionForm,
+                        module: event.target.value,
+                      })
+                    }
+                    aria-label="Module this session covers"
+                    className="w-full rounded-lg border px-4 py-2.5 text-sm"
+                  >
+                    <option value="">
+                      Select the module this session covers…
+                    </option>
+                    {sessionModuleOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.title}
+                      </option>
+                    ))}
+                    <option value="general">
+                      General — whole training (no specific module)
+                    </option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Each module of the course should have its own live
+                    session.
+                  </p>
+                </div>
+              ) : (
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 md:col-span-2">
+                  This course has no modules yet, so the session will apply to
+                  the whole training. Attach modules in the course builder to
+                  schedule per-module sessions.
+                </p>
+              )}
+
               <input
                 required
                 value={sessionForm.title}
@@ -928,16 +1370,40 @@ export default function TrainingProgrammesManager() {
               </button>
             </form>
 
+            {sessionModuleOptions.length > 0 &&
+              (modulesWithoutSession.length > 0 ? (
+                <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  No live session yet for:{" "}
+                  <span className="font-semibold">
+                    {modulesWithoutSession
+                      .map((option) => option.title)
+                      .join(", ")}
+                  </span>
+                </p>
+              ) : (
+                programmeSessions.length > 0 && (
+                  <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700">
+                    Every module in this course has a live session scheduled.
+                  </p>
+                )
+              ))}
+
             {programmeSessions.length > 0 && (
               <div className="mt-5 space-y-2 border-t border-gray-100 pt-4">
                 {programmeSessions.map((session) => (
                   <div key={session.id} className="rounded-lg bg-gray-50 p-3">
                     <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-800">
-                          {session.title}
-                        </p>
-                        <p className="text-xs text-gray-500">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-gray-800">
+                            {session.title}
+                          </p>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-medium text-[#1a6b3c]">
+                            <Layers size={11} />
+                            {session.module_title || "Whole training"}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-gray-500">
                           {formatDateTime(session.start_time)} —{" "}
                           {formatDateTime(session.end_time)} · {session.status}
                         </p>

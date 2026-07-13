@@ -7,11 +7,13 @@ import {
   BookOpen,
   CheckCircle2,
   Clock,
+  Layers,
   Lock,
   PlayCircle,
   Search,
   UserCheck,
 } from "lucide-react";
+import { Skeleton } from "@/app/components/ui";
 import {
   loadStaffCourses,
   toPercentage,
@@ -148,9 +150,24 @@ export default function StaffTraining() {
         )}
 
         {loading ? (
-          <p className="rounded-xl bg-gray-50 p-6 text-sm text-gray-500">
-            Loading your assigned courses...
-          </p>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={index}
+                className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"
+              >
+                <Skeleton className="h-40 w-full rounded-none" />
+                <div className="p-5">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="mt-2 h-5 w-3/4" />
+                  <Skeleton className="mt-3 h-4 w-full" />
+                  <Skeleton className="mt-1.5 h-4 w-2/3" />
+                  <Skeleton className="mt-5 h-2 w-full rounded-full" />
+                  <Skeleton className="mt-5 h-10 w-full rounded-xl" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : visibleCourses.length === 0 ? (
           <div className="rounded-xl bg-gray-50 p-8 text-center">
             <BookOpen className="mx-auto mb-3 text-gray-300" size={42} />
@@ -188,7 +205,7 @@ export default function StaffTraining() {
                   <div className="relative h-40 bg-[#1a6b3c]">
                     <Image
                       src={item.course?.thumbnail_url || "/images/course-thumb.png"}
-                      alt={item.enrollment.course_title}
+                      alt={item.enrollment.course_title ?? "Course thumbnail"}
                       width={400}
                       height={200}
                       className={`h-40 w-full object-cover ${
@@ -210,9 +227,16 @@ export default function StaffTraining() {
                   </div>
 
                   <div className="flex flex-1 flex-col p-5">
-                    <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-gray-500">
-                      <Clock size={14} className="text-[#1a6b3c]" />
-                      {item.enrollment.cohort_name}
+                    <p className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-gray-500">
+                      <span className="flex items-center gap-1.5">
+                        <Clock size={14} className="text-[#1a6b3c]" />
+                        {item.enrollment.cohort_name}
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <Layers size={14} className="text-[#1a6b3c]" />
+                        {item.modules.length} module
+                        {item.modules.length === 1 ? "" : "s"}
+                      </span>
                     </p>
 
                     <h3 className="mb-2 font-bold text-gray-800 transition group-hover:text-[#1a6b3c]">
@@ -239,24 +263,24 @@ export default function StaffTraining() {
                         "Open this course to view activities and materials."}
                     </p>
 
-                    <p className="mb-2 text-xs font-medium text-gray-500">
-                      {completedDocuments} out of {totalDocuments} material(s)
-                      completed
-                    </p>
+                    <div className="mb-1.5 flex items-center justify-between text-xs font-medium">
+                      <span className="text-gray-500">
+                        {completedDocuments} of {totalDocuments} material
+                        {totalDocuments === 1 ? "" : "s"} completed
+                      </span>
+                      <span className="font-bold text-[#1a6b3c]">
+                        {progress}%
+                      </span>
+                    </div>
 
-                    <div className="mb-2 h-2 w-full rounded-full bg-gray-100">
+                    <div className="mb-5 h-2 w-full overflow-hidden rounded-full bg-gray-100">
                       <div
-                        className="h-2 rounded-full bg-[#1a6b3c]"
+                        className={`h-2 rounded-full transition-all duration-500 ${
+                          progress >= 100 ? "bg-green-500" : "bg-[#1a6b3c]"
+                        }`}
                         style={{ width: `${progress}%` }}
                       />
                     </div>
-
-                    <p className="mb-5 text-xs font-medium text-gray-500">
-                      <span className="font-bold text-[#1a6b3c]">
-                        {progress}%
-                      </span>{" "}
-                      Materials Complete
-                    </p>
 
                     {isLocked && lockReason && (
                       <p className="mb-3 flex items-start gap-1.5 text-xs font-semibold text-amber-700">

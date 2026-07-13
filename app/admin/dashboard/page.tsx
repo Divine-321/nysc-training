@@ -6,6 +6,7 @@ import {
   Award,
   BookOpen,
   Calendar,
+  CalendarRange,
   Clock,
   Layers,
   PlusCircle,
@@ -16,6 +17,7 @@ import {
 import {
   extractErrorMessage,
   readApiItem,
+  readApiList,
 } from "@/app/lib/portal-api";
 import { formatDate, formatTime } from "@/app/lib/format";
 
@@ -36,8 +38,8 @@ type UpcomingLiveClass = {
 type DashboardAnalytics = {
   totalNumberOfStaff: number;
   totalNumberOfActiveCourses: number;
-  totalNumberOfCohorts: number;
-  totalNumberOfActiveCohorts: number;
+  totalNumberOfTrainingProgrammes: number;
+  totalNumberOfActiveTrainingProgrammes: number;
   totalNumberOfCertificatesAssigned: number;
   totalNumberOfDepartments: number;
   totalUpcomingLiveSessionsWithinMonth: number;
@@ -50,6 +52,7 @@ export default function AdminDashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [totalModules, setTotalModules] = useState<number | null>(null);
 
   useEffect(() => {
     const loadAnalytics = async () => {
@@ -88,7 +91,23 @@ export default function AdminDashboardPage() {
       }
     };
 
+    // Module count isn't part of the analytics payload, so we count the
+    // modules list directly (a plain, unpaginated array).
+    const loadModuleCount = async () => {
+      try {
+        const response = await fetch("/api/training/modules", {
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json().catch(() => null);
+        setTotalModules(readApiList(payload).length);
+      } catch {
+        // Leave as null — the card just falls back gracefully.
+      }
+    };
+
     void loadAnalytics();
+    void loadModuleCount();
   }, []);
 
   const primaryStats = [
@@ -105,9 +124,9 @@ export default function AdminDashboardPage() {
       icon: BookOpen,
     },
     {
-      label: "Total Cohorts",
-      value: analytics?.totalNumberOfCohorts,
-      description: "All training cohorts",
+      label: "Active Training",
+      value: analytics?.totalNumberOfActiveTrainingProgrammes,
+      description: "Course deliveries running",
       icon: Layers,
     },
     {
@@ -120,12 +139,16 @@ export default function AdminDashboardPage() {
 
   const secondaryStats = [
     {
-      label: "Active Cohorts",
-      value: analytics?.totalNumberOfActiveCohorts,
+      label: "Total Modules",
+      value: totalModules ?? undefined,
     },
     {
       label: "Upcoming Sessions",
       value: analytics?.totalUpcomingLiveSessionsWithinMonth,
+    },
+    {
+      label: "Departments",
+      value: analytics?.totalNumberOfDepartments,
     },
   ];
 
@@ -178,7 +201,7 @@ export default function AdminDashboardPage() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {secondaryStats.map((stat) => (
           <div
             key={stat.label}
@@ -257,7 +280,7 @@ export default function AdminDashboardPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
         <Link
           href="/admin/courses/create"
           className="rounded-2xl bg-[#1a6b3c] p-6 text-white shadow-sm transition hover:bg-[#145530]"
@@ -272,15 +295,28 @@ export default function AdminDashboardPage() {
         </Link>
 
         <Link
+          href="/admin/modules"
+          className="rounded-2xl bg-blue-600 p-6 text-white shadow-sm transition hover:bg-blue-700"
+        >
+          <Layers size={32} className="mb-4 text-blue-200" />
+
+          <h3 className="text-lg font-bold">Manage Modules</h3>
+
+          <p className="mt-1 text-sm text-blue-100">
+            Build reusable modules in the library.
+          </p>
+        </Link>
+
+        <Link
           href="/admin/cohorts"
           className="rounded-2xl bg-yellow-500 p-6 text-white shadow-sm transition hover:bg-yellow-600"
         >
-          <Layers size={32} className="mb-4 text-yellow-100" />
+          <CalendarRange size={32} className="mb-4 text-yellow-100" />
 
-          <h3 className="text-lg font-bold">Manage Cohorts</h3>
+          <h3 className="text-lg font-bold">Manage Training</h3>
 
           <p className="mt-1 text-sm text-yellow-100">
-            Assign courses to cohorts (e.g. January 2026).
+            Deliver courses to cohorts (e.g. January 2026).
           </p>
         </Link>
 

@@ -1,35 +1,78 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  BookOpen,
+  Calendar,
+  FileStack,
+  FolderPlus,
+  Layers,
+  Pencil,
   Plus,
   Trash2,
+  UserCheck,
 } from "lucide-react";
 import {
-  dedupeById,
   extractErrorMessage,
   readApiList,
+  sortedAssignedModules,
   type Course,
 } from "@/app/lib/portal-api";
+import { formatDate } from "@/app/lib/format";
 import { useConfirm } from "@/app/components/useConfirm";
+import {
+  Badge,
+  btn,
+  EmptyState,
+  field,
+  PageHeader,
+  Skeleton,
+} from "@/app/components/ui";
+import {
+  ActionMenu,
+  Pagination,
+  SearchInput,
+  ToastViewport,
+  useToasts,
+} from "@/app/components/ui-interactive";
 
-type CourseModule = {
-  id: number;
-  course: number;
+const STATUS_BADGE: Record<
+  Course["status"],
+  { label: string; variant: "green" | "amber" | "gray" }
+> = {
+  PUBLISHED: { label: "Published", variant: "green" },
+  DRAFT: { label: "Draft", variant: "amber" },
+  ARCHIVED: { label: "Archived", variant: "gray" },
 };
+
+type StatusFilter = "ALL" | Course["status"];
+type SortKey = "newest" | "oldest" | "title" | "modules";
+
+const PAGE_SIZE = 9;
+
+// NOTE(backend): the Course serializer has no thumbnail or updated_at fields,
+// so course cards show neither — only what the API actually returns.
 
 async function readJsonResponse(response: Response) {
   return response.json().catch(() => null);
 }
 
 export default function AdminCoursesPage() {
+  const router = useRouter();
   const { confirm, dialog } = useConfirm();
+  const { toasts, push } = useToasts();
+
   const [courses, setCourses] = useState<Course[]>([]);
-  const [modules, setModules] = useState<CourseModule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("ALL");
+  const [sort, setSort] = useState<SortKey>("newest");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const loadData = async () => {
@@ -37,46 +80,21 @@ export default function AdminCoursesPage() {
         const coursesResponse = await fetch("/api/training/courses", {
           cache: "no-store",
         });
-
         const coursesPayload = await readJsonResponse(coursesResponse);
 
         if (!coursesResponse.ok) {
           throw new Error(
-            extractErrorMessage(
-              coursesPayload,
-              "Could not load courses."
-            )
+            extractErrorMessage(coursesPayload, "Could not load courses."),
           );
         }
 
-        const courseList = readApiList<Course>(coursesPayload);
-        setCourses(courseList);
-
-        try {
-          const modulesResponse = await fetch("/api/training/modules", {
-            cache: "no-store",
-          });
-          const modulesPayload = await readJsonResponse(modulesResponse);
-
-          if (!modulesResponse.ok) {
-            throw new Error(
-              extractErrorMessage(
-                modulesPayload,
-                "Could not load course modules.",
-              ),
-            );
-          }
-
-          setModules(dedupeById(readApiList<CourseModule>(modulesPayload)));
-        } catch (moduleError) {
-          console.error("Could not load course module counts.", moduleError);
-          setModules([]);
-        }
+        // Each course embeds its assigned_modules — no second fetch needed.
+        setCourses(readApiList<Course>(coursesPayload));
       } catch (loadError) {
         setError(
           loadError instanceof Error
             ? loadError.message
-            : "Could not load courses."
+            : "Could not load courses.",
         );
       } finally {
         setLoading(false);
@@ -86,147 +104,293 @@ export default function AdminCoursesPage() {
     void loadData();
   }, []);
 
-  const handleDelete = async (course: Course) => {
-    const confirmed = await confirm(`Delete "${course.title}"?`, {
-      danger: true,
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    const matching = courses.filter((course) => {
+      if (query) {
+        const haystack =
+          `${course.title} ${course.description ?? ""} ${course.category_name ?? ""}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+
+      if (status !== "ALL" && course.status !== status) return false;
+
+      return true;
     });
+
+    return matching.sort((first, second) => {
+      if (sort === "title") return first.title.localeCompare(second.title);
+      if (sort === "modules") {
+        return (
+          (second.assigned_modules?.length ?? 0) -
+          (first.assigned_modules?.length ?? 0)
+        );
+      }
+      if (sort === "oldest") {
+        return (first.created_at ?? "").localeCompare(second.created_at ?? "");
+      }
+      // newest
+      return (second.created_at ?? "").localeCompare(first.created_at ?? "");
+    });
+  }, [courses, search, status, sort]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const visible = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  const handleDelete = async (course: Course) => {
+    const moduleCount = course.assigned_modules?.length ?? 0;
+
+    const confirmed = await confirm(
+      `Delete "${course.title}"? ${
+        moduleCount > 0
+          ? `Its ${moduleCount} attached module${
+              moduleCount === 1 ? "" : "s"
+            } stay in the Module Library and are not deleted. `
+          : ""
+      }This cannot be undone.`,
+      { danger: true },
+    );
 
     if (!confirmed) return;
 
-    const response = await fetch(
-      `/api/training/courses/${course.id}`,
-      {
-        method: "DELETE",
-      }
-    );
+    const response = await fetch(`/api/training/courses/${course.id}`, {
+      method: "DELETE",
+    });
 
     if (!response.ok) {
-      setError(
-        `Could not delete module (HTTP ${response.status}).`
-      );
+      push(`Could not delete course (HTTP ${response.status}).`, "error");
       return;
     }
 
-    setCourses((current) =>
-      current.filter((item) => item.id !== course.id)
-    );
-
-    setModules((current) =>
-      current.filter((module) => module.course !== course.id)
-    );
+    setCourses((current) => current.filter((item) => item.id !== course.id));
+    push("Course deleted.");
   };
 
+  const hasFilters = search.trim() !== "" || status !== "ALL";
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-800">
-            Courses
-          </h2>
+    <div className="mx-auto max-w-7xl space-y-6">
+      {dialog}
+      <ToastViewport toasts={toasts} />
 
-          <p className="mt-1 text-sm text-gray-500">
-            Manage courses and their modules.
-          </p>
+      <PageHeader
+        title="Courses"
+        subtitle="Reusable course templates. Attach modules from the library, then deliver each course to a cohort as a Training."
+        actions={
+          <Link href="/admin/courses/create" className={btn.primary}>
+            <Plus size={18} /> New Course
+          </Link>
+        }
+      />
+
+      {error ? (
+        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
         </div>
+      ) : null}
 
-        <Link
-          href="/admin/courses/create"
-          className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white"
-        >
-          <Plus size={18} />
-          New Course
-        </Link>
+      {/* Toolbar */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <SearchInput
+          value={search}
+          onChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
+          placeholder="Search courses…"
+          className="w-full lg:max-w-sm"
+        />
+
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <select
+            value={status}
+            onChange={(event) => {
+              setStatus(event.target.value as StatusFilter);
+              setPage(1);
+            }}
+            aria-label="Filter by status"
+            className={`${field} w-auto`}
+          >
+            <option value="ALL">All statuses</option>
+            <option value="PUBLISHED">Published</option>
+            <option value="DRAFT">Draft</option>
+            <option value="ARCHIVED">Archived</option>
+          </select>
+
+          <select
+            value={sort}
+            onChange={(event) => {
+              setSort(event.target.value as SortKey);
+              setPage(1);
+            }}
+            aria-label="Sort courses"
+            className={`${field} w-auto`}
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="title">Title A–Z</option>
+            <option value="modules">Most modules</option>
+          </select>
+
+          {!loading && courses.length > 0 ? (
+            <p className="ml-auto text-xs font-medium text-gray-400">
+              {filtered.length} of {courses.length} course
+              {courses.length === 1 ? "" : "s"}
+            </p>
+          ) : null}
+        </div>
       </div>
 
-      {error && (
-        <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-          {error}
+      {loading ? (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={index}
+              className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <Skeleton className="h-11 w-11 rounded-xl" />
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+              <Skeleton className="h-5 w-3/4" />
+              <Skeleton className="mt-2 h-4 w-full" />
+              <Skeleton className="mt-1.5 h-4 w-2/3" />
+              <Skeleton className="mt-6 h-9 w-full rounded-lg" />
+            </div>
+          ))}
+        </div>
+      ) : courses.length === 0 ? (
+        <EmptyState
+          icon={FolderPlus}
+          title="No courses yet"
+          description="Create your first course, then attach modules from the library."
+          action={
+            <Link href="/admin/courses/create" className={btn.primary}>
+              <Plus size={18} /> New Course
+            </Link>
+          }
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={BookOpen}
+          title="No courses match"
+          description="Try a different search term or clear the filters."
+          action={
+            hasFilters ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setStatus("ALL");
+                  setPage(1);
+                }}
+                className={btn.secondary}
+              >
+                Clear filters
+              </button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {visible.map((course) => {
+            const courseModules = sortedAssignedModules(course);
+            const moduleCount = courseModules.length;
+            const activityCount = courseModules.reduce(
+              (sum, link) =>
+                sum + (link.module_details?.activities?.length ?? 0),
+              0,
+            );
+            const trainers =
+              (course.trainers ?? [])
+                .map((trainer) => trainer.full_name)
+                .join(", ") || "No resource person assigned";
+            const statusBadge =
+              STATUS_BADGE[course.status] ?? STATUS_BADGE.DRAFT;
+            const builderHref = `/admin/courses/${course.id}/builder`;
+
+            return (
+              <div
+                key={course.id}
+                className="group flex flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-gray-200 hover:shadow-md"
+              >
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f0f7f3] text-[#1a6b3c]">
+                    <BookOpen size={20} />
+                  </div>
+                  <Badge variant={statusBadge.variant}>
+                    {statusBadge.label}
+                  </Badge>
+                </div>
+
+                <Link href={builderHref} className="min-w-0">
+                  <h3 className="truncate font-semibold text-gray-900 transition group-hover:text-[#1a6b3c]">
+                    {course.title}
+                  </h3>
+                </Link>
+                <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-sm text-gray-500">
+                  {course.description || "No description yet."}
+                </p>
+
+                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-medium text-gray-600">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Layers size={14} className="text-gray-400" />
+                    {moduleCount} module{moduleCount === 1 ? "" : "s"}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <FileStack size={14} className="text-gray-400" />
+                    {activityCount} activit{activityCount === 1 ? "y" : "ies"}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Calendar size={14} className="text-gray-400" />
+                    {course.created_at ? formatDate(course.created_at) : "—"}
+                  </span>
+                </div>
+
+                <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
+                  <UserCheck size={13} className="shrink-0" />
+                  <span className="truncate">{trainers}</span>
+                </div>
+
+                <div className="mt-5 flex items-center gap-2 border-t border-gray-100 pt-4">
+                  <Link href={builderHref} className={`flex-1 ${btn.secondary}`}>
+                    Open builder <ArrowRight size={15} />
+                  </Link>
+                  <ActionMenu
+                    ariaLabel={`Actions for ${course.title}`}
+                    items={[
+                      {
+                        label: "Open builder",
+                        icon: Pencil,
+                        onSelect: () => router.push(builderHref),
+                      },
+                      {
+                        label: "Delete course",
+                        icon: Trash2,
+                        danger: true,
+                        onSelect: () => void handleDelete(course),
+                      },
+                    ]}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-2xl bg-white p-6 shadow-sm">
-        {loading ? (
-          <p className="py-8 text-center text-gray-500">
-            Loading courses...
-          </p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-[#f0f7f3]">
-              <tr>
-                <th className="px-4 py-3 text-left">Course</th>
-                <th className="px-4 py-3 text-left">Trainers</th>
-                <th className="px-4 py-3 text-left">Modules</th>
-                <th className="px-4 py-3 text-left">Action</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {courses.map((course) => {
-                const moduleCount = modules.filter(
-                  (module) => module.course === course.id
-                ).length;
-
-                const trainerNames =
-                  (course.trainers ?? [])
-                    .map((trainer) => trainer.full_name)
-                    .join(", ") || "Unassigned";
-
-                return (
-                  <tr
-                    key={course.id}
-                    className="border-b hover:bg-gray-50"
-                  >
-                    <td className="px-4 py-4 font-medium">
-                      {course.title}
-                    </td>
-
-                    <td className="px-4 py-4 text-gray-600">
-                      {trainerNames}
-                    </td>
-
-                    <td className="px-4 py-4">
-                      {moduleCount}
-                    </td>
-
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        <Link
-                          href={`/admin/courses/${course.id}/builder`}
-                          className="flex items-center gap-1 font-semibold text-[#1a6b3c]"
-                        >
-                          View Course
-                          <ArrowRight size={16} />
-                        </Link>
-
-                        <button
-                          onClick={() => handleDelete(course)}
-                          aria-label={`Delete ${course.title}`}
-                          className="text-red-600"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-
-              {courses.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-4 py-8 text-center text-gray-500"
-                  >
-                    No courses have been created.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {dialog}
+      {!loading && filtered.length > 0 ? (
+        <Pagination
+          page={currentPage}
+          pageCount={pageCount}
+          onPageChange={setPage}
+        />
+      ) : null}
     </div>
   );
 }

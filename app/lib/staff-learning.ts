@@ -60,6 +60,8 @@ export type CourseModule = {
   description: string | null;
   notes: string | null;
   order: number;
+  /** Library module thumbnail (reusable-modules backend, 2026-07-12). */
+  thumbnail_url?: string | null;
   documents: ModuleDocument[];
 };
 
@@ -169,14 +171,21 @@ export type AssessmentQuestion = {
 
 export type Assessment = {
   id: number;
-  course: number;
-  course_title: string;
+  /** Reusable-modules backend (2026-07-12): assessments belong to a Module. */
+  module?: number | null;
+  module_title?: string;
+  /** @deprecated Pre-restructure — assessments used to belong to a Course. */
+  course?: number;
+  /** @deprecated Renamed module_title in the reusable-modules restructure. */
+  course_title?: string;
   type: "PRE_TEST" | "POST_TEST";
   title: string;
   description: string | null;
   pass_mark: string;
   /** Null/0 means unlimited attempts (restructure, 2026-07-10). */
   max_attempts: number | null;
+  /** Duration in minutes (reusable-modules backend, 2026-07-12). */
+  duration?: number;
   questions: AssessmentQuestion[];
 };
 
@@ -200,6 +209,12 @@ export type LiveSession = {
   cohort_course: number;
   course_title: string;
   cohort_name: string;
+  /** Which module of the course this session covers (null = whole training). */
+  module?: number | null;
+  module_title?: string;
+  /** Optional session-specific trainer (reusable-modules backend, 2026-07-12). */
+  trainer?: number | null;
+  trainer_name?: string;
   title: string;
   description: string | null;
   /**
@@ -286,6 +301,35 @@ function normalizeModule(rawModule: RawCourseModule): CourseModule {
   };
 }
 
+/**
+ * Reusable-modules backend (live 2026-07-12): the course payload embeds its
+ * ordered modules as `assigned_modules` (M2M through table), so no per-course
+ * module fetch is needed. Returns null on pre-restructure payloads so the
+ * caller can fall back to the legacy loader.
+ */
+function modulesFromAssignedModules(
+  course: Course | null | undefined,
+  courseId: number | undefined,
+): CourseModule[] | null {
+  if (!course?.assigned_modules) return null;
+
+  return course.assigned_modules
+    .slice()
+    .sort((first, second) => first.order - second.order)
+    .map((link) => ({
+      id: link.module_details?.id ?? link.module,
+      course: courseId ?? course.id,
+      title: link.module_details?.title ?? "",
+      description: link.module_details?.description ?? null,
+      notes: null,
+      order: link.order,
+      thumbnail_url: link.module_details?.thumbnail_url ?? null,
+      documents:
+        (link.module_details?.activities as ModuleDocument[] | undefined) ??
+        [],
+    }));
+}
+
 async function loadModulesForCourse(courseId: number) {
   try {
     const modulePayload = await getJson(
@@ -325,20 +369,26 @@ export async function loadStaffCourses() {
 
   const enrollments = readEnrollments(enrollmentPayload);
   const cohortCourses = readApiList<CohortCourse>(cohortCoursePayload);
-  const assignedCourseIds = Array.from(
+
+  // Legacy fallback only: fetch modules per course when the payload predates
+  // the reusable-modules restructure (no assigned_modules embedded).
+  const legacyCourseIds = Array.from(
     new Set(
       enrollments
         .map((enrollment) =>
           cohortCourses.find((item) => item.id === enrollment.cohort_course),
+        )
+        .filter(
+          (cohortCourse) => !cohortCourse?.course_details?.assigned_modules,
         )
         .map((cohortCourse) => Number(cohortCourse?.course))
         .filter((courseId) => Number.isFinite(courseId)),
     ),
   );
 
-  const modules = (
+  const legacyModules = (
     await Promise.all(
-      assignedCourseIds.map((courseId) => loadModulesForCourse(courseId)),
+      legacyCourseIds.map((courseId) => loadModulesForCourse(courseId)),
     )
   ).flat();
 
@@ -347,14 +397,22 @@ export async function loadStaffCourses() {
       cohortCourses.find((item) => item.id === enrollment.cohort_course) ??
       null;
     const course = cohortCourse?.course_details ?? null;
+    const embeddedModules = modulesFromAssignedModules(
+      course,
+      cohortCourse?.course,
+    );
 
     return {
       enrollment,
       cohortCourse,
       course,
-      modules: dedupeById(
-        modules.filter((module) => module.course === cohortCourse?.course),
-      ).sort((first, second) => first.order - second.order),
+      modules:
+        embeddedModules ??
+        dedupeById(
+          legacyModules.filter(
+            (module) => module.course === cohortCourse?.course,
+          ),
+        ).sort((first, second) => first.order - second.order),
     };
   });
 }
@@ -373,10 +431,35 @@ export async function loadStaffCourse(courseId: number) {
 
 export async function loadAssessments(courseId: number) {
   const payload = await getJson("/api/training/assessments");
+  const assessments = readApiList<Assessment>(payload);
 
-  return readApiList<Assessment>(payload).filter(
-    (assessment) => assessment.course === courseId,
-  );
+  // Reusable-modules backend: assessments belong to Modules, so scope by the
+  // course's assigned module ids (read off the programmes list, which staff
+  // can always access). Pre-restructure payloads still carry `course`.
+  let moduleIds: Set<number> | null = null;
+
+  try {
+    const cohortPayload = await getJson("/api/training/cohort-courses");
+    const match = readApiList<CohortCourse>(cohortPayload).find(
+      (item) => Number(item.course) === courseId,
+    );
+
+    if (match?.course_details?.assigned_modules) {
+      moduleIds = new Set(
+        match.course_details.assigned_modules.map((link) => link.module),
+      );
+    }
+  } catch {
+    // Fall through to the legacy course filter below.
+  }
+
+  return assessments.filter((assessment) => {
+    if (moduleIds && assessment.module != null) {
+      return moduleIds.has(assessment.module);
+    }
+
+    return assessment.course === courseId;
+  });
 }
 
 export async function loadLiveSessionsForCourse(cohortCourseIds: number[]) {

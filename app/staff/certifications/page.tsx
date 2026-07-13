@@ -73,9 +73,15 @@ function buildRequirements(
   ).length;
 
   const courseId = staffCourseId(staffCourse);
+  // Assessments belong to Modules now (reusable-modules backend) — match by
+  // the course's module ids, keeping the old course match as a fallback.
+  const moduleIds = new Set(modules.map((courseModule) => courseModule.id));
   const postTest = assessments.find(
     (assessment) =>
-      assessment.course === courseId && assessment.type === "POST_TEST",
+      assessment.type === "POST_TEST" &&
+      (assessment.module != null
+        ? moduleIds.has(assessment.module)
+        : assessment.course === courseId),
   );
   // The enrollment now carries the authoritative flag; attempts are a
   // fallback for older payloads.

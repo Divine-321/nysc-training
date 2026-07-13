@@ -10,8 +10,11 @@ import {
   Pencil,
   Save,
   Trash2,
+  UploadCloud,
   X,
 } from "lucide-react";
+import { activityTypeMeta } from "@/app/components/activity-meta";
+import { field } from "@/app/components/ui";
 import {
   activityContentType,
   activityUrl,
@@ -37,7 +40,12 @@ export type Activity = AdminActivity;
 
 type ModuleActivitiesManagerProps = {
   moduleId: number;
-  courseId: number;
+  /**
+   * Optional: only used as a legacy fallback when filtering the assessment
+   * picker (assessments belong to Modules now). The Module Library detail
+   * page embeds this manager without a course context.
+   */
+  courseId?: number;
   activities: Activity[];
   onChanged: () => Promise<void>;
 };
@@ -119,8 +127,10 @@ export default function ModuleActivitiesManager({
     };
   }, []);
 
-  // The course's assessments, loaded once the admin first picks the
-  // Assessment activity type.
+  // This module's assessments, loaded once the admin first picks the
+  // Assessment activity type. Assessments belong to Modules now
+  // (reusable-modules backend, 2026-07-12); the course match is kept as a
+  // fallback for any pre-restructure payload.
   useEffect(() => {
     if (contentType !== "ASSESSMENT" || courseAssessments !== null) return;
 
@@ -134,7 +144,9 @@ export default function ModuleActivitiesManager({
         const payload = await response.json().catch(() => null);
         const list = response.ok
           ? readApiList<CourseAssessment>(payload).filter(
-              (assessment) => assessment.course === courseId,
+              (assessment) =>
+                assessment.module === moduleId ||
+                (courseId !== undefined && assessment.course === courseId),
             )
           : [];
 
@@ -149,7 +161,7 @@ export default function ModuleActivitiesManager({
     return () => {
       active = false;
     };
-  }, [contentType, courseAssessments, courseId]);
+  }, [contentType, courseAssessments, courseId, moduleId]);
 
   const config = configFor(contentType);
   const sortedActivities = activities
@@ -331,9 +343,14 @@ export default function ModuleActivitiesManager({
   return (
     <div className="mt-4 space-y-4 border-t border-gray-100 pt-4">
       <div>
-        <p className="text-sm font-semibold text-gray-700">Activities</p>
+        <p className="text-sm font-semibold text-gray-700">
+          Activities{" "}
+          <span className="font-normal text-gray-400">
+            ({sortedActivities.length})
+          </span>
+        </p>
         <p className="text-xs text-gray-500">
-          Add the learning resources for this activity: video, PDF, slides,
+          Add the learning resources for this module: video, PDF, slides,
           audio, an external link, a text lesson, or an assessment.
         </p>
       </div>
@@ -354,34 +371,49 @@ export default function ModuleActivitiesManager({
         <ul className="space-y-2">
           {sortedActivities.map((activity, index) => {
             const kind = activityContentType(activity);
+            const meta = activityTypeMeta(kind);
+            const TypeIcon = meta.icon;
             const isBeingEdited = editingId === activity.id;
 
             return (
               <li
                 key={activity.id}
-                className={`flex items-center justify-between gap-3 rounded-lg p-3 ${
+                className={`group flex items-center gap-3 rounded-xl border bg-white p-3 transition hover:shadow-sm ${
                   isBeingEdited
-                    ? "bg-green-50 ring-1 ring-[#1a6b3c]/30"
-                    : "bg-gray-50"
+                    ? "border-[#1a6b3c]/40 ring-1 ring-[#1a6b3c]/20"
+                    : "border-gray-100 hover:border-gray-200"
                 }`}
               >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-gray-800">
+                <span
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${meta.tint}`}
+                >
+                  <TypeIcon size={17} />
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-gray-800">
                     {activity.title}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {configFor(kind).label}
-                    {isBeingEdited && " — editing"}
+                    <span className="font-medium">{meta.label}</span>
+                    <span className="text-gray-300"> • </span>#{index + 1} in
+                    order
+                    {isBeingEdited && (
+                      <span className="font-semibold text-[#1a6b3c]">
+                        {" "}
+                        — editing
+                      </span>
+                    )}
                   </p>
                 </div>
 
-                <div className="flex shrink-0 items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1">
                   <button
                     type="button"
                     onClick={() => moveActivity(index, index - 1)}
                     disabled={index === 0 || reordering}
                     aria-label="Move activity up"
-                    className="text-gray-500 disabled:opacity-30"
+                    className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 disabled:opacity-30 disabled:hover:bg-transparent"
                   >
                     <ArrowUp size={16} />
                   </button>
@@ -390,7 +422,7 @@ export default function ModuleActivitiesManager({
                     onClick={() => moveActivity(index, index + 1)}
                     disabled={index === sortedActivities.length - 1 || reordering}
                     aria-label="Move activity down"
-                    className="text-gray-500 disabled:opacity-30"
+                    className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 disabled:opacity-30 disabled:hover:bg-transparent"
                   >
                     <ArrowDown size={16} />
                   </button>
@@ -399,7 +431,7 @@ export default function ModuleActivitiesManager({
                     type="button"
                     onClick={() => setPreviewActivity(activity)}
                     aria-label={`Preview ${activity.title}`}
-                    className="text-[#1a6b3c]"
+                    className="rounded-lg p-1.5 text-[#1a6b3c] transition hover:bg-green-50"
                   >
                     <Eye size={16} />
                   </button>
@@ -408,7 +440,7 @@ export default function ModuleActivitiesManager({
                     type="button"
                     onClick={() => startEditing(activity)}
                     aria-label={`Edit ${activity.title}`}
-                    className="text-[#1a6b3c]"
+                    className="rounded-lg p-1.5 text-[#1a6b3c] transition hover:bg-green-50"
                   >
                     <Pencil size={16} />
                   </button>
@@ -418,7 +450,7 @@ export default function ModuleActivitiesManager({
                     onClick={() => handleDelete(activity)}
                     disabled={deletingId === activity.id}
                     aria-label={`Delete ${activity.title}`}
-                    className="text-red-600 disabled:opacity-50"
+                    className="rounded-lg p-1.5 text-red-500 transition hover:bg-red-50 disabled:opacity-50"
                   >
                     <Trash2 size={16} />
                   </button>
@@ -429,19 +461,26 @@ export default function ModuleActivitiesManager({
         </ul>
       )}
 
-      <form onSubmit={handleSubmit} className="grid gap-3 sm:grid-cols-2">
-        {editingActivity && (
-          <p className="text-xs font-semibold text-[#1a6b3c] sm:col-span-2">
-            Editing “{editingActivity.title}”
-          </p>
-        )}
+      <form
+        onSubmit={handleSubmit}
+        className="grid gap-3 rounded-xl border border-gray-100 bg-gray-50/70 p-4 sm:grid-cols-2"
+      >
+        <p className="text-sm font-semibold text-gray-700 sm:col-span-2">
+          {editingActivity ? (
+            <span className="text-[#1a6b3c]">
+              Editing “{editingActivity.title}”
+            </span>
+          ) : (
+            "Add an activity"
+          )}
+        </p>
 
         <input
           required
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Content title"
-          className="rounded-lg border px-3 py-2 text-sm"
+          className={field}
         />
 
         <select
@@ -454,7 +493,7 @@ export default function ModuleActivitiesManager({
             setAssessmentId("");
             setFileInputKey((current) => current + 1);
           }}
-          className="rounded-lg border px-3 py-2 text-sm"
+          className={field}
         >
           {CONTENT_TYPES.map((option) => (
             <option key={option.value} value={option.value}>
@@ -465,22 +504,42 @@ export default function ModuleActivitiesManager({
 
         {config.input === "upload" && (
           <div className="sm:col-span-2">
-            <input
-              key={fileInputKey}
-              type="file"
-              accept={config.accept}
-              onChange={(event) => {
-                const selectedFile = event.target.files?.[0] ?? null;
-                setFile(selectedFile);
+            <label
+              className={`flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed bg-white px-4 py-6 text-center transition ${
+                file
+                  ? "border-[#1a6b3c]/40 bg-[#f0f7f3]/60"
+                  : "border-gray-200 hover:border-[#1a6b3c]/50 hover:bg-[#f0f7f3]/50"
+              }`}
+            >
+              <UploadCloud
+                size={22}
+                className={file ? "text-[#1a6b3c]" : "text-gray-400"}
+              />
+              <span className="text-sm font-medium text-gray-700">
+                {file ? file.name : "Click to choose a file"}
+              </span>
+              <span className="text-xs text-gray-400">
+                {file
+                  ? `${(file.size / (1024 * 1024)).toFixed(1)} MB — uploads when you save`
+                  : `Accepted: ${configFor(contentType).label.toLowerCase()} files`}
+              </span>
+              <input
+                key={fileInputKey}
+                type="file"
+                accept={config.accept}
+                onChange={(event) => {
+                  const selectedFile = event.target.files?.[0] ?? null;
+                  setFile(selectedFile);
 
-                if (selectedFile) {
-                  setTitle((current) =>
-                    current || filenameWithoutExtension(selectedFile.name),
-                  );
-                }
-              }}
-              className="w-full rounded-lg border px-3 py-2 text-sm"
-            />
+                  if (selectedFile) {
+                    setTitle((current) =>
+                      current || filenameWithoutExtension(selectedFile.name),
+                    );
+                  }
+                }}
+                className="sr-only"
+              />
+            </label>
             {editingActivity &&
               activityContentType(editingActivity) === contentType &&
               activityUrl(editingActivity) && (
@@ -498,7 +557,7 @@ export default function ModuleActivitiesManager({
             value={externalUrl}
             onChange={(event) => setExternalUrl(event.target.value)}
             placeholder="https://example.com/resource"
-            className="rounded-lg border px-3 py-2 text-sm sm:col-span-2"
+            className={`${field} sm:col-span-2`}
           />
         )}
 

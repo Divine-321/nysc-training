@@ -6,11 +6,13 @@ import {
   AlertCircle,
   Award,
   CheckCircle2,
+  ClipboardList,
   Clock,
   FileText,
   PlayCircle,
   Timer,
 } from "lucide-react";
+import { Skeleton } from "@/app/components/ui";
 import {
   loadAssessmentAttempts,
   loadAssessments,
@@ -161,13 +163,36 @@ export default function CBTPage() {
         </div>
 
         {loading ? (
-          <p className="rounded-2xl bg-white p-6 text-sm text-gray-500 shadow-sm">
-            Loading assessments...
-          </p>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <div
+                key={index}
+                className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm"
+              >
+                <div className="mb-4 flex items-start justify-between">
+                  <Skeleton className="h-12 w-12 rounded-xl" />
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                </div>
+                <Skeleton className="h-5 w-2/3" />
+                <Skeleton className="mt-2 h-4 w-1/3" />
+                <Skeleton className="mt-6 h-4 w-1/2" />
+                <Skeleton className="mt-6 h-11 w-full rounded-xl" />
+              </div>
+            ))}
+          </div>
         ) : availableItems.length === 0 ? (
-          <p className="rounded-2xl bg-white p-6 text-sm text-gray-500 shadow-sm">
-            No available assessments right now.
-          </p>
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-14 text-center shadow-sm">
+            <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-50 text-gray-400 ring-1 ring-gray-100">
+              <ClipboardList size={22} />
+            </span>
+            <p className="text-sm font-semibold text-gray-900">
+              No available assessments right now
+            </p>
+            <p className="mt-1 max-w-sm text-sm text-gray-500">
+              Assessments appear here when your assigned courses include a
+              pre-test or post-test you haven&apos;t completed.
+            </p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {availableItems.map(({ assessment, staffCourse }) => {
@@ -183,16 +208,30 @@ export default function CBTPage() {
                     <div className="rounded-xl bg-blue-50 p-3 text-blue-600 shadow-sm">
                       <Timer size={24} />
                     </div>
-                    <span className="rounded-full bg-green-100 px-3 py-1.5 text-xs font-bold text-green-700 shadow-sm">
-                      Available
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-3 py-1.5 text-xs font-bold shadow-sm ${
+                          assessment.type === "POST_TEST"
+                            ? "bg-purple-50 text-purple-700"
+                            : "bg-blue-50 text-blue-700"
+                        }`}
+                      >
+                        {assessment.type === "POST_TEST"
+                          ? "Post-test"
+                          : "Pre-test"}
+                      </span>
+                      <span className="rounded-full bg-green-100 px-3 py-1.5 text-xs font-bold text-green-700 shadow-sm">
+                        Available
+                      </span>
+                    </div>
                   </div>
 
                   <h4 className="mb-1 text-lg font-bold text-gray-800">
                     {assessment.title}
                   </h4>
                   <p className="mb-5 text-sm font-bold text-[#1a6b3c]">
-                    {assessment.course_title ||
+                    {assessment.module_title ||
+                      assessment.course_title ||
                       staffCourse.enrollment.course_title}
                   </p>
 
@@ -205,6 +244,12 @@ export default function CBTPage() {
                       <Award size={16} />
                       Pass mark: {assessment.pass_mark}%
                     </span>
+                    {assessment.duration ? (
+                      <span className="flex items-center gap-1.5">
+                        <Clock size={16} />
+                        {assessment.duration} min
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="mt-auto">
