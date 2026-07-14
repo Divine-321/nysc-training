@@ -79,6 +79,8 @@ export type LibraryModule = {
   thumbnail_url?: string | null;
   cloudinary_public_id?: string | null;
   activities?: unknown[];
+  /** Module-level trainers (deployed 2026-07-14); write via trainer_ids. */
+  trainers?: Trainer[];
   created_at?: string;
 };
 

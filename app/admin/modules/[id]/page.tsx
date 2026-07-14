@@ -8,14 +8,12 @@ import {
   BookOpen,
   Calendar,
   ClipboardList,
+  Copy,
   FileStack,
   Layers,
-  ListChecks,
   Pencil,
-  RotateCcw,
-  Target,
-  Timer,
   Trash2,
+  UserCheck,
 } from "lucide-react";
 import {
   extractErrorMessage,
@@ -42,6 +40,7 @@ import {
 import ModuleActivitiesManager, {
   type Activity,
 } from "@/app/admin/courses/[id]/builder/ModuleDocumentsManager";
+import ModuleAssessmentsManager from "@/app/admin/courses/[id]/builder/CourseAssessmentsManager";
 import ModuleFormModal from "../ModuleFormModal";
 
 type ModuleDetail = LibraryModule & { activities?: Activity[] };
@@ -138,6 +137,36 @@ export default function ModuleDetailPage() {
       ),
     [courses, moduleId],
   );
+
+  // Backend module clone: duplicates the module, its activities and its
+  // assessments. Endpoint lives at /activities/{id}/clone/ (module id).
+  const handleClone = async () => {
+    if (!module) return;
+
+    const response = await fetch(
+      `/api/training/activities/${module.id}/clone`,
+      { method: "POST" },
+    );
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      push(
+        extractErrorMessage(payload, "Could not duplicate this module."),
+        "error",
+      );
+      return;
+    }
+
+    const copy = readApiItem<{ id?: number }>(payload);
+
+    if (copy?.id) {
+      // Jump straight into the freshly created copy.
+      router.push(`/admin/modules/${copy.id}`);
+      return;
+    }
+
+    push(`"${module.title}" duplicated — the copy is in the library.`);
+  };
 
   const handleDelete = async () => {
     if (!module) return;
@@ -267,10 +296,18 @@ export default function ModuleDetailPage() {
               {module.description || "No description yet."}
             </p>
 
-            <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-400">
-              <Calendar size={13} />
-              Created{" "}
-              {module.created_at ? formatDate(module.created_at) : "—"}
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-400">
+              <span className="inline-flex items-center gap-1.5">
+                <UserCheck size={13} />
+                {(module.trainers ?? [])
+                  .map((trainer) => trainer.full_name)
+                  .join(", ") || "No trainer assigned"}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <Calendar size={13} />
+                Created{" "}
+                {module.created_at ? formatDate(module.created_at) : "—"}
+              </span>
             </div>
           </div>
 
@@ -285,6 +322,11 @@ export default function ModuleDetailPage() {
             <ActionMenu
               ariaLabel="Module actions"
               items={[
+                {
+                  label: "Duplicate module",
+                  icon: Copy,
+                  onSelect: () => void handleClone(),
+                },
                 {
                   label: "Delete from library",
                   icon: Trash2,
@@ -341,73 +383,8 @@ export default function ModuleDetailPage() {
         />
       </section>
 
-      {/* Assessments */}
-      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-        <div className="mb-4 flex items-center gap-2">
-          <ClipboardList size={20} className="text-[#1a6b3c]" />
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">Assessments</h2>
-            <p className="text-sm text-gray-500">
-              Assessments belong to this module and travel with it into every
-              course. They are created from a course builder&apos;s
-              Assessments tab.
-            </p>
-          </div>
-        </div>
-
-        {/* TODO: add a module-scoped assessment manager here so assessments
-            can be created without opening a course builder (the backend
-            already supports it — POST /assessments with {module}). */}
-
-        {assessments.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-4 text-sm text-gray-500">
-            No assessments on this module yet.
-          </p>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {assessments.map((assessment) => (
-              <div
-                key={assessment.id}
-                className="rounded-xl border border-gray-100 p-4 transition hover:border-gray-200 hover:shadow-sm"
-              >
-                <Badge
-                  variant={assessment.type === "POST_TEST" ? "green" : "blue"}
-                >
-                  {assessment.type === "POST_TEST" ? "Post-test" : "Pre-test"}
-                </Badge>
-                <h3 className="mt-2 font-semibold text-gray-900">
-                  {assessment.title}
-                </h3>
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 text-xs font-medium text-gray-600">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Target size={13} className="text-gray-400" />
-                    Pass mark {assessment.pass_mark}%
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <RotateCcw size={13} className="text-gray-400" />
-                    {assessment.max_attempts
-                      ? `${assessment.max_attempts} attempt${
-                          assessment.max_attempts === 1 ? "" : "s"
-                        }`
-                      : "Unlimited attempts"}
-                  </span>
-                  {assessment.duration ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <Timer size={13} className="text-gray-400" />
-                      {assessment.duration} min
-                    </span>
-                  ) : null}
-                  <span className="inline-flex items-center gap-1.5">
-                    <ListChecks size={13} className="text-gray-400" />
-                    {assessment.questions?.length ?? 0} question
-                    {(assessment.questions?.length ?? 0) === 1 ? "" : "s"}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      {/* Assessments — created and managed right here on the module. */}
+      <ModuleAssessmentsManager moduleId={module.id} onChanged={loadData} />
 
       {/* Used in courses */}
       <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">

@@ -135,14 +135,18 @@ async function loadStaffDirectory(): Promise<Map<number, StaffDirectoryEntry>> {
   return directory;
 }
 
-function friendlyCreateError(rawMessage: string, form: typeof emptyForm) {
+function friendlyCreateError(
+  rawMessage: string,
+  form: typeof emptyForm,
+  courseTitle: string,
+) {
   if (/unique/i.test(rawMessage)) {
-    return `already runs for ${form.cohort} ${form.year}. Each module can only run once per cohort per year.`;
+    return `A ${form.cohort} ${form.year} training for "${courseTitle}" already exists. Each course can only be delivered once per cohort in a year — open the existing training instead, or pick a different month or year.`;
   }
   if (/valid choice/i.test(rawMessage)) {
-    return `was rejected: the backend does not accept "${form.cohort}" as a cohort yet (it still only allows Batch A/B/C). The backend team needs to switch the cohort choices to months.`;
+    return `The backend rejected "${form.cohort}" as a cohort value. Please report this to the backend team.`;
   }
-  return `failed: ${rawMessage}`;
+  return `Could not create this training: ${rawMessage}`;
 }
 
 export default function TrainingProgrammesManager() {
@@ -302,6 +306,10 @@ export default function TrainingProgrammesManager() {
       });
       const payload = await response.json().catch(() => null);
 
+      const courseTitle =
+        courses.find((course) => course.id === Number(selectedCourseId))
+          ?.title ?? "this course";
+
       if (!response.ok) {
         setError(
           friendlyCreateError(
@@ -310,12 +318,10 @@ export default function TrainingProgrammesManager() {
               "This programme could not be created.",
             ),
             form,
+            courseTitle,
           ),
         );
       } else {
-        const courseTitle =
-          courses.find((course) => course.id === Number(selectedCourseId))
-            ?.title ?? "Programme";
         setNotice(
           `Training created — "${courseTitle}" for ${form.cohort} ${form.year}.`,
         );
@@ -810,6 +816,41 @@ export default function TrainingProgrammesManager() {
             <Layers size={20} /> Create Training
           </h3>
 
+          <div className="md:col-span-2">
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Course
+            </label>
+            <p className="mb-2 text-xs text-gray-500">
+              Pick the course to deliver for this cohort. The course already
+              contains its modules and activities.
+            </p>
+            {courses.length === 0 ? (
+              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                No courses exist yet — create them under Courses first.
+              </p>
+            ) : (
+              <select
+                required
+                value={selectedCourseId}
+                onChange={(event) =>
+                  setSelectedCourseId(
+                    event.target.value ? Number(event.target.value) : "",
+                  )
+                }
+                className="w-full rounded-lg border px-4 py-2.5 text-sm"
+              >
+                <option value="" disabled>
+                  Select a course...
+                </option>
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.title}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
               Cohort
@@ -878,41 +919,6 @@ export default function TrainingProgrammesManager() {
               }
               className="w-full rounded-lg border px-4 py-2.5 text-sm"
             />
-          </div>
-
-          <div className="md:col-span-2">
-            <label className="mb-1 block text-sm font-medium text-gray-700">
-              Course
-            </label>
-            <p className="mb-2 text-xs text-gray-500">
-              Pick the course to deliver for this cohort. The course already
-              contains its modules and activities.
-            </p>
-            {courses.length === 0 ? (
-              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-                No courses exist yet — create them under Courses first.
-              </p>
-            ) : (
-              <select
-                required
-                value={selectedCourseId}
-                onChange={(event) =>
-                  setSelectedCourseId(
-                    event.target.value ? Number(event.target.value) : "",
-                  )
-                }
-                className="w-full rounded-lg border px-4 py-2.5 text-sm"
-              >
-                <option value="" disabled>
-                  Select a course...
-                </option>
-                {courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.title}
-                  </option>
-                ))}
-              </select>
-            )}
           </div>
 
           <button
@@ -1000,8 +1006,8 @@ export default function TrainingProgrammesManager() {
                             <Layers size={14} />
                             {(programme.course_details?.assigned_modules
                               ?.length ?? 0) === 0
-                              ? "Add modules"
-                              : `View (${programme.course_details?.assigned_modules?.length})`}
+                              ? "Assign modules"
+                              : `Assign modules (${programme.course_details?.assigned_modules?.length})`}
                           </button>
                         </td>
                         <td className="p-4">

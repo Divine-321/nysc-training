@@ -550,6 +550,40 @@ export async function markDocumentComplete(
   };
 }
 
+/**
+ * Starts (or resumes) an assessment attempt. The backend shuffles questions
+ * and options per attempt with a stored seed, so the returned order is stable
+ * across refreshes — render it EXACTLY as received, never re-sort.
+ * Returns null when the endpoint is unavailable or the payload has no
+ * questions, so callers can fall back to the assessment's own question list.
+ */
+export async function startAssessment(
+  assessmentId: number,
+): Promise<{ questions: AssessmentQuestion[] } | null> {
+  try {
+    const response = await fetch(
+      `/api/training/assessments/${assessmentId}/start`,
+      { method: "POST" },
+    );
+
+    if (!response.ok) return null;
+
+    const payload = await response.json().catch(() => null);
+    const data = readApiItem<{
+      questions?: AssessmentQuestion[];
+      assessment?: { questions?: AssessmentQuestion[] };
+    }>(payload);
+
+    const questions = data?.questions ?? data?.assessment?.questions;
+
+    if (!Array.isArray(questions) || questions.length === 0) return null;
+
+    return { questions };
+  } catch {
+    return null;
+  }
+}
+
 export async function submitAssessment(
   assessmentId: number,
   answers: { question: number; selected_option: number }[],
@@ -574,9 +608,9 @@ export async function submitAssessment(
  * Loads the staff member's assessment attempts from the server. The server is
  * the only source of truth for results — nothing is cached in localStorage.
  *
- * The attempts endpoint is part of the AssessmentAttempt restructure and is
- * not live on the backend yet, so this returns [] (instead of throwing) until
- * it ships; the result/CBT screens then light up automatically.
+ * Deployed 2026-07-14 as StaffAssessmentAttempt: {id, assessment, title,
+ * score, percentage, passed, submitted_at}. Normalized onto the richer
+ * AssessmentAttempt shape the screens already use.
  */
 export async function loadAssessmentAttempts(): Promise<AssessmentAttempt[]> {
   try {
@@ -588,7 +622,14 @@ export async function loadAssessmentAttempts(): Promise<AssessmentAttempt[]> {
 
     const payload = await response.json().catch(() => null);
 
-    return readApiList<AssessmentAttempt>(payload);
+    return readApiList<AssessmentAttempt & { title?: string }>(payload).map(
+      (attempt) => ({
+        ...attempt,
+        enrollment: attempt.enrollment ?? 0,
+        attempt_number: attempt.attempt_number ?? 1,
+        assessment_title: attempt.assessment_title ?? attempt.title,
+      }),
+    );
   } catch {
     return [];
   }

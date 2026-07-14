@@ -113,7 +113,7 @@ function normalizeStaffNotificationLink(link: string) {
 const navItems = [
   { label: "Dashboard", href: "/staff/dashboard", icon: LayoutDashboard },
   { label: "NYSC Books", href: "/staff/books", icon: Library },
-  { label: "Training", href: "/staff/training", icon: BarChart2 },
+  { label: "Courses", href: "/staff/training", icon: BarChart2 },
   { label: "Test/Exams", href: "/staff/cbt", icon: FileQuestion },
   { label: "Result", href: "/staff/result", icon: Monitor },
   { label: "Certifications", href: "/staff/certifications", icon: Award },

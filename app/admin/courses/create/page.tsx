@@ -10,30 +10,20 @@ import {
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ImageUp, Save } from "lucide-react";
-import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
+import { ArrowLeft, Save } from "lucide-react";
 
-type CourseCategory = {
-  id: number;
-  name: string;
-};
+// NOTE(backend): the Course serializer only accepts title, description,
+// status, category and trainer_ids. Category and prerequisites were removed
+// from this form on request, and the old thumbnail upload was removed
+// because the backend no longer stores a course thumbnail.
 
 export default function CreateCoursePage() {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [thumbnailUrl, setThumbnailUrl] = useState("");
-  const [thumbnailPublicId, setThumbnailPublicId] = useState("");
-  const [thumbnailProgress, setThumbnailProgress] = useState(0);
-  const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
-  const [categories, setCategories] = useState<CourseCategory[]>([]);
-  const [categoryId, setCategoryId] = useState("");
   const [trainerIds, setTrainerIds] = useState<number[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState("");
-  const [prerequisiteIds, setPrerequisiteIds] = useState<number[]>([]);
-  const [courses, setCourses] = useState<Course[]>([]);
-  const [selectedPrerequisiteId, setSelectedPrerequisiteId] = useState("");
   const [manualResourcePersonName, setManualResourcePersonName] = useState("");
   const [isAddingResourcePerson, setIsAddingResourcePerson] = useState(false);
   const [error, setError] = useState("");
@@ -41,67 +31,17 @@ export default function CreateCoursePage() {
 
   useEffect(() => {
     const loadOptions = async () => {
-      const [trainerResponse, courseResponse, categoryResponse] =
-        await Promise.all([
-          fetch("/api/training/trainers", { cache: "no-store" }),
-          fetch("/api/training/courses", { cache: "no-store" }),
-          fetch("/api/training/categories", { cache: "no-store" }),
-        ]);
+      const trainerResponse = await fetch("/api/training/trainers", {
+        cache: "no-store",
+      });
 
       if (trainerResponse.ok) {
         setTrainers(readApiList<Trainer>(await trainerResponse.json()));
-      }
-
-      if (courseResponse.ok) {
-        setCourses(readApiList<Course>(await courseResponse.json()));
-      }
-
-      if (categoryResponse.ok) {
-        setCategories(
-          readApiList<CourseCategory>(await categoryResponse.json()),
-        );
       }
     };
 
     void loadOptions();
   }, []);
-
-  const handleThumbnailUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setError("Please select an image file for the course thumbnail.");
-      return;
-    }
-
-    setError("");
-    setIsUploadingThumbnail(true);
-    setThumbnailProgress(0);
-
-    try {
-      const uploadedFile = await uploadFileToCloudinary(
-        file,
-        setThumbnailProgress,
-        "course",
-      );
-
-      setThumbnailUrl(uploadedFile.secure_url);
-      setThumbnailPublicId(uploadedFile.public_id);
-    } catch (uploadError) {
-      setError(
-        uploadError instanceof Error
-          ? uploadError.message
-          : "Could not upload the course thumbnail.",
-      );
-    } finally {
-      setIsUploadingThumbnail(false);
-    }
-  };
 
   const handleAddExistingResourcePerson = () => {
     if (!selectedTrainerId) return;
@@ -163,21 +103,6 @@ export default function CreateCoursePage() {
     setTrainerIds((current) => current.filter((trainerId) => trainerId !== id));
   };
 
-  const handleAddPrerequisite = () => {
-    if (!selectedPrerequisiteId) return;
-
-    const id = Number(selectedPrerequisiteId);
-
-    setPrerequisiteIds((current) =>
-      current.includes(id) ? current : [...current, id],
-    );
-    setSelectedPrerequisiteId("");
-  };
-
-  const handleRemovePrerequisite = (id: number) => {
-    setPrerequisiteIds((current) => current.filter((courseId) => courseId !== id));
-  };
-
   const handleSave = async () => {
     setError("");
     setIsSaving(true);
@@ -189,40 +114,33 @@ export default function CreateCoursePage() {
         body: JSON.stringify({
           title,
           description,
-          thumbnail_url: thumbnailUrl || null,
-          cloudinary_public_id: thumbnailPublicId || null,
           // The status field was removed from the UI; courses go live
           // immediately so staff can see them once assigned.
           status: "PUBLISHED",
-          category: categoryId ? Number(categoryId) : null,
           trainer_ids: trainerIds,
-          prerequisite_ids: prerequisiteIds,
         }),
       });
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-  throw new Error(
-    extractErrorMessage(
-      payload,
-      "Course could not be created."
-    )
-  );
-}
+        throw new Error(
+          extractErrorMessage(payload, "Course could not be created."),
+        );
+      }
 
-const createdCourse = readApiItem<Course>(payload);
+      const createdCourse = readApiItem<Course>(payload);
 
-if (!createdCourse) {
-  throw new Error(
-    "The module was created, but its ID was not returned."
-  );
-}
+      if (!createdCourse) {
+        throw new Error("The course was created, but its ID was not returned.");
+      }
 
-router.push(
-  `/admin/courses/${createdCourse.id}/builder`
-);
+      router.push(`/admin/courses/${createdCourse.id}/builder`);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Course could not be created.");
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Course could not be created.",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -231,157 +149,58 @@ router.push(
   return (
     <div className="max-w-4xl space-y-6">
       <div>
-        <Link href="/admin/courses" className="inline-flex items-center gap-2 text-sm text-gray-500 hover:text-[#1a6b3c] mb-2 transition">
+        <Link
+          href="/admin/courses"
+          className="mb-2 inline-flex items-center gap-2 text-sm text-gray-500 transition hover:text-[#1a6b3c]"
+        >
           <ArrowLeft size={16} /> Back to Courses
         </Link>
         <h2 className="text-2xl font-bold text-gray-800">Create Course</h2>
-        <p className="text-sm text-gray-500 mt-1">
-          Create a course before adding its modules.
+        <p className="mt-1 text-sm text-gray-500">
+          Create a course, then attach modules from the library in the builder.
         </p>
       </div>
 
-      <div className="bg-white rounded-2xl p-6 shadow-sm space-y-6">
+      <div className="space-y-6 rounded-2xl bg-white p-6 shadow-sm">
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             {error}
           </div>
         )}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Course Title</label>
-          <input value={title} onChange={(event) => setTitle(event.target.value)} className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]" placeholder="Enter course title" />
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Course Title
+          </label>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+            placeholder="Enter course title"
+          />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Course Description</label>
+          <label className="mb-1 block text-sm font-medium text-gray-700">
+            Course Description
+          </label>
           <textarea
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-4 py-3 h-28 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] resize-none"
+            className="h-28 w-full resize-none rounded-lg border border-gray-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
             placeholder="Enter course description"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Course Thumbnail (optional)
+          <label className="mb-2 block text-sm font-medium text-gray-700">
+            Resource Persons
           </label>
-          <label className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50 md:w-auto">
-            <ImageUp size={18} />
-            {isUploadingThumbnail ? "Uploading..." : "Upload image"}
-            <input
-              type="file"
-              accept="image/*"
-              disabled={isUploadingThumbnail}
-              onChange={handleThumbnailUpload}
-              className="sr-only"
-            />
-          </label>
-          <p className="mt-1 text-xs text-gray-500">
-            Upload an image. This appears on the staff course card and course overview.
-          </p>
-          {isUploadingThumbnail && (
-            <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100">
-              <div
-                className="h-full rounded-full bg-[#1a6b3c] transition-all"
-                style={{ width: `${thumbnailProgress}%` }}
-              />
-            </div>
-          )}
-          {thumbnailUrl && (
-            <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={thumbnailUrl}
-                alt="Course thumbnail preview"
-                className="h-44 w-full object-cover"
-              />
-            </div>
-          )}
-        </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-          <select
-            value={categoryId}
-            onChange={(event) => setCategoryId(event.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] md:w-1/2"
-          >
-            <option value="">No category</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Prerequisites
-          </label>
-          <p className="mb-2 text-xs text-gray-500">
-            Trainees must complete these courses before this one unlocks.
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
-            <select
-              value={selectedPrerequisiteId}
-              onChange={(event) => setSelectedPrerequisiteId(event.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-            >
-              <option value="">Select a prerequisite course</option>
-              {courses
-                .filter((courseOption) => !prerequisiteIds.includes(courseOption.id))
-                .map((courseOption) => (
-                  <option key={courseOption.id} value={courseOption.id}>
-                    {courseOption.title}
-                  </option>
-                ))}
-            </select>
-            <button
-              type="button"
-              onClick={handleAddPrerequisite}
-              disabled={!selectedPrerequisiteId}
-              className="rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530]"
-            >
-              + Add
-            </button>
-          </div>
-
-          {prerequisiteIds.length > 0 && (
-            <ul className="mt-4 space-y-2">
-              {prerequisiteIds.map((id) => {
-                const courseOption = courses.find((item) => item.id === id);
-                return (
-                  <li
-                    key={id}
-                    className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-2.5"
-                  >
-                    <span className="text-sm font-semibold text-gray-800">
-                      {courseOption?.title ?? `Course #${id}`}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemovePrerequisite(id)}
-                      className="text-xs font-semibold text-red-600 hover:text-red-700"
-                    >
-                      Remove
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Resource Persons</label>
-
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
             <select
               value={selectedTrainerId}
               onChange={(event) => setSelectedTrainerId(event.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
             >
               <option value="">Select an existing resource person</option>
               {trainers
@@ -402,20 +221,24 @@ router.push(
             </button>
           </div>
 
-          <p className="mt-3 mb-1 text-xs font-medium text-gray-500">
+          <p className="mb-1 mt-3 text-xs font-medium text-gray-500">
             Or type a name manually:
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
             <input
               value={manualResourcePersonName}
-              onChange={(event) => setManualResourcePersonName(event.target.value)}
+              onChange={(event) =>
+                setManualResourcePersonName(event.target.value)
+              }
               placeholder="Full name"
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+              className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
             />
             <button
               type="button"
               onClick={handleAddManualResourcePerson}
-              disabled={!manualResourcePersonName.trim() || isAddingResourcePerson}
+              disabled={
+                !manualResourcePersonName.trim() || isAddingResourcePerson
+              }
               className="rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530]"
             >
               {isAddingResourcePerson ? "Adding..." : "+ Add"}
@@ -448,9 +271,11 @@ router.push(
           )}
         </div>
 
-
-
-        <button onClick={handleSave} disabled={isSaving || !title || !description} className="bg-[#1a6b3c] hover:bg-[#145530] text-white px-6 py-2.5 rounded-lg font-semibold flex items-center gap-2 transition disabled:cursor-not-allowed">
+        <button
+          onClick={handleSave}
+          disabled={isSaving || !title || !description}
+          className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-6 py-2.5 font-semibold text-white transition hover:bg-[#145530] disabled:cursor-not-allowed"
+        >
           <Save size={18} />
           {isSaving ? "Saving..." : "Save Course"}
         </button>

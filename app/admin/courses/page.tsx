@@ -24,7 +24,6 @@ import {
 import { formatDate } from "@/app/lib/format";
 import { useConfirm } from "@/app/components/useConfirm";
 import {
-  Badge,
   btn,
   EmptyState,
   field,
@@ -39,16 +38,8 @@ import {
   useToasts,
 } from "@/app/components/ui-interactive";
 
-const STATUS_BADGE: Record<
-  Course["status"],
-  { label: string; variant: "green" | "amber" | "gray" }
-> = {
-  PUBLISHED: { label: "Published", variant: "green" },
-  DRAFT: { label: "Draft", variant: "amber" },
-  ARCHIVED: { label: "Archived", variant: "gray" },
-};
-
-type StatusFilter = "ALL" | Course["status"];
+// Course status is not admin-manageable (everything saves as PUBLISHED),
+// so no status badge or filter is shown here.
 type SortKey = "newest" | "oldest" | "title" | "modules";
 
 const PAGE_SIZE = 9;
@@ -70,7 +61,6 @@ export default function AdminCoursesPage() {
   const [error, setError] = useState("");
 
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("ALL");
   const [sort, setSort] = useState<SortKey>("newest");
   const [page, setPage] = useState(1);
 
@@ -114,8 +104,6 @@ export default function AdminCoursesPage() {
         if (!haystack.includes(query)) return false;
       }
 
-      if (status !== "ALL" && course.status !== status) return false;
-
       return true;
     });
 
@@ -133,7 +121,7 @@ export default function AdminCoursesPage() {
       // newest
       return (second.created_at ?? "").localeCompare(first.created_at ?? "");
     });
-  }, [courses, search, status, sort]);
+  }, [courses, search, sort]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -171,7 +159,7 @@ export default function AdminCoursesPage() {
     push("Course deleted.");
   };
 
-  const hasFilters = search.trim() !== "" || status !== "ALL";
+  const hasFilters = search.trim() !== "";
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
@@ -207,21 +195,6 @@ export default function AdminCoursesPage() {
         />
 
         <div className="flex flex-1 flex-wrap items-center gap-2">
-          <select
-            value={status}
-            onChange={(event) => {
-              setStatus(event.target.value as StatusFilter);
-              setPage(1);
-            }}
-            aria-label="Filter by status"
-            className={`${field} w-auto`}
-          >
-            <option value="ALL">All statuses</option>
-            <option value="PUBLISHED">Published</option>
-            <option value="DRAFT">Draft</option>
-            <option value="ARCHIVED">Archived</option>
-          </select>
-
           <select
             value={sort}
             onChange={(event) => {
@@ -286,12 +259,11 @@ export default function AdminCoursesPage() {
                 type="button"
                 onClick={() => {
                   setSearch("");
-                  setStatus("ALL");
                   setPage(1);
                 }}
                 className={btn.secondary}
               >
-                Clear filters
+                Clear search
               </button>
             ) : undefined
           }
@@ -310,8 +282,6 @@ export default function AdminCoursesPage() {
               (course.trainers ?? [])
                 .map((trainer) => trainer.full_name)
                 .join(", ") || "No resource person assigned";
-            const statusBadge =
-              STATUS_BADGE[course.status] ?? STATUS_BADGE.DRAFT;
             const builderHref = `/admin/courses/${course.id}/builder`;
 
             return (
@@ -323,9 +293,6 @@ export default function AdminCoursesPage() {
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#f0f7f3] text-[#1a6b3c]">
                     <BookOpen size={20} />
                   </div>
-                  <Badge variant={statusBadge.variant}>
-                    {statusBadge.label}
-                  </Badge>
                 </div>
 
                 <Link href={builderHref} className="min-w-0">

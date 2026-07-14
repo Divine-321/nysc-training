@@ -35,6 +35,8 @@ type Certificate = {
   staff_name: string;
   file_number: string;
   course_title: string;
+  /** The training's cohort (e.g. "July 2026") — deployed 2026-07-14. */
+  cohort?: string;
   issued_at: string;
   pdf_url: string | null;
 };
@@ -293,6 +295,17 @@ export default function CertificationsPage() {
                       }`}
                     >
                       {cert.course_title}
+                      {cert.cohort ? (
+                        <span
+                          className={`ml-1.5 text-xs font-medium ${
+                            selectedCert.id === cert.id
+                              ? "text-green-100"
+                              : "text-gray-400"
+                          }`}
+                        >
+                          · {cert.cohort}
+                        </span>
+                      ) : null}
                     </h4>
                     <p
                       className={`text-xs font-medium ${
@@ -384,9 +397,16 @@ export default function CertificationsPage() {
                   <p className="mb-2 text-lg italic text-gray-700">
                     has successfully completed the training course
                   </p>
-                  <h3 className="mb-8 max-w-xl text-2xl font-bold text-[#1a6b3c]">
+                  <h3 className="mb-2 max-w-xl text-2xl font-bold text-[#1a6b3c]">
                     {selectedCert.course_title}
                   </h3>
+                  {selectedCert.cohort ? (
+                    <p className="mb-8 text-sm font-semibold text-gray-500">
+                      {selectedCert.cohort} Cohort
+                    </p>
+                  ) : (
+                    <div className="mb-8" />
+                  )}
 
                   <div className="mt-auto flex w-full justify-between px-16">
                     <div className="flex w-48 flex-col items-center">

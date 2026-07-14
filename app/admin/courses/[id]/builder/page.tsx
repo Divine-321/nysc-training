@@ -12,7 +12,6 @@ import {
   Layers,
   Save,
   Settings2,
-  Tag,
   UserCheck,
   Video,
 } from "lucide-react";
@@ -27,7 +26,6 @@ import {
 } from "@/app/lib/portal-api";
 import { formatDate } from "@/app/lib/format";
 import {
-  Badge,
   Breadcrumbs,
   btn,
   field,
@@ -35,11 +33,6 @@ import {
   Skeleton,
 } from "@/app/components/ui";
 import { ToastViewport, useToasts } from "@/app/components/ui-interactive";
-
-type CourseCategory = {
-  id: number;
-  name: string;
-};
 
 const TABS = [
   { id: "details", label: "Course Information", icon: Settings2 },
@@ -49,15 +42,6 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
-
-const STATUS_BADGE: Record<
-  Course["status"],
-  { label: string; variant: "green" | "amber" | "gray" }
-> = {
-  PUBLISHED: { label: "Published", variant: "green" },
-  DRAFT: { label: "Draft", variant: "amber" },
-  ARCHIVED: { label: "Archived", variant: "gray" },
-};
 
 // NOTE(backend): the Course serializer no longer carries thumbnail_url /
 // cloudinary_public_id or prerequisites — those form fields were removed
@@ -74,8 +58,6 @@ export default function CourseBuilderPage() {
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [categories, setCategories] = useState<CourseCategory[]>([]);
-  const [categoryId, setCategoryId] = useState("");
   const [trainerIds, setTrainerIds] = useState<number[]>([]);
   const [savedTrainerIds, setSavedTrainerIds] = useState<number[]>([]);
   const [selectedTrainerId, setSelectedTrainerId] = useState("");
@@ -110,32 +92,20 @@ export default function CourseBuilderPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [loadedCourse, trainerResponse, categoryResponse] =
-          await Promise.all([
-            loadCourse(),
-            fetch("/api/training/trainers", { cache: "no-store" }),
-            fetch("/api/training/categories", { cache: "no-store" }),
-          ]);
+        const [loadedCourse, trainerResponse] = await Promise.all([
+          loadCourse(),
+          fetch("/api/training/trainers", { cache: "no-store" }),
+        ]);
 
         setTitle(loadedCourse.title);
         setDescription(loadedCourse.description);
-        setCategoryId(
-          loadedCourse.category != null ? String(loadedCourse.category) : "",
-        );
         setTrainerIds(loadedCourse.trainers.map((trainer) => trainer.id));
         setSavedTrainerIds(loadedCourse.trainers.map((trainer) => trainer.id));
 
         const trainerPayload = await trainerResponse.json().catch(() => null);
-        const categoryPayload = await categoryResponse
-          .json()
-          .catch(() => null);
 
         if (trainerResponse.ok) {
           setTrainers(readApiList<Trainer>(trainerPayload));
-        }
-
-        if (categoryResponse.ok) {
-          setCategories(readApiList<CourseCategory>(categoryPayload));
         }
       } catch (loadError) {
         setError(
@@ -224,7 +194,6 @@ export default function CourseBuilderPage() {
           description: description.trim(),
           // Status was removed from the UI; keep every course published.
           status: "PUBLISHED",
-          category: categoryId ? Number(categoryId) : null,
           trainer_ids: trainerIds,
         }),
       });
@@ -277,7 +246,6 @@ export default function CourseBuilderPage() {
     );
   }
 
-  const statusBadge = STATUS_BADGE[course.status] ?? STATUS_BADGE.DRAFT;
   const moduleCount = course.assigned_modules?.length ?? 0;
   const activityCount = (course.assigned_modules ?? []).reduce(
     (sum, link) => sum + (link.module_details?.activities?.length ?? 0),
@@ -301,16 +269,9 @@ export default function CourseBuilderPage() {
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">
             {course.title}
           </h1>
-          <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-medium text-gray-500">
-          {course.category_name ? (
-            <span className="inline-flex items-center gap-1.5">
-              <Tag size={13} className="text-gray-400" />
-              {course.category_name}
-            </span>
-          ) : null}
           <span className="inline-flex items-center gap-1.5">
             <Layers size={13} className="text-gray-400" />
             {moduleCount} module{moduleCount === 1 ? "" : "s"}
@@ -385,22 +346,6 @@ export default function CourseBuilderPage() {
                 onChange={(event) => setDescription(event.target.value)}
                 className={`${field} h-28 resize-none`}
               />
-            </div>
-
-            <div>
-              <label className={fieldLabel}>Category</label>
-              <select
-                value={categoryId}
-                onChange={(event) => setCategoryId(event.target.value)}
-                className={`${field} sm:w-1/2`}
-              >
-                <option value="">No category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <button

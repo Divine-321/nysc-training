@@ -27,7 +27,7 @@ import {
 import { useConfirm } from "@/app/components/useConfirm";
 
 type AssessmentType = "PRE_TEST" | "POST_TEST";
-type CorrectOption = "A" | "B" | "C" | "D";
+type CorrectOption = "A" | "B" | "C" | "D" | "E";
 
 type AssessmentQuestion = {
   id: number;
@@ -68,6 +68,8 @@ const emptyQuestionForm = {
   option_b: "",
   option_c: "",
   option_d: "",
+  // Optional 5th option — only sent when filled in.
+  option_e: "",
   correct_option: "A" as CorrectOption,
 };
 
@@ -77,8 +79,15 @@ function assessmentTypeLabel(type: AssessmentType) {
 
 export default function CourseAssessmentsManager({
   courseId,
+  moduleId,
+  onChanged,
 }: {
-  courseId: number;
+  /** Course-builder mode: manage assessments across the course's modules. */
+  courseId?: number;
+  /** Module-builder mode: manage the assessments of one library module. */
+  moduleId?: number;
+  /** Called after any assessment change (create/delete/questions). */
+  onChanged?: () => void | Promise<void>;
 }) {
   const { confirm, dialog } = useConfirm();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
@@ -98,8 +107,31 @@ export default function CourseAssessmentsManager({
 
   const loadAssessments = useCallback(async () => {
     try {
-      // Assessments belong to Modules now, so scope the list to the
-      // modules currently assigned to this course.
+      // Module-builder mode: just this module's assessments.
+      if (moduleId !== undefined) {
+        const response = await fetch("/api/training/assessments", {
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          throw new Error(
+            extractErrorMessage(payload, "Could not load assessments."),
+          );
+        }
+
+        setModuleOptions([]);
+        setAssessments(
+          readApiList<Assessment>(payload).filter(
+            (assessment) => assessment.module === moduleId,
+          ),
+        );
+        setError("");
+        return;
+      }
+
+      // Course-builder mode: assessments belong to Modules, so scope the
+      // list to the modules currently assigned to this course.
       const [assessmentsResponse, courseResponse] = await Promise.all([
         fetch("/api/training/assessments", { cache: "no-store" }),
         fetch(`/api/training/courses/${courseId}`, { cache: "no-store" }),
@@ -141,7 +173,7 @@ export default function CourseAssessmentsManager({
     } finally {
       setLoading(false);
     }
-  }, [courseId]);
+  }, [courseId, moduleId]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -162,7 +194,7 @@ export default function CourseAssessmentsManager({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          module: Number(form.module),
+          module: moduleId ?? Number(form.module),
           type: form.type,
           title: form.title.trim(),
           pass_mark: form.pass_mark,
@@ -181,6 +213,7 @@ export default function CourseAssessmentsManager({
       setForm(emptyForm);
       setNotice("Assessment created. You can now upload its questions CSV.");
       await loadAssessments();
+      await onChanged?.();
     } catch (createError) {
       setError(
         createError instanceof Error
@@ -257,6 +290,7 @@ export default function CourseAssessmentsManager({
         `${assessmentTypeLabel(assessment.type)} questions uploaded successfully.`,
       );
       await loadAssessments();
+      await onChanged?.();
     } catch (uploadError) {
       setError(
         uploadError instanceof Error
@@ -282,6 +316,15 @@ export default function CourseAssessmentsManager({
     assessment: Assessment,
   ) => {
     event.preventDefault();
+
+    if (
+      questionForm.correct_option === "E" &&
+      !questionForm.option_e.trim()
+    ) {
+      setError("Option E is empty — fill it in or pick another correct option.");
+      return;
+    }
+
     setAddingQuestion(true);
     setError("");
     setNotice("");
@@ -299,6 +342,10 @@ export default function CourseAssessmentsManager({
             option_b: questionForm.option_b.trim(),
             option_c: questionForm.option_c.trim(),
             option_d: questionForm.option_d.trim(),
+            // Optional 5th option — omitted for 4-option questions.
+            ...(questionForm.option_e.trim()
+              ? { option_e: questionForm.option_e.trim() }
+              : {}),
             correct_option: questionForm.correct_option,
           }),
         },
@@ -314,6 +361,7 @@ export default function CourseAssessmentsManager({
       setNotice("Question added.");
       setQuestionForm(emptyQuestionForm);
       await loadAssessments();
+      await onChanged?.();
     } catch (addError) {
       setError(
         addError instanceof Error ? addError.message : "Could not add question.",
@@ -350,6 +398,7 @@ export default function CourseAssessmentsManager({
 
       setNotice("Assessment deleted.");
       await loadAssessments();
+      await onChanged?.();
     } catch (deleteError) {
       setError(
         deleteError instanceof Error
@@ -391,34 +440,41 @@ export default function CourseAssessmentsManager({
         onSubmit={handleCreate}
         className="grid gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4 md:grid-cols-2"
       >
-        <div className="md:col-span-2">
-          <label className={fieldLabel}>
-            Module
-          </label>
-          <select
-            required
-            value={form.module}
-            onChange={(event) =>
-              setForm({ ...form, module: event.target.value })
-            }
-            className={field}
-          >
-            <option value="">
-              {moduleOptions.length === 0
-                ? "Add a module to this course first"
-                : "Select the module this assessment belongs to"}
-            </option>
-            {moduleOptions.map((module) => (
-              <option key={module.id} value={module.id}>
-                {module.title}
+        {moduleId === undefined ? (
+          <div className="md:col-span-2">
+            <label className={fieldLabel}>
+              Module
+            </label>
+            <select
+              required
+              value={form.module}
+              onChange={(event) =>
+                setForm({ ...form, module: event.target.value })
+              }
+              className={field}
+            >
+              <option value="">
+                {moduleOptions.length === 0
+                  ? "Add a module to this course first"
+                  : "Select the module this assessment belongs to"}
               </option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-gray-500">
-            Assessments belong to a module — reusing the module in another
-            course brings its assessments along.
+              {moduleOptions.map((module) => (
+                <option key={module.id} value={module.id}>
+                  {module.title}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              Assessments belong to a module — reusing the module in another
+              course brings its assessments along.
+            </p>
+          </div>
+        ) : (
+          <p className="rounded-lg bg-[#f0f7f3] px-3 py-2 text-xs text-gray-600 md:col-span-2">
+            This assessment is created on this module — every course that
+            reuses the module gets it automatically.
           </p>
-        </div>
+        )}
 
         <div>
           <label className={fieldLabel}>
@@ -505,7 +561,11 @@ export default function CourseAssessmentsManager({
         </div>
 
         <button
-          disabled={saving || !form.title.trim() || !form.module}
+          disabled={
+            saving ||
+            !form.title.trim() ||
+            (moduleId === undefined && !form.module)
+          }
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
         >
           <Plus size={18} />
@@ -520,7 +580,7 @@ export default function CourseAssessmentsManager({
           </h4>
           <p className="mt-1 text-xs text-gray-500">
             CSV/Excel headers: question_text, points, option_a, option_b,
-            option_c, option_d, correct_option
+            option_c, option_d, option_e (optional), correct_option
           </p>
         </div>
 
@@ -528,7 +588,9 @@ export default function CourseAssessmentsManager({
           <p className="p-4 text-sm text-gray-500">Loading assessments...</p>
         ) : assessments.length === 0 ? (
           <p className="p-4 text-sm text-gray-500">
-            No assessments have been created for this course&apos;s modules.
+            {moduleId !== undefined
+              ? "No assessments on this module yet."
+              : "No assessments have been created for this course's modules."}
           </p>
         ) : (
           <div className="divide-y divide-gray-100">
@@ -644,13 +706,19 @@ export default function CourseAssessmentsManager({
                       />
                     </div>
 
-                    {(["a", "b", "c", "d"] as const).map((letter) => (
+                    {(["a", "b", "c", "d", "e"] as const).map((letter) => (
                       <div key={letter}>
                         <label className={fieldLabel}>
                           Option {letter.toUpperCase()}
+                          {letter === "e" ? (
+                            <span className="font-normal text-gray-400">
+                              {" "}
+                              (optional)
+                            </span>
+                          ) : null}
                         </label>
                         <input
-                          required
+                          required={letter !== "e"}
                           value={
                             questionForm[
                               `option_${letter}` as `option_${typeof letter}`
@@ -661,6 +729,11 @@ export default function CourseAssessmentsManager({
                               ...questionForm,
                               [`option_${letter}`]: event.target.value,
                             })
+                          }
+                          placeholder={
+                            letter === "e"
+                              ? "Leave empty for a 4-option question"
+                              : undefined
                           }
                           className={field}
                         />
@@ -686,6 +759,9 @@ export default function CourseAssessmentsManager({
                         <option value="B">B</option>
                         <option value="C">C</option>
                         <option value="D">D</option>
+                        <option value="E" disabled={!questionForm.option_e.trim()}>
+                          E{questionForm.option_e.trim() ? "" : " (fill Option E first)"}
+                        </option>
                       </select>
                     </div>
 

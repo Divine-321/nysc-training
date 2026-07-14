@@ -1,23 +1,23 @@
 "use client";
 
-import { useState, type ChangeEvent, type FormEvent } from "react";
-import { ImageUp, Save } from "lucide-react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { ImageUp, Save, UserCheck, X } from "lucide-react";
 import { Modal } from "@/app/components/ui-interactive";
 import { btn, field, fieldLabel } from "@/app/components/ui";
 import {
   extractErrorMessage,
   readApiItem,
+  readApiList,
   type LibraryModule,
+  type Trainer,
 } from "@/app/lib/portal-api";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 
 /**
  * Create / edit a reusable library module. Render conditionally — the form
- * state is seeded from the `module` prop on mount. Backend fields only:
- * title, description, thumbnail_url, cloudinary_public_id.
- *
- * TODO(backend): add `estimated_duration` here once the Module serializer
- * supports it — the field does not exist on the backend yet.
+ * state is seeded from the `module` prop on mount. Backend fields: title,
+ * description, thumbnail_url, cloudinary_public_id, trainer_ids (the
+ * module-level trainers deployed 2026-07-14).
  */
 export default function ModuleFormModal({
   module: editingModule,
@@ -41,12 +41,53 @@ export default function ModuleFormModal({
   const [thumbnailPublicId, setThumbnailPublicId] = useState(
     editingModule?.cloudinary_public_id ?? "",
   );
+  const [trainerIds, setTrainerIds] = useState<number[]>(
+    (editingModule?.trainers ?? []).map((trainer) => trainer.id),
+  );
+  const [trainers, setTrainers] = useState<Trainer[]>(
+    editingModule?.trainers ?? [],
+  );
+  const [selectedTrainerId, setSelectedTrainerId] = useState("");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const isEditing = editingModule !== null;
+
+  // The trainer directory for the picker (merged over any trainers already
+  // on the module so their names render immediately).
+  useEffect(() => {
+    let active = true;
+
+    const loadTrainers = async () => {
+      try {
+        const response = await fetch("/api/training/trainers", {
+          cache: "no-store",
+        });
+
+        if (!response.ok || !active) return;
+
+        const payload = await response.json().catch(() => null);
+
+        setTrainers((current) => {
+          const known = new Set(current.map((trainer) => trainer.id));
+          const extra = readApiList<Trainer>(payload).filter(
+            (trainer) => !known.has(trainer.id),
+          );
+          return [...current, ...extra];
+        });
+      } catch {
+        // Picker just stays limited to the module's existing trainers.
+      }
+    };
+
+    void loadTrainers();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleThumbnail = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -101,6 +142,7 @@ export default function ModuleFormModal({
             description: description.trim(),
             thumbnail_url: thumbnailUrl || null,
             cloudinary_public_id: thumbnailPublicId || null,
+            trainer_ids: trainerIds,
           }),
         },
       );
@@ -166,6 +208,77 @@ export default function ModuleFormModal({
             placeholder="What staff will learn in this module…"
             className={`${field} h-24 resize-none`}
           />
+        </div>
+
+        <div>
+          <label className={fieldLabel}>
+            Trainer(s){" "}
+            <span className="font-normal text-gray-400">(optional)</span>
+          </label>
+          <p className="mb-2 text-xs text-gray-500">
+            The trainer travels with this module into every course that uses
+            it.
+          </p>
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <select
+              value={selectedTrainerId}
+              onChange={(event) => setSelectedTrainerId(event.target.value)}
+              className={field}
+            >
+              <option value="">Select a trainer to add</option>
+              {trainers
+                .filter((trainer) => !trainerIds.includes(trainer.id))
+                .map((trainer) => (
+                  <option key={trainer.id} value={trainer.id}>
+                    {trainer.full_name}
+                  </option>
+                ))}
+            </select>
+            <button
+              type="button"
+              disabled={!selectedTrainerId}
+              onClick={() => {
+                const id = Number(selectedTrainerId);
+                setTrainerIds((current) =>
+                  current.includes(id) ? current : [...current, id],
+                );
+                setSelectedTrainerId("");
+              }}
+              className={btn.secondary}
+            >
+              + Add
+            </button>
+          </div>
+
+          {trainerIds.length > 0 ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {trainerIds.map((id) => {
+                const trainer = trainers.find((item) => item.id === id);
+
+                return (
+                  <span
+                    key={id}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#f0f7f3] py-1 pl-2.5 pr-1.5 text-xs font-medium text-[#1a6b3c]"
+                  >
+                    <UserCheck size={12} />
+                    {trainer?.full_name ?? `Trainer #${id}`}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${trainer?.full_name ?? `trainer #${id}`}`}
+                      onClick={() =>
+                        setTrainerIds((current) =>
+                          current.filter((trainerId) => trainerId !== id),
+                        )
+                      }
+                      className="rounded-full p-0.5 transition hover:bg-white"
+                    >
+                      <X size={11} />
+                    </button>
+                  </span>
+                );
+              })}
+            </div>
+          ) : null}
         </div>
 
         <div>

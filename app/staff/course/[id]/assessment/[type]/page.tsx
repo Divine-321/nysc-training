@@ -18,8 +18,11 @@ import {
 import {
   loadAssessments,
   loadStaffCourse,
+  markDocumentComplete,
+  startAssessment,
   submitAssessment,
   type Assessment,
+  type AssessmentQuestion,
   type AssessmentResult,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
@@ -49,6 +52,11 @@ export default function AssessmentPage() {
   );
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
+  // Per-attempt server-shuffled questions (from the start endpoint). When
+  // set, they are rendered EXACTLY as received — no client-side sorting.
+  const [liveQuestions, setLiveQuestions] = useState<
+    AssessmentQuestion[] | null
+  >(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -79,13 +87,15 @@ export default function AssessmentPage() {
     void fetchData();
   }, [assessmentType, courseId]);
 
-  const sortedQuestions = useMemo(
-    () =>
-      (assessment?.questions ?? [])
-        .slice()
-        .sort((first, second) => first.order - second.order),
-    [assessment?.questions],
-  );
+  const sortedQuestions = useMemo(() => {
+    // Server-shuffled attempt order wins; the legacy sort only applies when
+    // the start endpoint returned nothing to fall back on.
+    if (liveQuestions) return liveQuestions;
+
+    return (assessment?.questions ?? [])
+      .slice()
+      .sort((first, second) => first.order - second.order);
+  }, [assessment?.questions, liveQuestions]);
   const question = sortedQuestions[currentQuestion];
   const allAnswered =
     sortedQuestions.length > 0 &&
@@ -107,7 +117,34 @@ export default function AssessmentPage() {
         question: item.id,
         selected_option: answers[item.id],
       }));
-      setResult(await submitAssessment(assessment.id, submission));
+      const submissionResult = await submitAssessment(
+        assessment.id,
+        submission,
+      );
+      setResult(submissionResult);
+
+      // Passing the assessment completes its linked ASSESSMENT activity in
+      // the module flow. The backend does not do this automatically yet, so
+      // without it course progress gets stuck below 100% forever. Best-effort
+      // stop-gap — harmless once the backend auto-completes server-side.
+      if (submissionResult?.passed && staffCourse) {
+        const linkedActivities = staffCourse.modules
+          .flatMap((courseModule) => courseModule.documents)
+          .filter(
+            (doc) =>
+              (doc.assessment_id ?? doc.assessment) === assessment.id,
+          );
+
+        for (const linkedActivity of linkedActivities) {
+          await markDocumentComplete(
+            staffCourse.enrollment.id,
+            linkedActivity.id,
+          ).catch(() => {
+            // Progress sync is best-effort; the learn player will simply
+            // still show the assessment activity as pending if this fails.
+          });
+        }
+      }
 
       // End the proctoring session so the backend can mark it CLEAN (or keep
       // it flagged for review) now that the attempt is submitted.
@@ -141,8 +178,20 @@ export default function AssessmentPage() {
     setExamPhase("verifying");
   };
 
-  const handleVerified = (verification: ProctoringStartResult) => {
+  const handleVerified = async (verification: ProctoringStartResult) => {
     setProctoring(verification);
+
+    // Start/resume the attempt — the backend returns this attempt's
+    // randomized question/option order (stable across refreshes). Falls back
+    // silently to the assessment's own questions if unavailable.
+    if (assessment) {
+      const started = await startAssessment(assessment.id);
+
+      if (started?.questions?.length) {
+        setLiveQuestions(started.questions);
+      }
+    }
+
     setExamPhase("in_progress");
   };
 
@@ -245,7 +294,13 @@ export default function AssessmentPage() {
                     </h4>
 
                     <div className="mb-10 space-y-3">
-                      {question.options.map((option, index) => {
+                      {/* Blank option rows (e.g. an empty option_e column in
+                          an imported CSV) are hidden so lettering stays
+                          clean: A–D for 4 real options, A–E only when a 5th
+                          option actually has text. */}
+                      {question.options
+                        .filter((option) => (option.text ?? "").trim() !== "")
+                        .map((option, index) => {
                         const isSelected = answers[question.id] === option.id;
 
                         return (

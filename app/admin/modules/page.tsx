@@ -8,6 +8,7 @@ import {
   BookOpen,
   Calendar,
   ClipboardList,
+  Copy,
   Eye,
   FileStack,
   FolderPlus,
@@ -17,6 +18,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  UserCheck,
 } from "lucide-react";
 import {
   dedupeById,
@@ -228,6 +230,28 @@ export default function ModuleLibraryPage() {
     await loadData();
   };
 
+  // Backend module clone (deployed 2026-07-14): duplicates the module, its
+  // activities and its assessments (with questions). The endpoint lives at
+  // /activities/{id}/clone/ but takes the MODULE id.
+  const handleClone = async (module: LibraryModule) => {
+    const response = await fetch(
+      `/api/training/activities/${module.id}/clone`,
+      { method: "POST" },
+    );
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      push(
+        extractErrorMessage(payload, "Could not duplicate this module."),
+        "error",
+      );
+      return;
+    }
+
+    push(`"${module.title}" duplicated — the copy is now in the library.`);
+    await loadData();
+  };
+
   const moduleActions = (module: LibraryModule) => [
     {
       label: "View details",
@@ -238,6 +262,11 @@ export default function ModuleLibraryPage() {
       label: "Edit module",
       icon: Pencil,
       onSelect: () => setModal({ module }),
+    },
+    {
+      label: "Duplicate module",
+      icon: Copy,
+      onSelect: () => void handleClone(module),
     },
     {
       label: "Delete from library",
@@ -473,6 +502,15 @@ export default function ModuleLibraryPage() {
                   </div>
 
                   <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-400">
+                    <UserCheck size={13} className="shrink-0" />
+                    <span className="truncate">
+                      {(module.trainers ?? [])
+                        .map((trainer) => trainer.full_name)
+                        .join(", ") || "No trainer assigned"}
+                    </span>
+                  </div>
+
+                  <div className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400">
                     <Calendar size={13} />
                     Created{" "}
                     {module.created_at ? formatDate(module.created_at) : "—"}
