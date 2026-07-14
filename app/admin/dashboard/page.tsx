@@ -10,30 +10,23 @@ import {
   Clock,
   Layers,
   PlusCircle,
+  UserCheck,
   UserCog,
   Users,
   Video,
 } from "lucide-react";
 import {
+  collectTrainerNames,
   extractErrorMessage,
   readApiItem,
   readApiList,
+  type LibraryModule,
 } from "@/app/lib/portal-api";
 import { formatDate, formatTime } from "@/app/lib/format";
-
-type UpcomingLiveClass = {
-  id: number;
-  cohort_course: number;
-  course_title: string;
-  cohort_name: string;
-  title: string;
-  description: string | null;
-  meeting_url: string;
-  start_time: string;
-  end_time: string;
-  status: string;
-  created_at: string;
-};
+import {
+  normalizeLiveSession,
+  type LiveSession,
+} from "@/app/lib/staff-learning";
 
 type DashboardAnalytics = {
   totalNumberOfStaff: number;
@@ -43,8 +36,24 @@ type DashboardAnalytics = {
   totalNumberOfCertificatesAssigned: number;
   totalNumberOfDepartments: number;
   totalUpcomingLiveSessionsWithinMonth: number;
-  upcomingLiveClasses: UpcomingLiveClass[];
 };
+
+// The widget row after enrichment: module name + its trainer come from the
+// module (the analytics payload has neither, so we source from live-sessions
+// + modules directly).
+type UpcomingSession = {
+  id: number;
+  title: string;
+  moduleTitle: string | null;
+  trainerName: string;
+  cohortName: string;
+  courseTitle: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+};
+
+const ACTIVE_SESSION_STATUSES = new Set(["SCHEDULED", "ONGOING"]);
 
 export default function AdminDashboardPage() {
   const [analytics, setAnalytics] =
@@ -53,6 +62,9 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [totalModules, setTotalModules] = useState<number | null>(null);
+  const [upcomingSessions, setUpcomingSessions] = useState<UpcomingSession[]>(
+    [],
+  );
 
   useEffect(() => {
     const loadAnalytics = async () => {
@@ -91,23 +103,73 @@ export default function AdminDashboardPage() {
       }
     };
 
-    // Module count isn't part of the analytics payload, so we count the
-    // modules list directly (a plain, unpaginated array).
-    const loadModuleCount = async () => {
+    // The analytics payload carries neither the module count nor the module/
+    // trainer of each upcoming session, so we read the modules + live-sessions
+    // lists directly and derive both. Trainer always comes from the module.
+    const loadSessionsAndModules = async () => {
       try {
-        const response = await fetch("/api/training/modules", {
-          cache: "no-store",
-        });
-        if (!response.ok) return;
-        const payload = await response.json().catch(() => null);
-        setTotalModules(readApiList(payload).length);
+        const [modulesResponse, sessionsResponse] = await Promise.all([
+          fetch("/api/training/modules", { cache: "no-store" }),
+          fetch("/api/training/live-sessions", { cache: "no-store" }),
+        ]);
+
+        const modules = modulesResponse.ok
+          ? readApiList<LibraryModule>(
+              await modulesResponse.json().catch(() => null),
+            )
+          : [];
+
+        setTotalModules(modulesResponse.ok ? modules.length : null);
+
+        const moduleById = new Map(modules.map((module) => [module.id, module]));
+
+        if (!sessionsResponse.ok) return;
+
+        const now = Date.now();
+        const sessions = readApiList<LiveSession>(
+          await sessionsResponse.json().catch(() => null),
+        )
+          .map(normalizeLiveSession)
+          .filter(
+            (session) =>
+              ACTIVE_SESSION_STATUSES.has(session.status) &&
+              new Date(session.end_time).getTime() >= now,
+          )
+          .sort(
+            (first, second) =>
+              new Date(first.start_time).getTime() -
+              new Date(second.start_time).getTime(),
+          )
+          .slice(0, 6)
+          .map<UpcomingSession>((session) => {
+            const sessionModule =
+              session.module != null ? moduleById.get(session.module) : null;
+            const trainerName =
+              collectTrainerNames([sessionModule]).join(", ") ||
+              session.trainer_name ||
+              "No trainer assigned";
+
+            return {
+              id: session.id,
+              title: session.title,
+              moduleTitle: session.module_title || sessionModule?.title || null,
+              trainerName,
+              cohortName: session.cohort_name,
+              courseTitle: session.course_title,
+              startTime: session.start_time,
+              endTime: session.end_time,
+              status: session.status,
+            };
+          });
+
+        setUpcomingSessions(sessions);
       } catch {
-        // Leave as null — the card just falls back gracefully.
+        // Leave defaults — the widget/count fall back gracefully.
       }
     };
 
     void loadAnalytics();
-    void loadModuleCount();
+    void loadSessionsAndModules();
   }, []);
 
   const primaryStats = [
@@ -224,54 +286,76 @@ export default function AdminDashboardPage() {
         </div>
 
         {loading ? (
-          <p className="p-8 text-center text-sm text-gray-500">
-            Loading upcoming sessions...
-          </p>
-        ) : analytics?.upcomingLiveClasses.length ? (
-          <ul className="divide-y divide-gray-100">
-            {analytics.upcomingLiveClasses.map((session) => (
-              <li
-                key={session.id}
-                className="p-6 transition hover:bg-gray-50"
+          <div className="grid gap-4 p-6 sm:grid-cols-2">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <div
+                key={index}
+                className="animate-pulse rounded-2xl border border-gray-100 p-5"
               >
-                <div className="flex flex-col justify-between gap-4 sm:flex-row">
-                  <div>
-                    <h4 className="font-bold text-gray-800">
-                      {session.title}
-                    </h4>
-
-                    <p className="mt-1 text-sm font-medium text-[#1a6b3c]">
-                      {session.course_title}
-                    </p>
-
-                    <p className="mt-1 text-xs text-gray-500">
-                      Cohort: {session.cohort_name}
-                    </p>
-                  </div>
-
-                  <span className="h-fit rounded-md bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-                    {session.status}
-                  </span>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-5 text-sm text-gray-500">
-                  <span className="flex items-center gap-1.5">
-                    <Calendar size={14} />
-                    {formatDate(session.start_time)}
-                  </span>
-
-                  <span className="flex items-center gap-1.5">
-                    <Clock size={14} />
-                    {formatTime(session.start_time)} –{" "}
-                    {formatTime(session.end_time)}
-                  </span>
-                </div>
-              </li>
+                <div className="h-4 w-1/2 rounded bg-gray-100" />
+                <div className="mt-3 h-3 w-1/3 rounded bg-gray-100" />
+                <div className="mt-5 h-3 w-2/3 rounded bg-gray-100" />
+              </div>
             ))}
-          </ul>
+          </div>
+        ) : upcomingSessions.length ? (
+          <div className="grid gap-4 p-6 sm:grid-cols-2">
+            {upcomingSessions.map((session) => (
+              <div
+                key={session.id}
+                className="group flex flex-col rounded-2xl border border-gray-100 p-5 transition duration-200 hover:-translate-y-0.5 hover:border-gray-200 hover:shadow-md"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <h4 className="min-w-0 text-base font-bold leading-snug text-gray-900">
+                    {session.moduleTitle ?? session.title}
+                  </h4>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
+                      session.status === "ONGOING"
+                        ? "bg-red-50 text-red-600"
+                        : "bg-blue-50 text-blue-700"
+                    }`}
+                  >
+                    {session.status === "ONGOING" ? "Live now" : "Upcoming"}
+                  </span>
+                </div>
+
+                {session.moduleTitle ? (
+                  <p className="mt-0.5 truncate text-xs text-gray-400">
+                    {session.title}
+                  </p>
+                ) : null}
+
+                <div className="mt-3 flex items-center gap-2 text-sm">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f0f7f3] text-[#1a6b3c]">
+                    <UserCheck size={14} />
+                  </span>
+                  <span className="min-w-0 truncate font-semibold text-gray-700">
+                    {session.trainerName}
+                  </span>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-gray-100 pt-3 text-xs font-medium text-gray-500">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar size={13} className="text-gray-400" />
+                    {formatDate(session.startTime)}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Clock size={13} className="text-gray-400" />
+                    {formatTime(session.startTime)} –{" "}
+                    {formatTime(session.endTime)}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Layers size={13} className="text-gray-400" />
+                    {session.cohortName}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <p className="p-8 text-center text-sm text-gray-500">
-            No upcoming live sessions in the next 30 days.
+            No upcoming live sessions.
           </p>
         )}
       </div>

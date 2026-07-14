@@ -8,6 +8,7 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertCircle,
   CheckCircle2,
@@ -36,6 +37,9 @@ export type ActionMenuItem = {
   disabled?: boolean;
 };
 
+// Fixed dropdown width (matches the old w-52 = 13rem).
+const ACTION_MENU_WIDTH = 208;
+
 export function ActionMenu({
   items,
   ariaLabel = "Actions",
@@ -44,32 +48,70 @@ export function ActionMenu({
   ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  // The menu is rendered into a portal with fixed positioning so it can never
+  // be clipped by an ancestor's `overflow-hidden` (e.g. rounded cards).
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(
+    null,
+  );
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const computeCoords = useCallback(() => {
+    const button = buttonRef.current;
+    if (!button) return;
+
+    const rect = button.getBoundingClientRect();
+    // ~40px per item plus the container's vertical padding — enough to decide
+    // whether the menu should flip above the trigger near the viewport edge.
+    const estimatedHeight = items.length * 40 + 8;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < estimatedHeight + 8 && rect.top > spaceBelow;
+
+    const top = openUp
+      ? Math.max(8, rect.top - estimatedHeight - 4)
+      : rect.bottom + 4;
+
+    let left = rect.right - ACTION_MENU_WIDTH;
+    left = Math.min(left, window.innerWidth - ACTION_MENU_WIDTH - 8);
+    left = Math.max(8, left);
+
+    setCoords({ top, left });
+  }, [items.length]);
 
   useEffect(() => {
     if (!open) return;
 
-    const handleClick = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
+    computeCoords();
+
+    const handlePointer = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (buttonRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
+    const handleReflow = () => computeCoords();
 
-    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("mousedown", handlePointer);
     document.addEventListener("keydown", handleKey);
+    window.addEventListener("resize", handleReflow);
+    // Capture phase so scrolling in any nested container repositions the menu.
+    window.addEventListener("scroll", handleReflow, true);
 
     return () => {
-      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("mousedown", handlePointer);
       document.removeEventListener("keydown", handleKey);
+      window.removeEventListener("resize", handleReflow);
+      window.removeEventListener("scroll", handleReflow, true);
     };
-  }, [open]);
+  }, [open, computeCoords]);
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
+        ref={buttonRef}
         type="button"
         aria-label={ariaLabel}
         aria-haspopup="menu"
@@ -80,43 +122,53 @@ export function ActionMenu({
         <MoreVertical size={17} />
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-xl border border-gray-100 bg-white py-1 shadow-lg"
-        >
-          {items.map((item) => {
-            const Icon = item.icon;
+      {open && coords
+        ? createPortal(
+            <div
+              ref={menuRef}
+              role="menu"
+              style={{
+                position: "fixed",
+                top: coords.top,
+                left: coords.left,
+                width: ACTION_MENU_WIDTH,
+              }}
+              className="z-[80] overflow-hidden rounded-xl border border-gray-100 bg-white py-1 shadow-lg"
+            >
+              {items.map((item) => {
+                const Icon = item.icon;
 
-            return (
-              <button
-                key={item.label}
-                role="menuitem"
-                type="button"
-                disabled={item.disabled}
-                onClick={() => {
-                  setOpen(false);
-                  item.onSelect();
-                }}
-                className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                  item.danger
-                    ? "text-red-600 hover:bg-red-50"
-                    : "text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {Icon ? (
-                  <Icon
-                    size={15}
-                    className={item.danger ? "text-red-500" : "text-gray-400"}
-                  />
-                ) : null}
-                {item.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
+                return (
+                  <button
+                    key={item.label}
+                    role="menuitem"
+                    type="button"
+                    disabled={item.disabled}
+                    onClick={() => {
+                      setOpen(false);
+                      item.onSelect();
+                    }}
+                    className={`flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      item.danger
+                        ? "text-red-600 hover:bg-red-50"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {Icon ? (
+                      <Icon
+                        size={15}
+                        className={item.danger ? "text-red-500" : "text-gray-400"}
+                      />
+                    ) : null}
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 

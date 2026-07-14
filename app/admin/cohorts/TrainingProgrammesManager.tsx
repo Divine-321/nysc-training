@@ -279,12 +279,36 @@ export default function TrainingProgrammesManager() {
     );
   }, [programmes]);
 
+  // True when a training for this course + cohort month + year already exists.
+  const findDuplicateTraining = (list: CohortCourse[]) =>
+    list.find(
+      (programme) =>
+        Number(programme.course) === Number(selectedCourseId) &&
+        cohortCourseBatchLabel(programme).toLowerCase() ===
+          form.cohort.toLowerCase() &&
+        String(programme.year ?? "") === String(form.year),
+    );
+
   // Creates one Programme: a single Course delivered to a cohort (month) + year.
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
 
     if (!selectedCourseId) {
       setError("Please select a course for this programme.");
+      return;
+    }
+
+    const courseTitle =
+      courses.find((course) => course.id === Number(selectedCourseId))
+        ?.title ?? "this course";
+    const duplicateMessage = `"${courseTitle}" already has a training for ${form.cohort} ${form.year}. Open the existing one from the table below, or pick a different month or year.`;
+
+    // Duplicates are rejected here BEFORE calling the backend (it currently
+    // crashes with a 500 on the unique constraint instead of returning a
+    // clean validation error).
+    if (findDuplicateTraining(programmes)) {
+      setError(duplicateMessage);
+      setNotice("");
       return;
     }
 
@@ -306,11 +330,36 @@ export default function TrainingProgrammesManager() {
       });
       const payload = await response.json().catch(() => null);
 
-      const courseTitle =
-        courses.find((course) => course.id === Number(selectedCourseId))
-          ?.title ?? "this course";
+      if (!response.ok && response.status >= 500) {
+        // The backend 500s on duplicate (course, cohort, year). Only claim
+        // "duplicate" if a fresh fetch actually confirms one exists — for
+        // example created by another admin since our list loaded.
+        let confirmedDuplicate = false;
 
-      if (!response.ok) {
+        try {
+          const check = await fetch("/api/training/cohort-courses", {
+            cache: "no-store",
+          });
+
+          if (check.ok) {
+            confirmedDuplicate = Boolean(
+              findDuplicateTraining(
+                readApiList<CohortCourse>(
+                  await check.json().catch(() => null),
+                ),
+              ),
+            );
+          }
+        } catch {
+          // Fall through to the generic server-error message.
+        }
+
+        setError(
+          confirmedDuplicate
+            ? duplicateMessage
+            : "The server could not create this training (HTTP 500). This is a backend error — please share it with the backend team.",
+        );
+      } else if (!response.ok) {
         setError(
           friendlyCreateError(
             extractErrorMessage(
@@ -393,6 +442,8 @@ export default function TrainingProgrammesManager() {
     .map((link) => ({
       id: link.module,
       title: link.module_details?.title ?? `Module ${link.module}`,
+      // The session's trainer defaults from the module's trainer.
+      trainerId: link.module_details?.trainers?.[0]?.id ?? null,
     }));
 
   const coveredModuleIds = new Set(
@@ -694,19 +745,25 @@ export default function TrainingProgrammesManager() {
     setSavingSession(true);
     setSessionError("");
 
+    const moduleId =
+      sessionForm.module && sessionForm.module !== "general"
+        ? Number(sessionForm.module)
+        : null;
+    // The trainer defaults from the chosen module (single source of truth).
+    const trainerId =
+      moduleId != null
+        ? (sessionModuleOptions.find((option) => option.id === moduleId)
+            ?.trainerId ?? null)
+        : null;
+
     try {
       const response = await fetch("/api/training/live-sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // New backend FK name is `programme`; cohort_course kept so the
-          // payload still parses against any older serializer.
           programme: sessionsFor.id,
-          cohort_course: sessionsFor.id,
-          module:
-            sessionForm.module && sessionForm.module !== "general"
-              ? Number(sessionForm.module)
-              : null,
+          module: moduleId,
+          trainer: trainerId,
           title: sessionForm.title.trim(),
           description: sessionForm.description.trim() || null,
           meeting_url: sessionForm.meeting_url.trim(),
@@ -718,6 +775,14 @@ export default function TrainingProgrammesManager() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
+        // A 500 returns Django's HTML error page (no JSON), so give a
+        // clearer hint than the generic proxy message.
+        if (response.status >= 500) {
+          throw new Error(
+            "The server could not create this session (HTTP 500). This is a backend error — please share it with the backend team.",
+          );
+        }
+
         throw new Error(
           extractErrorMessage(payload, "Could not schedule this session."),
         );

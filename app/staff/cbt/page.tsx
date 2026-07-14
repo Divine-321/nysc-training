@@ -58,6 +58,32 @@ export default function CBTPage() {
           }),
         );
 
+        // const allItems = assessmentGroups.flat();
+        const allItems = assessmentGroups.flat();
+
+const seen = new Set<number>();
+
+const uniqueItems = allItems.filter((item) => {
+  if (seen.has(item.assessment.id)) {
+    return false;
+  }
+
+  seen.add(item.assessment.id);
+  return true;
+});
+
+setItems(uniqueItems);
+
+console.table(
+  allItems.map((item) => ({
+    assessmentId: item.assessment.id,
+    course: item.staffCourse.enrollment.course_title,
+    module: item.assessment.module_title,
+  }))
+);
+
+setItems(allItems);
+
         setItems(assessmentGroups.flat());
         setAttempts(await loadAssessmentAttempts());
         setError("");

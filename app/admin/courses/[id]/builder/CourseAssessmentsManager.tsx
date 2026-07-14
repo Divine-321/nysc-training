@@ -10,6 +10,7 @@ import {
   ListPlus,
   Plus,
   RotateCcw,
+  Shuffle,
   Target,
   Timer,
   Trash2,
@@ -44,6 +45,9 @@ type Assessment = {
   pass_mark: string;
   max_attempts: number;
   duration?: number;
+  /** Per-attempt server-side shuffling (deployed 2026-07-14). */
+  shuffle_questions?: boolean;
+  shuffle_options?: boolean;
   questions: AssessmentQuestion[];
 };
 
@@ -59,6 +63,10 @@ const emptyForm = {
   pass_mark: "50.00",
   max_attempts: "1",
   duration: "30",
+  // Shuffle by default — the whole point is exam integrity. Admins can
+  // untick for sequential question sets.
+  shuffle_questions: true,
+  shuffle_options: true,
 };
 
 const emptyQuestionForm = {
@@ -200,6 +208,8 @@ export default function CourseAssessmentsManager({
           pass_mark: form.pass_mark,
           max_attempts: Number(form.max_attempts),
           duration: Number(form.duration) || 30,
+          shuffle_questions: form.shuffle_questions,
+          shuffle_options: form.shuffle_options,
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -560,6 +570,35 @@ export default function CourseAssessmentsManager({
           />
         </div>
 
+        {/* Per-attempt server-side shuffling (backend, 2026-07-14). */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 md:col-span-2">
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              checked={form.shuffle_questions}
+              onChange={(event) =>
+                setForm({ ...form, shuffle_questions: event.target.checked })
+              }
+              className="h-4 w-4 rounded border-gray-300 accent-[#1a6b3c]"
+            />
+            Shuffle questions
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              checked={form.shuffle_options}
+              onChange={(event) =>
+                setForm({ ...form, shuffle_options: event.target.checked })
+              }
+              className="h-4 w-4 rounded border-gray-300 accent-[#1a6b3c]"
+            />
+            Shuffle answer options
+          </label>
+          <span className="text-xs text-gray-400">
+            Each staff member gets their own random order.
+          </span>
+        </div>
+
         <button
           disabled={
             saving ||
@@ -610,6 +649,21 @@ export default function CourseAssessmentsManager({
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600">
                           <Layers size={12} className="text-gray-400" />
                           {assessment.module_title}
+                        </span>
+                      ) : null}
+                      {assessment.shuffle_questions ||
+                      assessment.shuffle_options ? (
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700"
+                          title={`Shuffles ${[
+                            assessment.shuffle_questions ? "questions" : null,
+                            assessment.shuffle_options ? "answer options" : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" and ")} per staff member`}
+                        >
+                          <Shuffle size={12} />
+                          Shuffled
                         </span>
                       ) : null}
                     </div>

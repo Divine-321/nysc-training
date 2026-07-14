@@ -69,8 +69,17 @@ export default function AssessmentPage() {
           loadAssessments(courseId),
           loadStaffCourse(courseId),
         ]);
+        // Prefer a specific assessment id (per-module tests share the same
+        // pre-test/post-test route); fall back to the first of that type.
+        const requestedId = Number(
+          new URLSearchParams(window.location.search).get("assessment"),
+        );
         const selectedAssessment =
-          assessments.find((item) => item.type === assessmentType) ?? null;
+          (requestedId
+            ? assessments.find((item) => item.id === requestedId)
+            : null) ??
+          assessments.find((item) => item.type === assessmentType) ??
+          null;
         setAssessment(selectedAssessment);
         setStaffCourse(course);
       } catch (loadError) {

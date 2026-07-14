@@ -1,17 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import Link from "next/link";
 import {
+  ArrowRight,
   BookOpen,
-  CheckCircle2,
-  Clock,
+  CalendarDays,
+  Cpu,
+  HeartPulse,
+  Landmark,
   Layers,
   Lock,
-  PlayCircle,
+  MessageSquare,
+  RotateCcw,
+  Rocket,
+  Scale,
   Search,
-  UserCheck,
+  ShieldCheck,
+  Sparkles,
+  Users,
 } from "lucide-react";
 import { Skeleton } from "@/app/components/ui";
 import {
@@ -35,20 +42,112 @@ function statusLabel(item: StaffCourse) {
   return "Not started";
 }
 
-function statusClass(item: StaffCourse) {
-  if (isCourseCompleted(item)) return "bg-green-100 text-green-700";
+// White glass pill on the banner, differentiated only by a coloured dot so it
+// stays legible on top of any gradient.
+function statusDotClass(item: StaffCourse) {
+  if (isCourseCompleted(item)) return "bg-emerald-500";
   if (item.enrollment.status === "IN_PROGRESS")
-    return "bg-blue-100 text-blue-700";
-  return "bg-amber-100 text-amber-700";
+    return "bg-blue-500 animate-pulse";
+  return "bg-amber-500";
 }
 
-function trainerLabel(item: StaffCourse) {
-  const trainers = item.course?.trainers ?? [];
+// --- Branded banner generation ------------------------------------------------
+// Rather than repeat one stock photo across every course, each course gets a
+// deterministic gradient + topic icon derived from its title. Same course =>
+// same banner every time, but the library as a whole looks varied.
 
-  if (trainers.length === 0) return "Trainer not assigned";
+const BANNER_THEMES = [
+  { gradient: "from-emerald-500 via-emerald-600 to-teal-700", glow: "bg-teal-300/40" },
+  { gradient: "from-teal-500 via-cyan-600 to-sky-700", glow: "bg-cyan-300/40" },
+  { gradient: "from-sky-500 via-blue-600 to-indigo-700", glow: "bg-sky-300/40" },
+  { gradient: "from-indigo-500 via-violet-600 to-purple-700", glow: "bg-violet-300/40" },
+  { gradient: "from-fuchsia-500 via-purple-600 to-indigo-700", glow: "bg-fuchsia-300/40" },
+  { gradient: "from-rose-500 via-pink-600 to-fuchsia-700", glow: "bg-rose-300/40" },
+  { gradient: "from-amber-500 via-orange-600 to-rose-600", glow: "bg-amber-300/40" },
+  { gradient: "from-lime-500 via-emerald-600 to-teal-700", glow: "bg-lime-300/40" },
+] as const;
 
-  return trainers.map((trainer) => trainer.full_name).join(", ");
+// Any Lucide icon, or our custom emblem, is usable as a banner icon.
+type BannerIcon = ComponentType<{
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+}>;
+
+// NYSC torch — a simplified, monochrome 2D line rendering of the emblem's
+// central motif. Used as the default banner mark instead of a school cap,
+// since this is a service corps rather than a school.
+function NyscTorch({
+  size = 24,
+  strokeWidth = 1.5,
+  className,
+}: {
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+}) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      {/* flame */}
+      <path d="M12 2.2C13.2 4 14.2 5.4 14.2 6.6C14.2 7.8 13.2 8.6 12 8.6C10.8 8.6 9.8 7.8 9.8 6.6C9.8 5.4 10.8 4 12 2.2Z" />
+      {/* cup */}
+      <path d="M8.5 9H15.5L14 11H10Z" />
+      {/* handle */}
+      <path d="M10 11L10.8 20.5H13.2L14 11" />
+      {/* grip bands */}
+      <path d="M10.5 14.5H13.6" />
+      <path d="M10.6 17H13.4" />
+    </svg>
+  );
 }
+
+const ICON_RULES: Array<[RegExp, BannerIcon]> = [
+  [/induct|orient|onboard|welcome|prep/i, Rocket],
+  [/safe|security|protect|risk|emergen/i, ShieldCheck],
+  [/lead|manage|supervis|team|hr\b|human resource/i, Users],
+  [/health|medical|first aid|wellness|hygien/i, HeartPulse],
+  [/finance|budget|account|payroll|procure/i, Landmark],
+  [/tech|digital|computer|\bit\b|software|data|cyber/i, Cpu],
+  [/comm|writ|report|present|speak|media/i, MessageSquare],
+  [/law|legal|policy|ethic|govern|complian|conduct/i, Scale],
+  [/skill|develop|growth|capacity|profession/i, Sparkles],
+];
+
+function hashString(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash << 5) - hash + value.charCodeAt(index);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function bannerFor(item: StaffCourse) {
+  const title = item.enrollment.course_title ?? "Course";
+  const theme = BANNER_THEMES[hashString(title) % BANNER_THEMES.length];
+  const rule = ICON_RULES.find(([pattern]) => pattern.test(title));
+  const Icon = rule ? rule[1] : NyscTorch;
+  return { ...theme, Icon };
+}
+
+// Subtle dotted texture laid over the gradient for depth.
+const DOT_TEXTURE = {
+  backgroundImage:
+    "radial-gradient(circle, rgba(255,255,255,0.18) 1px, transparent 1px)",
+  backgroundSize: "18px 18px",
+} as const;
 
 export default function StaffTraining() {
   const [tab, setTab] = useState<"all" | "inprogress" | "completed">("all");
@@ -87,7 +186,7 @@ export default function StaffTraining() {
         (tab === "inprogress" && !isCourseCompleted(item));
       const matchesSearch =
         !normalizedSearch ||
-        `${item.enrollment.course_title} ${item.enrollment.cohort_name} ${trainerLabel(item)}`
+        `${item.enrollment.course_title} ${item.enrollment.cohort_name}`
           .toLowerCase()
           .includes(normalizedSearch);
 
@@ -156,14 +255,14 @@ export default function StaffTraining() {
                 key={index}
                 className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"
               >
-                <Skeleton className="h-40 w-full rounded-none" />
+                <Skeleton className="h-44 w-full rounded-none" />
                 <div className="p-5">
                   <Skeleton className="h-4 w-24" />
-                  <Skeleton className="mt-2 h-5 w-3/4" />
+                  <Skeleton className="mt-3 h-5 w-3/4" />
                   <Skeleton className="mt-3 h-4 w-full" />
                   <Skeleton className="mt-1.5 h-4 w-2/3" />
-                  <Skeleton className="mt-5 h-2 w-full rounded-full" />
-                  <Skeleton className="mt-5 h-10 w-full rounded-xl" />
+                  <Skeleton className="mt-5 h-2.5 w-full rounded-full" />
+                  <Skeleton className="mt-5 h-11 w-full rounded-xl" />
                 </div>
               </div>
             ))}
@@ -187,8 +286,9 @@ export default function StaffTraining() {
               const progress = toPercentage(
                 item.enrollment.completion_percentage,
               );
+              const completed = isCourseCompleted(item);
               const totalDocuments = item.modules.reduce(
-                (total, module) => total + module.documents.length,
+                (total, mod) => total + mod.documents.length,
                 0,
               );
               const completedDocuments = (
@@ -196,90 +296,98 @@ export default function StaffTraining() {
                 item.enrollment.document_progress ??
                 []
               ).filter((progressItem) => progressItem.is_completed).length;
+              const { gradient, glow, Icon } = bannerFor(item);
 
               return (
                 <div
                   key={item.enrollment.id}
-                  className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition hover:shadow-md"
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-gray-200 hover:shadow-xl"
                 >
-                  <div className="relative h-40 bg-[#1a6b3c]">
-                    <Image
-                      src={item.course?.thumbnail_url || "/images/course-thumb.png"}
-                      alt={item.enrollment.course_title ?? "Course thumbnail"}
-                      width={400}
-                      height={200}
-                      className={`h-40 w-full object-cover ${
-                        isLocked ? "opacity-50" : ""
-                      }`}
+                  {/* Branded banner */}
+                  <div
+                    className={`relative h-44 overflow-hidden bg-gradient-to-br ${gradient}`}
+                  >
+                    <div className="absolute inset-0" style={DOT_TEXTURE} />
+                    <div
+                      className={`absolute -right-10 -top-12 h-44 w-44 rounded-full ${glow} blur-2xl`}
                     />
+                    <div className="absolute -bottom-14 -left-8 h-44 w-44 rounded-full bg-white/10 blur-2xl" />
+
+                    <Icon
+                      size={132}
+                      strokeWidth={1.25}
+                      className="absolute -bottom-5 right-1 text-white/15 transition-transform duration-500 group-hover:scale-110"
+                    />
+
+                    <div className="absolute inset-x-0 top-0 flex items-start justify-between p-4">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 text-white ring-1 ring-white/30 backdrop-blur-sm">
+                        <Icon size={20} strokeWidth={2} />
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-xs font-bold text-gray-700 shadow-sm">
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${statusDotClass(item)}`}
+                        />
+                        {statusLabel(item)}
+                      </span>
+                    </div>
+
                     {isLocked && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                        <Lock size={32} className="text-white" />
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[1px]">
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/30">
+                          <Lock size={22} className="text-white" />
+                        </span>
                       </div>
                     )}
-                    <span
-                      className={`absolute bottom-2 left-2 rounded-full px-3 py-1 text-xs font-bold ${statusClass(
-                        item,
-                      )}`}
-                    >
-                      {statusLabel(item)}
-                    </span>
                   </div>
 
+                  {/* Body */}
                   <div className="flex flex-1 flex-col p-5">
-                    <p className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-gray-500">
-                      <span className="flex items-center gap-1.5">
-                        <Clock size={14} className="text-[#1a6b3c]" />
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                        <CalendarDays size={13} className="text-[#1a6b3c]" />
                         {item.enrollment.cohort_name}
                       </span>
-                      <span className="flex items-center gap-1.5">
-                        <Layers size={14} className="text-[#1a6b3c]" />
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                        <Layers size={13} className="text-[#1a6b3c]" />
                         {item.modules.length} module
                         {item.modules.length === 1 ? "" : "s"}
                       </span>
-                    </p>
+                    </div>
 
-                    <h3 className="mb-2 font-bold text-gray-800 transition group-hover:text-[#1a6b3c]">
+                    <h3 className="mb-2 line-clamp-2 text-lg font-bold leading-snug text-gray-800 transition group-hover:text-[#1a6b3c]">
                       {item.enrollment.course_title}
                     </h3>
 
-                    <p className="mb-3 flex items-start gap-1.5 text-xs font-semibold text-gray-500">
-                      <UserCheck
-                        size={14}
-                        className="mt-0.5 shrink-0 text-[#1a6b3c]"
-                      />
-                      <span>
-                        <span className="text-gray-400">
-                          {item.course?.trainers?.length === 1
-                            ? "Trainer:"
-                            : "Trainers:"}
-                        </span>{" "}
-                        {trainerLabel(item)}
-                      </span>
-                    </p>
-
-                    <p className="mb-4 line-clamp-2 flex-1 text-sm leading-relaxed text-gray-500">
+                    <p className="mb-5 line-clamp-2 flex-1 text-sm leading-relaxed text-gray-500">
                       {item.course?.description ||
                         "Open this course to view activities and materials."}
                     </p>
 
-                    <div className="mb-1.5 flex items-center justify-between text-xs font-medium">
-                      <span className="text-gray-500">
-                        {completedDocuments} of {totalDocuments} material
-                        {totalDocuments === 1 ? "" : "s"} completed
-                      </span>
-                      <span className="font-bold text-[#1a6b3c]">
-                        {progress}%
-                      </span>
-                    </div>
-
-                    <div className="mb-5 h-2 w-full overflow-hidden rounded-full bg-gray-100">
-                      <div
-                        className={`h-2 rounded-full transition-all duration-500 ${
-                          progress >= 100 ? "bg-green-500" : "bg-[#1a6b3c]"
-                        }`}
-                        style={{ width: `${progress}%` }}
-                      />
+                    {/* Progress */}
+                    <div className="mb-5 rounded-xl bg-gray-50 p-3.5">
+                      <div className="mb-2 flex items-end justify-between">
+                        <span className="text-xs font-medium text-gray-500">
+                          {completedDocuments} of {totalDocuments} material
+                          {totalDocuments === 1 ? "" : "s"} completed
+                        </span>
+                        <span
+                          className={`text-lg font-extrabold leading-none ${
+                            completed ? "text-emerald-600" : "text-[#1a6b3c]"
+                          }`}
+                        >
+                          {progress}%
+                        </span>
+                      </div>
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-200">
+                        <div
+                          className={`h-full rounded-full transition-all duration-700 ease-out ${
+                            completed
+                              ? "bg-gradient-to-r from-emerald-400 to-emerald-600"
+                              : "bg-gradient-to-r from-emerald-500 to-[#1a6b3c]"
+                          }`}
+                          style={{ width: `${Math.max(progress, 2)}%` }}
+                        />
+                      </div>
                     </div>
 
                     {isLocked && lockReason && (
@@ -289,25 +397,35 @@ export default function StaffTraining() {
                       </p>
                     )}
 
-                    {courseId && !isLocked && (
-                      <Link
-                        href={`/staff/course/${courseId}`}
-                        className="mt-auto flex w-full items-center justify-center gap-2 rounded-xl border-2 border-[#1a6b3c] py-2.5 text-sm font-bold text-[#1a6b3c] transition hover:bg-green-50"
-                      >
-                        {progress > 0 ? (
-                          <PlayCircle size={18} />
-                        ) : (
-                          <CheckCircle2 size={18} />
-                        )}
-                        {progress > 0 ? "Resume Course" : "Start Course"}
-                      </Link>
-                    )}
-
-                    {isLocked && (
-                      <div className="mt-auto flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-gray-50 py-2.5 text-sm font-bold text-gray-400">
-                        <Lock size={18} />
+                    {/* Action */}
+                    {isLocked ? (
+                      <div className="mt-auto flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-gray-50 py-3 text-sm font-bold text-gray-400">
+                        <Lock size={16} />
                         Locked
                       </div>
+                    ) : completed ? (
+                      courseId && (
+                        <Link
+                          href={`/staff/course/${courseId}`}
+                          className="group/btn mt-auto flex w-full items-center justify-center gap-2 rounded-xl border-2 border-emerald-600 py-3 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50"
+                        >
+                          <RotateCcw size={16} />
+                          Review Course
+                        </Link>
+                      )
+                    ) : (
+                      courseId && (
+                        <Link
+                          href={`/staff/course/${courseId}`}
+                          className="group/btn mt-auto flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#155831] hover:shadow-md"
+                        >
+                          {progress > 0 ? "Resume Course" : "Start Course"}
+                          <ArrowRight
+                            size={16}
+                            className="transition-transform group-hover/btn:translate-x-1"
+                          />
+                        </Link>
+                      )
                     )}
                   </div>
                 </div>

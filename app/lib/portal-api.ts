@@ -124,6 +124,28 @@ export function sortedAssignedModules(
     .sort((first, second) => first.order - second.order);
 }
 
+/**
+ * Trainers are assigned to Modules (the single source of truth). Given a list
+ * of module-shaped objects, return the de-duplicated trainer names, in order —
+ * used everywhere a Course or delivery needs to show "its" trainers, all
+ * derived from the modules rather than the course.
+ */
+export function collectTrainerNames(
+  modules: ({ trainers?: Trainer[] | null } | null | undefined)[],
+): string[] {
+  const names: string[] = [];
+
+  for (const item of modules) {
+    for (const trainer of item?.trainers ?? []) {
+      if (trainer.full_name && !names.includes(trainer.full_name)) {
+        names.push(trainer.full_name);
+      }
+    }
+  }
+
+  return names;
+}
+
 const SESSION_STORAGE_KEY = "nysc-auth-session";
 
 async function apiFetch<T>(path: string, init?: RequestInit, token?: string) {

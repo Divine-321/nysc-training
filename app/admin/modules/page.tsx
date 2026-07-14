@@ -230,14 +230,12 @@ export default function ModuleLibraryPage() {
     await loadData();
   };
 
-  // Backend module clone (deployed 2026-07-14): duplicates the module, its
-  // activities and its assessments (with questions). The endpoint lives at
-  // /activities/{id}/clone/ but takes the MODULE id.
+  // Backend module clone: duplicates the module, its activities and its
+  // assessments (with questions).
   const handleClone = async (module: LibraryModule) => {
-    const response = await fetch(
-      `/api/training/activities/${module.id}/clone`,
-      { method: "POST" },
-    );
+    const response = await fetch(`/api/training/modules/${module.id}/clone`, {
+      method: "POST",
+    });
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {

@@ -6,11 +6,12 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   Award,
+  Calendar,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
+  Clock,
   ExternalLink,
   FileText,
   Headphones,
@@ -19,40 +20,66 @@ import {
   MonitorPlay,
   PlayCircle,
   Presentation,
+  UserCheck,
+  Video,
   X,
 } from "lucide-react";
 import RichTextViewer from "@/app/components/RichTextViewer";
 import {
   documentIsComplete,
   loadAssessments,
+  loadLiveSessionsForCourse,
   loadStaffCourse,
   markDocumentComplete,
   type Assessment,
+  type LiveSession,
   type ModuleDocument,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
+import { extractErrorMessage, readApiItem } from "@/app/lib/portal-api";
+import { formatDateTime } from "@/app/lib/format";
 
 // ---------------------------------------------------------------------------
-// Outline model: the course flattened into an ordered list of player items —
-// optional pre-test, every module's materials in order, optional post-test.
+// Per-module learning model. Each module is one focused section whose items
+// appear in a fixed order: Pre-Test → Activities (configured order) → Live
+// Session → Post-Test (any missing item is simply omitted). Assessments and
+// live sessions belong to their module (assessment.module / session.module).
 // ---------------------------------------------------------------------------
 
 type DocItem = {
   key: string;
   kind: "doc";
   moduleId: number;
-  moduleTitle: string;
+  moduleIndex: number;
   doc: ModuleDocument;
 };
 
 type AssessmentItem = {
   key: string;
   kind: "assessment";
-  type: "pre-test" | "post-test";
+  moduleId: number;
+  moduleIndex: number;
+  phase: "pre" | "post";
   assessment: Assessment;
 };
 
-type PlayerItem = DocItem | AssessmentItem;
+type LiveItem = {
+  key: string;
+  kind: "live";
+  moduleId: number;
+  moduleIndex: number;
+  session: LiveSession;
+};
+
+type PlayerItem = DocItem | AssessmentItem | LiveItem;
+
+type ModuleSection = {
+  moduleId: number;
+  moduleIndex: number;
+  title: string;
+  trainer: string | null;
+  items: PlayerItem[];
+};
 
 const AUDIO_URL_PATTERN = /\.(mp3|wav|m4a|aac|ogg|oga|opus)(\?|#|$)/i;
 
@@ -60,10 +87,6 @@ function documentUrl(doc: ModuleDocument) {
   return doc.content_url ?? doc.file_url ?? "";
 }
 
-/**
- * What this material actually is, preferring the new-model content_type and
- * falling back to the legacy doc_type (with an audio sniff for OTHER).
- */
 type DocumentKind =
   | "VIDEO"
   | "PDF"
@@ -123,9 +146,20 @@ function documentIcon(doc: ModuleDocument) {
   }
 }
 
-// Renders one material by its resolved kind. Text lessons, videos, PDFs,
-// images and audio play inside the pane; slides and other files open in a
-// new tab.
+function itemIcon(item: PlayerItem) {
+  if (item.kind === "assessment") return ClipboardCheck;
+  if (item.kind === "live") return Video;
+  return documentIcon(item.doc);
+}
+
+function itemTitle(item: PlayerItem) {
+  if (item.kind === "assessment") {
+    return item.phase === "pre" ? "Pre-Test" : "Post-Test";
+  }
+  if (item.kind === "live") return item.session.title || "Live Session";
+  return item.doc.title;
+}
+
 function DocumentContent({ doc }: { doc: ModuleDocument }) {
   const kind = documentKind(doc);
   const url = documentUrl(doc);
@@ -221,73 +255,168 @@ function CoursePlayer() {
 
   const [staffCourse, setStaffCourse] = useState<StaffCourse | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
   const [currentKey, setCurrentKey] = useState<string | null>(null);
-  const [expandedModules, setExpandedModules] = useState<Set<number>>(
-    new Set(),
-  );
+  const [moduleSwitcherOpen, setModuleSwitcherOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [joiningSessionId, setJoiningSessionId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const contentRef = useRef<HTMLDivElement | null>(null);
 
-  const items = useMemo<PlayerItem[]>(() => {
+  // Build the per-module sections in the fixed learning order.
+  const sections = useMemo<ModuleSection[]>(() => {
     if (!staffCourse) return [];
 
-    const list: PlayerItem[] = [];
-    const preTest = assessments.find((item) => item.type === "PRE_TEST");
-    const postTest = assessments.find((item) => item.type === "POST_TEST");
+    const orderedModules = staffCourse.modules
+      .slice()
+      .sort((first, second) => first.order - second.order);
 
-    if (preTest) {
-      list.push({
-        key: "assessment-pre",
-        kind: "assessment",
-        type: "pre-test",
-        assessment: preTest,
-      });
-    }
+    const built: ModuleSection[] = orderedModules.map((module, moduleIndex) => {
+      const items: PlayerItem[] = [];
 
-    for (const courseModule of staffCourse.modules) {
-      const sortedDocs = courseModule.documents
+      // 1. Pre-Test (this module's PRE_TEST assessment).
+      const preTest = assessments.find(
+        (assessment) =>
+          assessment.type === "PRE_TEST" && assessment.module === module.id,
+      );
+      if (preTest) {
+        items.push({
+          key: `pre-${module.id}`,
+          kind: "assessment",
+          moduleId: module.id,
+          moduleIndex,
+          phase: "pre",
+          assessment: preTest,
+        });
+      }
+
+      // 2. Activities in their configured order.
+      for (const doc of module.documents
         .slice()
-        .sort((first, second) => first.order - second.order);
-
-      for (const doc of sortedDocs) {
-        list.push({
+        .sort((first, second) => first.order - second.order)) {
+        items.push({
           key: `doc-${doc.id}`,
           kind: "doc",
-          moduleId: courseModule.id,
-          moduleTitle: courseModule.title,
+          moduleId: module.id,
+          moduleIndex,
           doc,
         });
       }
-    }
 
-    if (postTest) {
-      list.push({
-        key: "assessment-post",
+      // 3. Live session(s) tagged with this module.
+      for (const session of liveSessions.filter(
+        (item) => item.module === module.id,
+      )) {
+        items.push({
+          key: `live-${session.id}`,
+          kind: "live",
+          moduleId: module.id,
+          moduleIndex,
+          session,
+        });
+      }
+
+      // 4. Post-Test (this module's POST_TEST assessment).
+      const postTest = assessments.find(
+        (assessment) =>
+          assessment.type === "POST_TEST" && assessment.module === module.id,
+      );
+      if (postTest) {
+        items.push({
+          key: `post-${module.id}`,
+          kind: "assessment",
+          moduleId: module.id,
+          moduleIndex,
+          phase: "post",
+          assessment: postTest,
+        });
+      }
+
+      return {
+        moduleId: module.id,
+        moduleIndex,
+        title: module.title,
+        trainer: module.trainers?.[0]?.full_name ?? null,
+        items,
+      };
+    });
+
+    // Legacy fallback: assessments with no module (old course-level tests)
+    // bookend the whole course — pre on the first module, post on the last.
+    const orphanPre = assessments.find(
+      (assessment) => assessment.type === "PRE_TEST" && assessment.module == null,
+    );
+    const orphanPost = assessments.find(
+      (assessment) =>
+        assessment.type === "POST_TEST" && assessment.module == null,
+    );
+
+    if (orphanPre && built[0]) {
+      built[0].items.unshift({
+        key: `pre-orphan`,
         kind: "assessment",
-        type: "post-test",
-        assessment: postTest,
+        moduleId: built[0].moduleId,
+        moduleIndex: 0,
+        phase: "pre",
+        assessment: orphanPre,
+      });
+    }
+    if (orphanPost && built.length > 0) {
+      const last = built[built.length - 1];
+      last.items.push({
+        key: `post-orphan`,
+        kind: "assessment",
+        moduleId: last.moduleId,
+        moduleIndex: last.moduleIndex,
+        phase: "post",
+        assessment: orphanPost,
       });
     }
 
-    return list;
-  }, [staffCourse, assessments]);
+    return built;
+  }, [staffCourse, assessments, liveSessions]);
 
-  const currentIndex = items.findIndex((item) => item.key === currentKey);
+  const items = useMemo(
+    () => sections.flatMap((section) => section.items),
+    [sections],
+  );
+
+  // Falls back to the first item until the learner navigates, without needing
+  // an effect to seed state (avoids cascading re-renders).
+  const effectiveKey = currentKey ?? items[0]?.key ?? null;
+  const currentIndex = items.findIndex((item) => item.key === effectiveKey);
   const currentItem = currentIndex >= 0 ? items[currentIndex] : null;
-  const docItems = useMemo(
+  const currentSection = currentItem
+    ? (sections.find(
+        (section) => section.moduleId === currentItem.moduleId,
+      ) ?? null)
+    : (sections[0] ?? null);
+
+  // Progress — course-wide and per (current) module, counted from real docs.
+  const allDocs = useMemo(
     () => items.filter((item): item is DocItem => item.kind === "doc"),
     [items],
   );
-  const totalDocs = docItems.length;
-  const completedDocs = docItems.filter((item) =>
+  const totalDocs = allDocs.length;
+  const completedDocs = allDocs.filter((item) =>
     completedIds.has(item.doc.id),
   ).length;
   const progress =
     totalDocs === 0 ? 0 : Math.round((completedDocs / totalDocs) * 100);
+
+  const sectionDocs = (currentSection?.items ?? []).filter(
+    (item): item is DocItem => item.kind === "doc",
+  );
+  const sectionCompleted = sectionDocs.filter((item) =>
+    completedIds.has(item.doc.id),
+  ).length;
+  const sectionProgress =
+    sectionDocs.length === 0
+      ? 0
+      : Math.round((sectionCompleted / sectionDocs.length) * 100);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -304,9 +433,11 @@ function CoursePlayer() {
 
         setStaffCourse(courseData);
         setAssessments(assessmentData);
-        setExpandedModules(
-          new Set(courseData.modules.map((module) => module.id)),
-        );
+
+        // Live sessions belong to this enrollment's programme delivery.
+        void loadLiveSessionsForCourse([courseData.enrollment.cohort_course])
+          .then((sessions) => setLiveSessions(sessions))
+          .catch(() => setLiveSessions([]));
 
         const done = new Set<number>();
         for (const courseModule of courseData.modules) {
@@ -318,10 +449,11 @@ function CoursePlayer() {
         }
         setCompletedIds(done);
 
-        // Land on the deep-linked material, else the first incomplete one,
-        // else the very first item (resume behaviour).
+        // Land on the deep-linked material or module, else the first
+        // incomplete material, else the very first item (resume behaviour).
         const requestedDocId = Number(searchParams.get("doc"));
-        const allDocs = courseData.modules
+        const requestedModuleId = Number(searchParams.get("module"));
+        const orderedDocs = courseData.modules
           .slice()
           .sort((first, second) => first.order - second.order)
           .flatMap((module) =>
@@ -330,18 +462,46 @@ function CoursePlayer() {
               .sort((first, second) => first.order - second.order),
           );
 
-        const requested = allDocs.find((doc) => doc.id === requestedDocId);
-        const firstIncomplete = allDocs.find((doc) => !done.has(doc.id));
-        const landing = requested ?? firstIncomplete ?? allDocs[0];
+        const requestedModule = courseData.modules.find(
+          (module) => module.id === requestedModuleId,
+        );
 
-        if (landing) {
-          setCurrentKey(`doc-${landing.id}`);
-        } else if (assessmentData.length > 0) {
-          setCurrentKey(
-            assessmentData.some((item) => item.type === "PRE_TEST")
-              ? "assessment-pre"
-              : "assessment-post",
+        if (requestedModule) {
+          // Resume inside the requested module: its first incomplete
+          // material, else its first material, else its pre/post-test.
+          const moduleDocs = requestedModule.documents
+            .slice()
+            .sort((first, second) => first.order - second.order);
+          const moduleLanding =
+            moduleDocs.find((doc) => !done.has(doc.id)) ?? moduleDocs[0];
+
+          if (moduleLanding) {
+            setCurrentKey(`doc-${moduleLanding.id}`);
+          } else if (
+            assessmentData.some(
+              (item) =>
+                item.type === "PRE_TEST" && item.module === requestedModule.id,
+            )
+          ) {
+            setCurrentKey(`pre-${requestedModule.id}`);
+          } else if (
+            assessmentData.some(
+              (item) =>
+                item.type === "POST_TEST" && item.module === requestedModule.id,
+            )
+          ) {
+            setCurrentKey(`post-${requestedModule.id}`);
+          }
+        } else {
+          const requested = orderedDocs.find(
+            (doc) => doc.id === requestedDocId,
           );
+          const firstIncomplete = orderedDocs.find((doc) => !done.has(doc.id));
+          const landing = requested ?? firstIncomplete ?? orderedDocs[0];
+
+          if (landing) {
+            setCurrentKey(`doc-${landing.id}`);
+          }
         }
       } catch (loadError) {
         setError(
@@ -362,14 +522,20 @@ function CoursePlayer() {
   const goTo = (key: string) => {
     setCurrentKey(key);
     setSidebarOpen(false);
+    setModuleSwitcherOpen(false);
     setNotice("");
-
-    const target = items.find((item) => item.key === key);
-    if (target?.kind === "doc") {
-      setExpandedModules((current) => new Set(current).add(target.moduleId));
-    }
-
     contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const goToModule = (moduleId: number) => {
+    const section = sections.find((item) => item.moduleId === moduleId);
+    if (!section || section.items.length === 0) return;
+
+    // Resume at the module's first incomplete doc, else its first item.
+    const firstIncomplete = section.items.find(
+      (item) => item.kind === "doc" && !completedIds.has(item.doc.id),
+    );
+    goTo((firstIncomplete ?? section.items[0]).key);
   };
 
   const markComplete = async (doc: ModuleDocument) => {
@@ -384,8 +550,6 @@ function CoursePlayer() {
         doc.id,
       );
 
-      // The backend returns just the recalculated progress — merge it into
-      // the enrollment we already hold.
       if (result) {
         setStaffCourse((current) =>
           current
@@ -417,8 +581,8 @@ function CoursePlayer() {
   };
 
   const goNext = () => {
-    // Assessment activities complete by passing the assessment, not by
-    // clicking past them.
+    // Reading materials auto-complete when you move past them; assessments
+    // and live sessions complete through their own flow.
     if (
       currentItem?.kind === "doc" &&
       documentKind(currentItem.doc) !== "ASSESSMENT"
@@ -426,8 +590,11 @@ function CoursePlayer() {
       void markComplete(currentItem.doc);
     }
 
-    if (currentIndex < items.length - 1) {
+    if (currentIndex >= 0 && currentIndex < items.length - 1) {
       goTo(items[currentIndex + 1].key);
+    } else {
+      // Reached the end of the course.
+      router.push(`/staff/course/${courseId}`);
     }
   };
 
@@ -446,21 +613,52 @@ function CoursePlayer() {
 
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-    // goNext/goPrev re-close over fresh state every render; re-binding on
-    // index/items keeps the handlers current.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentIndex, items]);
 
-  const toggleModule = (moduleId: number) => {
-    setExpandedModules((current) => {
-      const next = new Set(current);
-      if (next.has(moduleId)) {
-        next.delete(moduleId);
-      } else {
-        next.add(moduleId);
+  const handleJoinSession = async (session: LiveSession) => {
+    setJoiningSessionId(session.id);
+    setNotice("");
+
+    // Open the tab before awaiting so popup blockers allow it.
+    const meetingTab = window.open("about:blank", "_blank");
+
+    try {
+      const response = await fetch(
+        `/api/training/live-sessions/${session.id}/join`,
+        { method: "POST" },
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not join this live session."),
+        );
       }
-      return next;
-    });
+
+      const joinData = readApiItem<{ meeting_url?: string }>(payload);
+
+      if (!joinData?.meeting_url) {
+        throw new Error(
+          "Attendance was recorded, but no meeting link was returned.",
+        );
+      }
+
+      if (meetingTab) {
+        meetingTab.location.href = joinData.meeting_url;
+      } else {
+        window.open(joinData.meeting_url, "_blank", "noopener,noreferrer");
+      }
+    } catch (joinError) {
+      meetingTab?.close();
+      setNotice(
+        joinError instanceof Error
+          ? joinError.message
+          : "Could not join this live session.",
+      );
+    } finally {
+      setJoiningSessionId(null);
+    }
   };
 
   if (loading) {
@@ -491,163 +689,210 @@ function CoursePlayer() {
             href="/staff/training"
             className="inline-flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530]"
           >
-            Back to My Training
+            Back to My Courses
           </Link>
         </div>
       </div>
     );
   }
 
-  const preTestItem = items.find(
-    (item): item is AssessmentItem => item.key === "assessment-pre",
-  );
-  const postTestItem = items.find(
-    (item): item is AssessmentItem => item.key === "assessment-post",
-  );
-
-  const renderAssessmentRow = (item: AssessmentItem) => (
-    <button
-      type="button"
-      onClick={() => goTo(item.key)}
-      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
-        currentKey === item.key
-          ? "bg-[#e3f2ea] font-semibold text-[#1a6b3c]"
-          : "text-gray-700 hover:bg-gray-50"
-      }`}
-    >
-      <ClipboardCheck size={16} className="shrink-0 text-[#1a6b3c]" />
-      <span className="min-w-0 flex-1 truncate">{item.assessment.title}</span>
-      <span className="shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
-        {item.type === "pre-test" ? "Pre-test" : "Post-test"}
-      </span>
-    </button>
-  );
+  const nextItem =
+    currentIndex >= 0 && currentIndex < items.length - 1
+      ? items[currentIndex + 1]
+      : null;
+  const prevItem = currentIndex > 0 ? items[currentIndex - 1] : null;
+  const nextCrossesModule =
+    nextItem != null &&
+    currentItem != null &&
+    nextItem.moduleId !== currentItem.moduleId;
+  const prevCrossesModule =
+    prevItem != null &&
+    currentItem != null &&
+    prevItem.moduleId !== currentItem.moduleId;
 
   const sidebar = (
     <div className="flex h-full flex-col">
+      {/* Module header + switcher */}
       <div className="border-b border-gray-100 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-          Course Outline
-        </p>
-        <div className="mt-3 flex items-center gap-3">
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-100">
-            <div
-              className="h-full rounded-full bg-[#1a6b3c] transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
+        <button
+          type="button"
+          onClick={() => router.push(`/staff/course/${courseId}`)}
+          className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-gray-400 transition hover:text-[#1a6b3c]"
+        >
+          <ChevronLeft size={13} /> Course overview
+        </button>
+
+        {currentSection ? (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setModuleSwitcherOpen((open) => !open)}
+              className="flex w-full items-start justify-between gap-2 rounded-lg text-left"
+              aria-expanded={moduleSwitcherOpen}
+            >
+              <span className="min-w-0">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                  Module {currentSection.moduleIndex + 1} of {sections.length}
+                </span>
+                <span className="mt-0.5 block truncate text-sm font-bold text-gray-800">
+                  {currentSection.title}
+                </span>
+              </span>
+              <ChevronRight
+                size={16}
+                className={`mt-0.5 shrink-0 text-gray-400 transition-transform ${
+                  moduleSwitcherOpen ? "rotate-90" : ""
+                }`}
+              />
+            </button>
+
+            {currentSection.trainer ? (
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+                <UserCheck size={12} className="text-[#1a6b3c]" />
+                {currentSection.trainer}
+              </p>
+            ) : null}
+
+            <div className="mt-3 flex items-center gap-2">
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    sectionProgress >= 100 ? "bg-green-500" : "bg-[#1a6b3c]"
+                  }`}
+                  style={{ width: `${sectionProgress}%` }}
+                />
+              </div>
+              <span className="text-[11px] font-bold text-gray-500">
+                {sectionCompleted}/{sectionDocs.length}
+              </span>
+            </div>
+
+            {moduleSwitcherOpen ? (
+              <div className="absolute left-0 right-0 top-full z-10 mt-2 max-h-72 overflow-y-auto rounded-xl border border-gray-100 bg-white p-1.5 shadow-lg">
+                {sections.map((section) => {
+                  const secDocs = section.items.filter(
+                    (item) => item.kind === "doc",
+                  );
+                  const secDone = secDocs.filter(
+                    (item) =>
+                      item.kind === "doc" && completedIds.has(item.doc.id),
+                  ).length;
+                  const done =
+                    secDocs.length > 0 && secDone === secDocs.length;
+                  const isCurrent = section.moduleId === currentSection.moduleId;
+
+                  return (
+                    <button
+                      key={section.moduleId}
+                      type="button"
+                      onClick={() => goToModule(section.moduleId)}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition ${
+                        isCurrent ? "bg-[#e3f2ea]" : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+                          done
+                            ? "bg-green-500 text-white"
+                            : isCurrent
+                              ? "bg-[#1a6b3c] text-white"
+                              : "bg-gray-100 text-gray-500"
+                        }`}
+                      >
+                        {done ? <CheckCircle2 size={13} /> : section.moduleIndex + 1}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-gray-700">
+                        {section.title}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
-          <span className="text-xs font-bold text-[#1a6b3c]">{progress}%</span>
-        </div>
-        <p className="mt-1.5 text-[11px] text-gray-400">
-          {completedDocs} of {totalDocs} materials completed
-        </p>
+        ) : null}
       </div>
 
+      {/* Current module's items only */}
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {preTestItem && renderAssessmentRow(preTestItem)}
+        {(currentSection?.items ?? []).length === 0 ? (
+          <p className="px-3 py-2 text-xs text-gray-400">
+            This module has no learning items yet.
+          </p>
+        ) : (
+          (currentSection?.items ?? []).map((item, index) => {
+            const Icon = itemIcon(item);
+            const isCurrent = effectiveKey === item.key;
+            const isDone =
+              item.kind === "doc" && completedIds.has(item.doc.id);
+            const badge =
+              item.kind === "assessment"
+                ? item.phase === "pre"
+                  ? "Pre-test"
+                  : "Post-test"
+                : item.kind === "live"
+                  ? "Live"
+                  : null;
 
-        {staffCourse.modules.map((module, moduleIndex) => {
-          const moduleDocs = module.documents
-            .slice()
-            .sort((first, second) => first.order - second.order);
-          const moduleCompleted = moduleDocs.filter((doc) =>
-            completedIds.has(doc.id),
-          ).length;
-          const isExpanded = expandedModules.has(module.id);
-          const isModuleDone =
-            moduleDocs.length > 0 && moduleCompleted === moduleDocs.length;
-
-          return (
-            <div key={module.id} className="rounded-xl">
+            return (
               <button
+                key={item.key}
                 type="button"
-                onClick={() => toggleModule(module.id)}
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left transition hover:bg-gray-50"
+                onClick={() => goTo(item.key)}
+                aria-current={isCurrent ? "true" : undefined}
+                className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                  isCurrent
+                    ? "bg-[#e3f2ea] font-semibold text-[#1a6b3c]"
+                    : "text-gray-600 hover:bg-gray-50"
+                }`}
               >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold text-gray-800">
-                    Module {moduleIndex + 1}: {module.title}
-                  </p>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <div className="h-1 w-24 overflow-hidden rounded-full bg-gray-100">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          isModuleDone ? "bg-green-500" : "bg-[#1a6b3c]"
-                        }`}
-                        style={{
-                          width: `${
-                            moduleDocs.length === 0
-                              ? 0
-                              : (moduleCompleted / moduleDocs.length) * 100
-                          }%`,
-                        }}
-                      />
-                    </div>
-                    <span className="text-[11px] font-medium text-gray-400">
-                      {moduleCompleted}/{moduleDocs.length}
-                    </span>
-                  </div>
-                </div>
-                <ChevronDown
-                  size={16}
-                  className={`shrink-0 text-gray-400 transition-transform ${
-                    isExpanded ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
-
-              {isExpanded && (
-                <div className="ml-2 space-y-0.5 border-l-2 border-gray-100 pl-2">
-                  {moduleDocs.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-gray-400">
-                      No materials yet.
-                    </p>
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[11px] font-semibold text-gray-400">
+                  {isDone ? (
+                    <CheckCircle2 size={16} className="text-green-500" />
                   ) : (
-                    moduleDocs.map((doc) => {
-                      const Icon = documentIcon(doc);
-                      const key = `doc-${doc.id}`;
-                      const isDone = completedIds.has(doc.id);
-                      const isCurrent = currentKey === key;
-
-                      return (
-                        <button
-                          key={doc.id}
-                          type="button"
-                          onClick={() => goTo(key)}
-                          className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition ${
-                            isCurrent
-                              ? "bg-[#e3f2ea] font-semibold text-[#1a6b3c]"
-                              : "text-gray-600 hover:bg-gray-50"
-                          }`}
-                        >
-                          {isDone ? (
-                            <CheckCircle2
-                              size={16}
-                              className="shrink-0 text-green-500"
-                            />
-                          ) : (
-                            <Icon
-                              size={16}
-                              className={`shrink-0 ${
-                                isCurrent ? "text-[#1a6b3c]" : "text-gray-400"
-                              }`}
-                            />
-                          )}
-                          <span className="min-w-0 flex-1 truncate">
-                            {doc.title}
-                          </span>
-                        </button>
-                      );
-                    })
+                    <Icon
+                      size={15}
+                      className={isCurrent ? "text-[#1a6b3c]" : "text-gray-400"}
+                    />
                   )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {postTestItem && renderAssessmentRow(postTestItem)}
+                </span>
+                <span className="min-w-0 flex-1 truncate">
+                  {itemTitle(item)}
+                </span>
+                {badge ? (
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                      item.kind === "live"
+                        ? "bg-blue-50 text-blue-700"
+                        : "bg-amber-50 text-amber-700"
+                    }`}
+                  >
+                    {badge}
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-[11px] font-medium text-gray-300">
+                    {index + 1}
+                  </span>
+                )}
+              </button>
+            );
+          })
+        )}
       </nav>
+
+      {/* Overall course progress */}
+      <div className="border-t border-gray-100 p-4">
+        <div className="mb-1.5 flex items-center justify-between text-[11px] font-medium text-gray-400">
+          <span>Course progress</span>
+          <span className="font-bold text-[#1a6b3c]">{progress}%</span>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">
+          <div
+            className="h-full rounded-full bg-[#1a6b3c] transition-all duration-500"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
     </div>
   );
 
@@ -657,14 +902,17 @@ function CoursePlayer() {
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-gray-200 bg-white px-4">
         <button
           type="button"
-          aria-label="Toggle course outline"
+          aria-label="Toggle module outline"
           onClick={() => setSidebarOpen((current) => !current)}
           className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 lg:hidden"
         >
           <Menu size={20} />
         </button>
 
-        <MonitorPlay size={20} className="hidden shrink-0 text-[#1a6b3c] sm:block" />
+        <MonitorPlay
+          size={20}
+          className="hidden shrink-0 text-[#1a6b3c] sm:block"
+        />
         <h1 className="min-w-0 flex-1 truncate text-sm font-bold text-gray-800 sm:text-base">
           {staffCourse.enrollment.course_title}
         </h1>
@@ -718,6 +966,14 @@ function CoursePlayer() {
                 </div>
               )}
 
+              {/* Module + item eyebrow */}
+              {currentItem && currentSection ? (
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                  Module {currentSection.moduleIndex + 1}: {currentSection.title}
+                </p>
+              ) : null}
+
+              {/* Reading material */}
               {currentItem?.kind === "doc" &&
                 (documentKind(currentItem.doc) === "ASSESSMENT" ? (
                   (() => {
@@ -729,15 +985,12 @@ function CoursePlayer() {
                     );
 
                     return (
-                      <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-12">
+                      <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-12">
                         <ClipboardCheck
                           size={36}
                           className="mx-auto mb-4 text-[#1a6b3c]"
                         />
-                        <p className="text-xs font-semibold uppercase tracking-widest text-[#1a6b3c]">
-                          {currentItem.moduleTitle}
-                        </p>
-                        <h2 className="mt-2 text-xl font-bold text-gray-800 sm:text-2xl">
+                        <h2 className="text-xl font-bold text-gray-800 sm:text-2xl">
                           {currentItem.doc.title}
                         </h2>
                         {linkedAssessment ? (
@@ -745,15 +998,14 @@ function CoursePlayer() {
                             <p className="mx-auto mt-3 max-w-md text-sm text-gray-500">
                               {linkedAssessment.questions.length} question(s) •
                               Pass mark {linkedAssessment.pass_mark}%. Your
-                              camera will verify your identity before it
-                              starts.
+                              camera will verify your identity before it starts.
                             </p>
                             <Link
                               href={`/staff/course/${courseId}/assessment/${
                                 linkedAssessment.type === "PRE_TEST"
                                   ? "pre-test"
                                   : "post-test"
-                              }`}
+                              }?assessment=${linkedAssessment.id}`}
                               className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#1a6b3c] px-8 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
                             >
                               <PlayCircle size={17} /> Take Assessment
@@ -770,9 +1022,6 @@ function CoursePlayer() {
                   })()
                 ) : (
                   <>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
-                      {currentItem.moduleTitle}
-                    </p>
                     <div className="mb-5 mt-1 flex flex-wrap items-center justify-between gap-3">
                       <h2 className="text-xl font-bold text-gray-800 sm:text-2xl">
                         {currentItem.doc.title}
@@ -798,11 +1047,13 @@ function CoursePlayer() {
                   </>
                 ))}
 
+              {/* Assessment gate (pre/post-test) */}
               {currentItem?.kind === "assessment" && (
-                <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-12">
-                  {currentItem.type === "post-test" && progress >= 100 && (
+                <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-12">
+                  {currentItem.phase === "post" && sectionProgress >= 100 && (
                     <p className="mb-4 inline-flex items-center gap-2 rounded-full bg-green-50 px-4 py-1.5 text-xs font-bold text-green-700">
-                      <Award size={14} /> All materials completed — well done!
+                      <Award size={14} /> Module activities completed — well
+                      done!
                     </p>
                   )}
                   <ClipboardCheck
@@ -810,25 +1061,27 @@ function CoursePlayer() {
                     className="mx-auto mb-4 text-[#1a6b3c]"
                   />
                   <p className="text-xs font-semibold uppercase tracking-widest text-[#1a6b3c]">
-                    {currentItem.type === "pre-test"
-                      ? "Before the modules"
-                      : "After the modules"}
+                    {currentItem.phase === "pre"
+                      ? "Before this module"
+                      : "After this module"}
                   </p>
                   <h2 className="mt-2 text-xl font-bold text-gray-800 sm:text-2xl">
                     {currentItem.assessment.title}
                   </h2>
                   <p className="mx-auto mt-3 max-w-md text-sm text-gray-500">
                     {currentItem.assessment.description ||
-                      (currentItem.type === "pre-test"
+                      (currentItem.phase === "pre"
                         ? "A short check of what you already know. Your camera will verify your identity before it starts."
-                        : "Pass this assessment to complete the course. Your camera will verify your identity before it starts.")}
+                        : "Pass this assessment to complete the module. Your camera will verify your identity before it starts.")}
                   </p>
                   <p className="mt-2 text-xs text-gray-400">
                     {currentItem.assessment.questions.length} question(s) • Pass
                     mark {currentItem.assessment.pass_mark}%
                   </p>
                   <Link
-                    href={`/staff/course/${courseId}/assessment/${currentItem.type}`}
+                    href={`/staff/course/${courseId}/assessment/${
+                      currentItem.phase === "pre" ? "pre-test" : "post-test"
+                    }?assessment=${currentItem.assessment.id}`}
                     className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#1a6b3c] px-8 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
                   >
                     <PlayCircle size={17} /> Take Assessment
@@ -836,23 +1089,88 @@ function CoursePlayer() {
                 </div>
               )}
 
+              {/* Live session */}
+              {currentItem?.kind === "live" &&
+                (() => {
+                  const session = currentItem.session;
+                  const isClosed =
+                    session.status === "COMPLETED" ||
+                    session.status === "CANCELLED";
+
+                  return (
+                    <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-12">
+                      <Video size={36} className="mx-auto mb-4 text-[#1a6b3c]" />
+                      <h2 className="text-xl font-bold text-gray-800 sm:text-2xl">
+                        {session.title}
+                      </h2>
+                      {session.description ? (
+                        <p className="mx-auto mt-3 max-w-md text-sm text-gray-500">
+                          {session.description}
+                        </p>
+                      ) : null}
+
+                      <div className="mx-auto mt-5 flex max-w-sm flex-col gap-2 text-sm text-gray-600">
+                        <span className="flex items-center justify-center gap-2">
+                          <Calendar size={15} className="text-[#1a6b3c]" />
+                          {formatDateTime(session.start_time)}
+                        </span>
+                        <span className="flex items-center justify-center gap-2">
+                          <Clock size={15} className="text-[#1a6b3c]" />
+                          Ends {formatDateTime(session.end_time)}
+                        </span>
+                      </div>
+
+                      <div className="mt-6">
+                        {isClosed ? (
+                          <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-5 py-2 text-sm font-semibold text-gray-500">
+                            {session.status}
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void handleJoinSession(session)}
+                            disabled={joiningSessionId === session.id}
+                            className={`inline-flex items-center gap-2 rounded-xl px-8 py-3 text-sm font-semibold text-white shadow-sm transition disabled:opacity-60 ${
+                              session.status === "ONGOING"
+                                ? "bg-red-500 hover:bg-red-600"
+                                : "bg-[#1a6b3c] hover:bg-[#145530]"
+                            }`}
+                          >
+                            <Video size={17} />
+                            {joiningSessionId === session.id
+                              ? "Joining..."
+                              : session.status === "ONGOING"
+                                ? "Join Live Now"
+                                : "Join Session"}
+                          </button>
+                        )}
+                        <p className="mt-3 text-xs text-gray-400">
+                          Set your meeting name to your full name and file
+                          number so your attendance is recorded.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
+
               {!currentItem && (
-                <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500">
+                <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500">
                   No learning materials have been added to this course yet.
                 </div>
               )}
             </div>
           </div>
 
-          {/* Prev / Next footer */}
+          {/* Prev / Next footer with module-boundary awareness */}
           <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-gray-200 bg-white px-4 py-3 sm:px-8">
             <button
               type="button"
               onClick={goPrev}
-              disabled={currentIndex <= 0}
+              disabled={!prevItem}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 transition hover:border-[#1a6b3c] hover:text-[#1a6b3c] disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:text-gray-600"
             >
-              <ChevronLeft size={16} /> Previous
+              <ChevronLeft size={16} />
+              {prevCrossesModule ? "Previous Module" : "Previous"}
             </button>
 
             <span className="hidden text-xs font-medium text-gray-400 sm:block">
@@ -864,10 +1182,14 @@ function CoursePlayer() {
             <button
               type="button"
               onClick={goNext}
-              disabled={currentIndex >= items.length - 1}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#1a6b3c] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#145530] disabled:opacity-40"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#1a6b3c] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#145530]"
             >
-              Next <ChevronRight size={16} />
+              {!nextItem
+                ? "Finish"
+                : nextCrossesModule
+                  ? "Next Module"
+                  : "Next"}
+              <ChevronRight size={16} />
             </button>
           </footer>
         </main>

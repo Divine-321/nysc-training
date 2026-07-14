@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
-import { ImageUp, Save, UserCheck, X } from "lucide-react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { Check, ImageUp, Plus, Save, Search, UserCheck } from "lucide-react";
 import { Modal } from "@/app/components/ui-interactive";
 import { btn, field, fieldLabel } from "@/app/components/ui";
 import {
@@ -14,10 +14,10 @@ import {
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 
 /**
- * Create / edit a reusable library module. Render conditionally — the form
- * state is seeded from the `module` prop on mount. Backend fields: title,
- * description, thumbnail_url, cloudinary_public_id, trainer_ids (the
- * module-level trainers deployed 2026-07-14).
+ * Create / edit a reusable library module — the SINGLE place trainers are
+ * assigned. Business rule: a module has exactly one trainer, which then
+ * appears everywhere the module is used. Backend field is an M2M
+ * (`trainer_ids`), so we send a one-element array (or empty to unassign).
  */
 export default function ModuleFormModal({
   module: editingModule,
@@ -41,13 +41,14 @@ export default function ModuleFormModal({
   const [thumbnailPublicId, setThumbnailPublicId] = useState(
     editingModule?.cloudinary_public_id ?? "",
   );
-  const [trainerIds, setTrainerIds] = useState<number[]>(
-    (editingModule?.trainers ?? []).map((trainer) => trainer.id),
+  const [trainerId, setTrainerId] = useState<number | null>(
+    editingModule?.trainers?.[0]?.id ?? null,
   );
   const [trainers, setTrainers] = useState<Trainer[]>(
     editingModule?.trainers ?? [],
   );
-  const [selectedTrainerId, setSelectedTrainerId] = useState("");
+  const [trainerSearch, setTrainerSearch] = useState("");
+  const [addTrainerOpen, setAddTrainerOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -55,8 +56,8 @@ export default function ModuleFormModal({
 
   const isEditing = editingModule !== null;
 
-  // The trainer directory for the picker (merged over any trainers already
-  // on the module so their names render immediately).
+  // The trainer directory for the picker (merged over any trainer already on
+  // the module so its name renders immediately).
   useEffect(() => {
     let active = true;
 
@@ -78,7 +79,7 @@ export default function ModuleFormModal({
           return [...current, ...extra];
         });
       } catch {
-        // Picker just stays limited to the module's existing trainers.
+        // Picker just stays limited to the module's existing trainer.
       }
     };
 
@@ -88,6 +89,23 @@ export default function ModuleFormModal({
       active = false;
     };
   }, []);
+
+  const filteredTrainers = useMemo(() => {
+    const query = trainerSearch.trim().toLowerCase();
+    const sorted = [...trainers].sort((first, second) =>
+      first.full_name.localeCompare(second.full_name),
+    );
+
+    if (!query) return sorted;
+
+    return sorted.filter((trainer) =>
+      `${trainer.full_name} ${trainer.designation} ${trainer.organization}`
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [trainers, trainerSearch]);
+
+  const selectedTrainer = trainers.find((trainer) => trainer.id === trainerId);
 
   const handleThumbnail = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -124,6 +142,19 @@ export default function ModuleFormModal({
     }
   };
 
+  // Called when a trainer is created from the nested modal: add it to the
+  // directory and select it for this module immediately.
+  const handleTrainerCreated = (trainer: Trainer) => {
+    setTrainers((current) =>
+      current.some((item) => item.id === trainer.id)
+        ? current
+        : [...current, trainer],
+    );
+    setTrainerId(trainer.id);
+    setTrainerSearch("");
+    setAddTrainerOpen(false);
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
@@ -142,7 +173,8 @@ export default function ModuleFormModal({
             description: description.trim(),
             thumbnail_url: thumbnailUrl || null,
             cloudinary_public_id: thumbnailPublicId || null,
-            trainer_ids: trainerIds,
+            // One trainer per module (empty array unassigns).
+            trainer_ids: trainerId !== null ? [trainerId] : [],
           }),
         },
       );
@@ -210,75 +242,97 @@ export default function ModuleFormModal({
           />
         </div>
 
+        {/* Trainer — the module is the single source of truth. */}
         <div>
-          <label className={fieldLabel}>
-            Trainer(s){" "}
-            <span className="font-normal text-gray-400">(optional)</span>
-          </label>
-          <p className="mb-2 text-xs text-gray-500">
-            The trainer travels with this module into every course that uses
-            it.
-          </p>
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            <select
-              value={selectedTrainerId}
-              onChange={(event) => setSelectedTrainerId(event.target.value)}
-              className={field}
-            >
-              <option value="">Select a trainer to add</option>
-              {trainers
-                .filter((trainer) => !trainerIds.includes(trainer.id))
-                .map((trainer) => (
-                  <option key={trainer.id} value={trainer.id}>
-                    {trainer.full_name}
-                  </option>
-                ))}
-            </select>
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <label className={`${fieldLabel} mb-0`}>Trainer</label>
             <button
               type="button"
-              disabled={!selectedTrainerId}
-              onClick={() => {
-                const id = Number(selectedTrainerId);
-                setTrainerIds((current) =>
-                  current.includes(id) ? current : [...current, id],
-                );
-                setSelectedTrainerId("");
-              }}
-              className={btn.secondary}
+              onClick={() => setAddTrainerOpen(true)}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[#1a6b3c] transition hover:text-[#145530]"
             >
-              + Add
+              <Plus size={13} /> Add New Trainer
             </button>
           </div>
 
-          {trainerIds.length > 0 ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {trainerIds.map((id) => {
-                const trainer = trainers.find((item) => item.id === id);
-
-                return (
-                  <span
-                    key={id}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-[#f0f7f3] py-1 pl-2.5 pr-1.5 text-xs font-medium text-[#1a6b3c]"
-                  >
-                    <UserCheck size={12} />
-                    {trainer?.full_name ?? `Trainer #${id}`}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${trainer?.full_name ?? `trainer #${id}`}`}
-                      onClick={() =>
-                        setTrainerIds((current) =>
-                          current.filter((trainerId) => trainerId !== id),
-                        )
-                      }
-                      className="rounded-full p-0.5 transition hover:bg-white"
-                    >
-                      <X size={11} />
-                    </button>
+          {selectedTrainer ? (
+            <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-[#1a6b3c]/30 bg-[#f0f7f3] px-3 py-2.5">
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-[#1a6b3c]">
+                  <UserCheck size={15} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-gray-900">
+                    {selectedTrainer.full_name}
                   </span>
-                );
-              })}
+                  <span className="block truncate text-xs text-gray-500">
+                    {[selectedTrainer.designation, selectedTrainer.organization]
+                      .filter(Boolean)
+                      .join(" • ") || "Trainer"}
+                  </span>
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setTrainerId(null)}
+                className="shrink-0 text-xs font-semibold text-gray-500 transition hover:text-red-600"
+              >
+                Change
+              </button>
             </div>
-          ) : null}
+          ) : (
+            <>
+              <div className="relative mb-2">
+                <Search
+                  size={15}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  value={trainerSearch}
+                  onChange={(event) => setTrainerSearch(event.target.value)}
+                  placeholder="Search or select a trainer…"
+                  className={`${field} pl-9`}
+                />
+              </div>
+
+              <div className="max-h-44 overflow-y-auto rounded-xl border border-gray-100">
+                {filteredTrainers.length === 0 ? (
+                  <div className="px-3 py-4 text-center text-xs text-gray-400">
+                    {trainers.length === 0
+                      ? "No trainers yet — add one above."
+                      : "No trainers match your search."}
+                  </div>
+                ) : (
+                  filteredTrainers.map((trainer) => (
+                    <button
+                      key={trainer.id}
+                      type="button"
+                      onClick={() => setTrainerId(trainer.id)}
+                      className="flex w-full items-center gap-2.5 border-b border-gray-50 px-3 py-2.5 text-left transition last:border-b-0 hover:bg-gray-50"
+                    >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#f0f7f3] text-[#1a6b3c]">
+                        <UserCheck size={13} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-gray-800">
+                          {trainer.full_name}
+                        </span>
+                        <span className="block truncate text-xs text-gray-400">
+                          {[trainer.designation, trainer.organization]
+                            .filter(Boolean)
+                            .join(" • ") || "Trainer"}
+                        </span>
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+              <p className="mt-1.5 text-xs text-gray-400">
+                The trainer travels with this module into every course that
+                uses it. Leave empty to assign later.
+              </p>
+            </>
+          )}
         </div>
 
         <div>
@@ -346,6 +400,138 @@ export default function ModuleFormModal({
               : isEditing
                 ? "Save changes"
                 : "Create module"}
+          </button>
+        </div>
+      </form>
+
+      {addTrainerOpen ? (
+        <AddTrainerModal
+          onClose={() => setAddTrainerOpen(false)}
+          onCreated={handleTrainerCreated}
+        />
+      ) : null}
+    </Modal>
+  );
+}
+
+/**
+ * Create a trainer without leaving the Module Builder. On success the parent
+ * adds it to the directory and selects it for the current module.
+ */
+function AddTrainerModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (trainer: Trainer) => void;
+}) {
+  const [fullName, setFullName] = useState("");
+  const [designation, setDesignation] = useState("Resource Person");
+  const [organization, setOrganization] = useState("NYSC");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!fullName.trim()) return;
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/training/trainers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: fullName.trim(),
+          designation: designation.trim() || "Resource Person",
+          organization: organization.trim() || "NYSC",
+          bio: null,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not create the trainer."),
+        );
+      }
+
+      const created = readApiItem<Trainer>(payload);
+
+      if (!created) {
+        throw new Error("The trainer was created but not returned.");
+      }
+
+      onCreated(created);
+    } catch (createError) {
+      setError(
+        createError instanceof Error
+          ? createError.message
+          : "Could not create the trainer.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Add New Trainer"
+      subtitle="Create a trainer and assign them to this module in one step."
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {error ? (
+          <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+            {error}
+          </div>
+        ) : null}
+
+        <div>
+          <label className={fieldLabel}>Full name</label>
+          <input
+            required
+            autoFocus
+            value={fullName}
+            onChange={(event) => setFullName(event.target.value)}
+            placeholder="For example: John Doe"
+            className={field}
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className={fieldLabel}>Designation</label>
+            <input
+              value={designation}
+              onChange={(event) => setDesignation(event.target.value)}
+              className={field}
+            />
+          </div>
+          <div>
+            <label className={fieldLabel}>Organization</label>
+            <input
+              value={organization}
+              onChange={(event) => setOrganization(event.target.value)}
+              className={field}
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} className={btn.secondary}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || !fullName.trim()}
+            className={btn.primary}
+          >
+            <Check size={16} />
+            {saving ? "Creating…" : "Create & assign"}
           </button>
         </div>
       </form>

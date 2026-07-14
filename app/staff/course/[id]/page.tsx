@@ -14,7 +14,6 @@ import {
   ListChecks,
   PlayCircle,
   Timer,
-  UserCheck,
   Video,
 } from "lucide-react";
 import { Skeleton } from "@/app/components/ui";
@@ -30,14 +29,6 @@ import {
 } from "@/app/lib/staff-learning";
 import { extractErrorMessage, readApiItem } from "@/app/lib/portal-api";
 import { formatDateTime } from "@/app/lib/format";
-
-function trainerLabel(staffCourse: StaffCourse) {
-  const trainers = staffCourse.course?.trainers ?? [];
-
-  if (trainers.length === 0) return "Trainer not assigned";
-
-  return trainers.map((trainer) => trainer.full_name).join(", ");
-}
 
 function AssessmentCard({
   assessment,
@@ -219,7 +210,6 @@ export default function CourseOverviewPage() {
   const postTest = assessments.find(
     (assessment) => assessment.type === "POST_TEST",
   );
-  const trainers = staffCourse.course?.trainers ?? [];
 
   return (
     <div className="space-y-6 p-6">
@@ -242,11 +232,6 @@ export default function CourseOverviewPage() {
           <h2 className="mt-3 text-2xl font-bold text-white">
             {staffCourse.enrollment.course_title}
           </h2>
-          <p className="mt-2 flex items-center gap-2 text-sm font-medium text-green-50">
-            <UserCheck size={16} />
-            {trainers.length === 1 ? "Trainer:" : "Trainers:"}{" "}
-            {trainerLabel(staffCourse)}
-          </p>
 
           <div className="mt-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap gap-3 text-xs font-semibold text-white">
@@ -289,29 +274,6 @@ export default function CourseOverviewPage() {
           {staffCourse.course?.description ||
             "Complete the uploaded module materials, take the tests, and submit your course evaluation."}
         </p>
-        <div className="mb-3 rounded-lg bg-white/70 p-4">
-          <p className="mb-2 flex items-center gap-2 font-bold text-gray-800">
-            <UserCheck size={17} className="text-[#1a6b3c]" />
-            Course {trainers.length === 1 ? "Trainer" : "Trainers"}
-          </p>
-          {trainers.length === 0 ? (
-            <p className="text-gray-500">Trainer not assigned yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {trainers.map((trainer) => (
-                <div key={trainer.id}>
-                  <p className="font-semibold text-gray-800">
-                    {trainer.full_name}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {trainer.designation}
-                    {trainer.organization ? ` • ${trainer.organization}` : ""}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
         <p>
           Material progress updates when you mark uploaded documents as
           completed. Tests and evaluation may still be required before your

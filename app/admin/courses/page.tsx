@@ -16,6 +16,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import {
+  collectTrainerNames,
   extractErrorMessage,
   readApiList,
   sortedAssignedModules,
@@ -279,9 +280,9 @@ export default function AdminCoursesPage() {
               0,
             );
             const trainers =
-              (course.trainers ?? [])
-                .map((trainer) => trainer.full_name)
-                .join(", ") || "No resource person assigned";
+              collectTrainerNames(
+                courseModules.map((link) => link.module_details),
+              ).join(", ") || "No trainer assigned";
             const builderHref = `/admin/courses/${course.id}/builder`;
 
             return (

@@ -4,6 +4,7 @@ import {
   readApiItem,
   readApiList,
   type Course,
+  type Trainer,
 } from "@/app/lib/portal-api";
 
 // New target learning-model vocabulary (Course -> Module -> Activity). The full
@@ -62,6 +63,8 @@ export type CourseModule = {
   order: number;
   /** Library module thumbnail (reusable-modules backend, 2026-07-12). */
   thumbnail_url?: string | null;
+  /** Module-level trainers — the single source of truth for who teaches. */
+  trainers?: Trainer[];
   documents: ModuleDocument[];
 };
 
@@ -324,6 +327,7 @@ function modulesFromAssignedModules(
       notes: null,
       order: link.order,
       thumbnail_url: link.module_details?.thumbnail_url ?? null,
+      trainers: link.module_details?.trainers ?? [],
       documents:
         (link.module_details?.activities as ModuleDocument[] | undefined) ??
         [],
@@ -525,8 +529,22 @@ export async function markDocumentComplete(
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
+    const rawMessage = extractErrorMessage(
+      payload,
+      "Could not mark this activity complete.",
+    );
+
+    // Internal ORM errors occasionally leak through as 400s (e.g. `Cannot
+    // query "X": Must be "Module" instance.`). Staff should see a human
+    // sentence, not Django internals.
+    const looksInternal = /must be .* instance|cannot query|traceback/i.test(
+      rawMessage,
+    );
+
     throw new Error(
-      extractErrorMessage(payload, "Could not mark this activity complete."),
+      looksInternal
+        ? "The server could not record your progress due to a backend error. Your place in the course is not lost — please try again later."
+        : rawMessage,
     );
   }
 

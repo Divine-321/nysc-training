@@ -18,11 +18,11 @@ import {
 import CourseModulesManager from "./CourseModulesManager";
 import CourseAssessmentsManager from "./CourseAssessmentsManager";
 import {
+  collectTrainerNames,
   extractErrorMessage,
   readApiItem,
-  readApiList,
+  sortedAssignedModules,
   type Course,
-  type Trainer,
 } from "@/app/lib/portal-api";
 import { formatDate } from "@/app/lib/format";
 import {
@@ -38,14 +38,13 @@ const TABS = [
   { id: "details", label: "Course Information", icon: Settings2 },
   { id: "modules", label: "Modules", icon: Layers },
   { id: "assessments", label: "Assessments", icon: ClipboardList },
-  { id: "people", label: "Resource Persons", icon: UserCheck },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
-// NOTE(backend): the Course serializer no longer carries thumbnail_url /
-// cloudinary_public_id or prerequisites — those form fields were removed
-// here to match. Restore them only if the backend re-adds the fields.
+// NOTE: trainers are assigned on Modules only (the single source of truth),
+// so this builder has no Resource Persons tab — the course's trainers are
+// derived from its modules and shown read-only in the header.
 
 export default function CourseBuilderPage() {
   const params = useParams();
@@ -55,14 +54,8 @@ export default function CourseBuilderPage() {
 
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
-  const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [trainerIds, setTrainerIds] = useState<number[]>([]);
-  const [savedTrainerIds, setSavedTrainerIds] = useState<number[]>([]);
-  const [selectedTrainerId, setSelectedTrainerId] = useState("");
-  const [manualResourcePersonName, setManualResourcePersonName] = useState("");
-  const [isAddingResourcePerson, setIsAddingResourcePerson] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -92,21 +85,10 @@ export default function CourseBuilderPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [loadedCourse, trainerResponse] = await Promise.all([
-          loadCourse(),
-          fetch("/api/training/trainers", { cache: "no-store" }),
-        ]);
+        const loadedCourse = await loadCourse();
 
         setTitle(loadedCourse.title);
         setDescription(loadedCourse.description);
-        setTrainerIds(loadedCourse.trainers.map((trainer) => trainer.id));
-        setSavedTrainerIds(loadedCourse.trainers.map((trainer) => trainer.id));
-
-        const trainerPayload = await trainerResponse.json().catch(() => null);
-
-        if (trainerResponse.ok) {
-          setTrainers(readApiList<Trainer>(trainerPayload));
-        }
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -121,66 +103,6 @@ export default function CourseBuilderPage() {
     void loadData();
   }, [loadCourse]);
 
-  const handleAddExistingResourcePerson = () => {
-    if (!selectedTrainerId) return;
-
-    const id = Number(selectedTrainerId);
-
-    setTrainerIds((current) =>
-      current.includes(id) ? current : [...current, id],
-    );
-    setSelectedTrainerId("");
-  };
-
-  const handleAddManualResourcePerson = async () => {
-    const name = manualResourcePersonName.trim();
-    if (!name) return;
-
-    setError("");
-    setIsAddingResourcePerson(true);
-
-    try {
-      const response = await fetch("/api/training/trainers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          full_name: name,
-          designation: "Resource Person",
-          organization: "NYSC",
-          bio: null,
-        }),
-      });
-      const payload = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          extractErrorMessage(payload, "Could not add resource person."),
-        );
-      }
-
-      const newTrainer = readApiItem<Trainer>(payload);
-
-      if (newTrainer) {
-        setTrainers((current) => [...current, newTrainer]);
-        setTrainerIds((current) => [...current, newTrainer.id]);
-      }
-
-      setManualResourcePersonName("");
-    } catch (addError) {
-      setError(
-        addError instanceof Error
-          ? addError.message
-          : "Could not add resource person.",
-      );
-    } finally {
-      setIsAddingResourcePerson(false);
-    }
-  };
-
-  const handleRemoveResourcePerson = (id: number) => {
-    setTrainerIds((current) => current.filter((trainerId) => trainerId !== id));
-  };
-
   const handleSave = async () => {
     setSaving(true);
     setError("");
@@ -194,7 +116,6 @@ export default function CourseBuilderPage() {
           description: description.trim(),
           // Status was removed from the UI; keep every course published.
           status: "PUBLISHED",
-          trainer_ids: trainerIds,
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -211,7 +132,6 @@ export default function CourseBuilderPage() {
           current ? { ...current, ...updatedCourse } : updatedCourse,
         );
       }
-      setSavedTrainerIds(trainerIds);
       push("Course updated successfully.");
     } catch (saveError) {
       setError(
@@ -246,10 +166,15 @@ export default function CourseBuilderPage() {
     );
   }
 
-  const moduleCount = course.assigned_modules?.length ?? 0;
-  const activityCount = (course.assigned_modules ?? []).reduce(
+  const courseModules = sortedAssignedModules(course);
+  const moduleCount = courseModules.length;
+  const activityCount = courseModules.reduce(
     (sum, link) => sum + (link.module_details?.activities?.length ?? 0),
     0,
+  );
+  // Trainers are derived from the course's modules (their single source).
+  const trainerNames = collectTrainerNames(
+    courseModules.map((link) => link.module_details),
   );
 
   return (
@@ -281,10 +206,20 @@ export default function CourseBuilderPage() {
             {activityCount} activit{activityCount === 1 ? "y" : "ies"}
           </span>
           <span className="inline-flex items-center gap-1.5">
+            <UserCheck size={13} className="text-gray-400" />
+            {trainerNames.length > 0
+              ? trainerNames.join(", ")
+              : "No trainer yet"}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
             <Calendar size={13} className="text-gray-400" />
             Created {course.created_at ? formatDate(course.created_at) : "—"}
           </span>
         </div>
+        <p className="mt-2 text-xs text-gray-400">
+          Trainers are set on each module — open a module to change who teaches
+          it.
+        </p>
       </div>
 
       {error && (
@@ -431,111 +366,6 @@ export default function CourseBuilderPage() {
 
       {activeTab === "assessments" && (
         <CourseAssessmentsManager courseId={Number(courseId)} />
-      )}
-
-      {activeTab === "people" && (
-        <section className="space-y-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-6">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">
-              Resource Persons
-            </h2>
-            <p className="text-sm text-gray-500">
-              The trainers shown against this course.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-            <select
-              value={selectedTrainerId}
-              onChange={(event) => setSelectedTrainerId(event.target.value)}
-              className={field}
-            >
-              <option value="">Select an existing resource person</option>
-              {trainers
-                .filter((trainer) => !savedTrainerIds.includes(trainer.id))
-                .map((trainer) => (
-                  <option key={trainer.id} value={trainer.id}>
-                    {trainer.full_name}
-                  </option>
-                ))}
-            </select>
-            <button
-              type="button"
-              onClick={handleAddExistingResourcePerson}
-              disabled={!selectedTrainerId}
-              className={btn.primary}
-            >
-              + Add
-            </button>
-          </div>
-
-          <p className="mb-1 text-xs font-medium text-gray-500">
-            Or type a name manually:
-          </p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto]">
-            <input
-              value={manualResourcePersonName}
-              onChange={(event) =>
-                setManualResourcePersonName(event.target.value)
-              }
-              placeholder="Full name"
-              className={field}
-            />
-            <button
-              type="button"
-              onClick={handleAddManualResourcePerson}
-              disabled={
-                !manualResourcePersonName.trim() || isAddingResourcePerson
-              }
-              className={btn.primary}
-            >
-              {isAddingResourcePerson ? "Adding..." : "+ Add"}
-            </button>
-          </div>
-
-          {trainerIds.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-gray-200 bg-gray-50/60 p-4 text-sm text-gray-500">
-              No resource persons assigned.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {trainerIds.map((id) => {
-                const trainer = trainers.find((item) => item.id === id);
-                return (
-                  <li
-                    key={id}
-                    className="flex items-center justify-between rounded-xl border border-gray-100 px-4 py-3 transition hover:border-gray-200"
-                  >
-                    <span className="flex items-center gap-3">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#f0f7f3] text-[#1a6b3c]">
-                        <UserCheck size={15} />
-                      </span>
-                      <span className="font-semibold text-gray-800">
-                        {trainer?.full_name ?? `Resource person #${id}`}
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveResourcePerson(id)}
-                      className="text-xs font-semibold text-red-600 transition hover:text-red-700"
-                    >
-                      Remove
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className={`${btn.primary} w-full sm:w-auto`}
-          >
-            <Save size={18} /> {saving ? "Saving..." : "Save Resource Persons"}
-          </button>
-        </section>
       )}
     </div>
   );

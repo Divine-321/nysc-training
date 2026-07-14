@@ -73,7 +73,9 @@ export default function CourseLayout({
         : []),
       ...(staffCourse?.modules ?? []).map((module) => ({
         label: module.title,
-        href: `/staff/course/${courseId}/module/${module.id}`,
+        // Opens the course player focused on this module (the legacy
+        // /module/{id} page now just redirects here anyway).
+        href: `/staff/course/${courseId}/learn?module=${module.id}`,
       })),
       ...(hasPostTest
         ? [

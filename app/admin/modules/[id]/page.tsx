@@ -139,14 +139,13 @@ export default function ModuleDetailPage() {
   );
 
   // Backend module clone: duplicates the module, its activities and its
-  // assessments. Endpoint lives at /activities/{id}/clone/ (module id).
+  // assessments (with questions).
   const handleClone = async () => {
     if (!module) return;
 
-    const response = await fetch(
-      `/api/training/activities/${module.id}/clone`,
-      { method: "POST" },
-    );
+    const response = await fetch(`/api/training/modules/${module.id}/clone`, {
+      method: "POST",
+    });
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
