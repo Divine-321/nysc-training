@@ -22,6 +22,7 @@ import {
   UserCheck,
   Settings2,
   ShieldCheck,
+  Star,
   Menu,
   X,
 } from "lucide-react";
@@ -70,6 +71,11 @@ const navItems = [
     label: "Certificates",
     href: "/admin/certificates",
     icon: Award,
+  },
+  {
+    label: "Evaluations",
+    href: "/admin/evaluations",
+    icon: Star,
   },
   {
     label: "Proctoring",
