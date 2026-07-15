@@ -401,13 +401,28 @@ export async function loadStaffCourses() {
       cohortCourses.find((item) => item.id === enrollment.cohort_course) ??
       null;
     const course = cohortCourse?.course_details ?? null;
+
+    // The backend sends `programme_title` as an empty string for some
+    // enrollments (and no `course_title`), so the enrollment alone can't be
+    // trusted for the display name. Fall back to the course's canonical title.
+    const resolvedTitle =
+      enrollment.course_title?.trim() ||
+      course?.title?.trim() ||
+      enrollment.cohort_name ||
+      "Course";
+    const namedEnrollment: CourseEnrollment = {
+      ...enrollment,
+      course_title: resolvedTitle,
+      programme_title: resolvedTitle,
+    };
+
     const embeddedModules = modulesFromAssignedModules(
       course,
       cohortCourse?.course,
     );
 
     return {
-      enrollment,
+      enrollment: namedEnrollment,
       cohortCourse,
       course,
       modules:
@@ -433,9 +448,20 @@ export async function loadStaffCourse(courseId: number) {
   );
 }
 
-export async function loadAssessments(courseId: number) {
+/**
+ * All assessments visible to this staff member, exactly as the backend
+ * returns them. Assessments belong to Modules, so the list has one record
+ * per assessment — a module reused by several courses does NOT duplicate
+ * its assessments. Callers joining these onto courses must preserve that
+ * uniqueness (join module→course, never fan out per course and flatten).
+ */
+export async function loadAllAssessments(): Promise<Assessment[]> {
   const payload = await getJson("/api/training/assessments");
-  const assessments = readApiList<Assessment>(payload);
+  return readApiList<Assessment>(payload);
+}
+
+export async function loadAssessments(courseId: number) {
+  const assessments = await loadAllAssessments();
 
   // Reusable-modules backend: assessments belong to Modules, so scope by the
   // course's assigned module ids (read off the programmes list, which staff

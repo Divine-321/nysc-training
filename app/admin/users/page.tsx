@@ -27,6 +27,7 @@ import {
 import {
   cohortCourseBatchLabel,
   type CohortCourse,
+  type CourseEnrollment,
 } from "@/app/lib/staff-learning";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import { useConfirm } from "@/app/components/useConfirm";
@@ -438,8 +439,12 @@ export default function AdminUsersPage() {
       setLoadingStaff(true);
 
       try {
-        const [staffResult, postingsResponse, cohortStaffResponse] =
-          await Promise.all([
+        const [
+          staffResult,
+          postingsResponse,
+          cohortStaffResponse,
+          enrollmentsResponse,
+        ] = await Promise.all([
           isSearching ? fetchAllStaff() : fetchCurrentPage(),
           fetch("/api/organization/postings", {
             cache: "no-store",
@@ -447,12 +452,18 @@ export default function AdminUsersPage() {
           fetch("/api/training/cohort-staff", {
             cache: "no-store",
           }),
+          // Staff are assigned to trainings via enrollments now, so the cohort
+          // and course counts must include those — not just legacy cohort-staff.
+          fetch("/api/training/enrollments", {
+            cache: "no-store",
+          }),
         ]);
 
-        const [postingsPayload, cohortStaffPayload] =
+        const [postingsPayload, cohortStaffPayload, enrollmentsPayload] =
           await Promise.all([
             postingsResponse.json().catch(() => null),
             cohortStaffResponse.json().catch(() => null),
+            enrollmentsResponse.json().catch(() => null),
           ]);
 
         const users = staffResult.users;
@@ -465,7 +476,8 @@ export default function AdminUsersPage() {
           : [];
 
         const postingByStaffId = new Map<number, Posting>();
-        const cohortNamesByStaffId = new Map<number, string[]>();
+        const cohortNamesByStaffId = new Map<number, Set<string>>();
+        const courseCountByStaffId = new Map<number, number>();
 
         for (const posting of postings) {
           const existingPosting = postingByStaffId.get(posting.staff.id);
@@ -475,13 +487,38 @@ export default function AdminUsersPage() {
           }
         }
 
+        const addCohortName = (staffId: number, name?: string | null) => {
+          if (!name) return;
+          const names = cohortNamesByStaffId.get(staffId) ?? new Set<string>();
+          names.add(name);
+          cohortNamesByStaffId.set(staffId, names);
+        };
+
+        // Legacy cohort-staff assignments.
         if (cohortStaffResponse.ok) {
           for (const assignment of readApiList<CohortStaffAssignment>(
             cohortStaffPayload,
           )) {
-            const current = cohortNamesByStaffId.get(assignment.staff) ?? [];
-            current.push(assignment.cohort_name);
-            cohortNamesByStaffId.set(assignment.staff, current);
+            addCohortName(assignment.staff, assignment.cohort_name);
+          }
+        }
+
+        // Training enrollments — the current way staff are assigned. Each
+        // enrollment tied to a programme contributes its cohort name and counts
+        // as one course (orphaned enrollments with no programme are ignored).
+        if (enrollmentsResponse.ok) {
+          for (const enrollment of readApiList<CourseEnrollment>(
+            enrollmentsPayload,
+          )) {
+            const programmeId =
+              enrollment.programme ?? enrollment.cohort_course ?? null;
+            if (programmeId == null) continue;
+
+            addCohortName(enrollment.staff, enrollment.cohort_name);
+            courseCountByStaffId.set(
+              enrollment.staff,
+              (courseCountByStaffId.get(enrollment.staff) ?? 0) + 1,
+            );
           }
         }
 
@@ -509,9 +546,10 @@ export default function AdminUsersPage() {
               location,
               department,
               cohort:
-                cohortNamesByStaffId.get(user.id)?.join(", ") ||
-                "Not assigned",
-              coursesAttended: 0,
+                Array.from(cohortNamesByStaffId.get(user.id) ?? []).join(
+                  ", ",
+                ) || "Not assigned",
+              coursesAttended: courseCountByStaffId.get(user.id) ?? 0,
               status:
                 posting?.status === "retired"
                   ? "Retired"

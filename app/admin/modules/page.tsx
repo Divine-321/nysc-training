@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlertCircle,
   ArrowRight,
   BookOpen,
   Calendar,
@@ -17,6 +18,7 @@ import {
   List,
   Pencil,
   Plus,
+  RotateCcw,
   Trash2,
   UserCheck,
 } from "lucide-react";
@@ -301,12 +303,6 @@ export default function ModuleLibraryPage() {
         }
       />
 
-      {error ? (
-        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      ) : null}
-
       {/* Toolbar */}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <SearchInput
@@ -400,6 +396,27 @@ export default function ModuleLibraryPage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : error ? (
+        // A load failure must NOT look like "you have no modules" — that reads
+        // as data loss and invites creating duplicates. Show the real error
+        // with a retry instead.
+        <div className="rounded-2xl border border-red-100 bg-red-50 p-10 text-center">
+          <AlertCircle className="mx-auto mb-3 text-red-400" size={40} />
+          <p className="font-semibold text-red-700">
+            Couldn&apos;t load the module library
+          </p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-red-600">{error}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              void loadData();
+            }}
+            className={`mx-auto mt-5 ${btn.secondary}`}
+          >
+            <RotateCcw size={16} /> Try again
+          </button>
         </div>
       ) : modules.length === 0 ? (
         <EmptyState

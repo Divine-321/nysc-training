@@ -114,15 +114,15 @@ function buildRequirements(
 
   if (postTest) {
     items.push({
-      label: `Pass the post-test — ${postTest.title}`,
+      label: `Pass the post-assessment — ${postTest.title}`,
       met: passedPostTest,
       detail: passedPostTest
         ? "Passed"
-        : "Not passed yet — take the post-test from the course player. Required before your certificate can be issued.",
+        : "Not passed yet — take the post-assessment from the course player. Required before your certificate can be issued.",
     });
   } else {
     items.push({
-      label: "No post-test is required for this course",
+      label: "No post-assessment is required for this course",
       met: true,
     });
   }
@@ -219,13 +219,37 @@ export default function CertificationsPage() {
     window.print();
   };
 
+  // A certificate belongs to a specific course *and* cohort. Matching by
+  // title alone wrongly hides the checklist for the same course in a different
+  // cohort, so also compare the cohort (falling back to title-only when either
+  // side has no cohort label).
+  const certificateMatchesCourse = (
+    certificate: Certificate,
+    staffCourse: StaffCourse,
+  ) => {
+    const titleMatches =
+      (certificate.course_title ?? "").trim().toLowerCase() ===
+      (staffCourse.enrollment.course_title ?? "").trim().toLowerCase();
+    if (!titleMatches) return false;
+
+    const certCohort = (certificate.cohort ?? "").trim().toLowerCase();
+    const enrollmentCohort = (staffCourse.enrollment.cohort_name ?? "")
+      .trim()
+      .toLowerCase();
+    if (!certCohort || !enrollmentCohort) return true;
+
+    return (
+      certCohort.includes(enrollmentCohort) ||
+      enrollmentCohort.includes(certCohort)
+    );
+  };
+
   // Enrolled courses that do not have a certificate yet — these get the
   // "what's left" checklist.
   const pendingCourses = staffCourses.filter(
     (staffCourse) =>
-      !certificates.some(
-        (certificate) =>
-          certificate.course_title === staffCourse.enrollment.course_title,
+      !certificates.some((certificate) =>
+        certificateMatchesCourse(certificate, staffCourse),
       ),
   );
 

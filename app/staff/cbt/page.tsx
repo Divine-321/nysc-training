@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   AlertCircle,
   Award,
@@ -9,32 +8,22 @@ import {
   ClipboardList,
   Clock,
   FileText,
-  PlayCircle,
-  Timer,
+  Layers,
 } from "lucide-react";
 import { Skeleton } from "@/app/components/ui";
 import {
+  loadAllAssessments,
   loadAssessmentAttempts,
-  loadAssessments,
-  loadStaffCourses,
   type Assessment,
   type AssessmentAttempt,
-  type StaffCourse,
 } from "@/app/lib/staff-learning";
 
-type AvailableAssessment = {
-  assessment: Assessment;
-  staffCourse: StaffCourse;
-};
-
-function assessmentRoute(courseId: number, type: Assessment["type"]) {
-  return `/staff/course/${courseId}/assessment/${
-    type === "POST_TEST" ? "post-test" : "pre-test"
-  }`;
-}
-
+// This page is reserved for STANDALONE examinations (promotion, certification,
+// organisation-wide tests). Module-owned Pre-/Post-Assessments belong strictly
+// inside their course module and must never surface here — so we only ever keep
+// assessments with no module.
 export default function CBTPage() {
-  const [items, setItems] = useState<AvailableAssessment[]>([]);
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -42,56 +31,19 @@ export default function CBTPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const staffCourses = await loadStaffCourses();
-        const assessmentGroups = await Promise.all(
-          staffCourses.map(async (staffCourse) => {
-            const courseId = staffCourse.course?.id ?? staffCourse.cohortCourse?.course;
+        const [all, attemptList] = await Promise.all([
+          loadAllAssessments(),
+          loadAssessmentAttempts(),
+        ]);
 
-            if (!courseId) return [];
-
-            const assessments = await loadAssessments(courseId).catch(() => []);
-
-            return assessments.map((assessment) => ({
-              assessment,
-              staffCourse,
-            }));
-          }),
-        );
-
-        // const allItems = assessmentGroups.flat();
-        const allItems = assessmentGroups.flat();
-
-const seen = new Set<number>();
-
-const uniqueItems = allItems.filter((item) => {
-  if (seen.has(item.assessment.id)) {
-    return false;
-  }
-
-  seen.add(item.assessment.id);
-  return true;
-});
-
-setItems(uniqueItems);
-
-console.table(
-  allItems.map((item) => ({
-    assessmentId: item.assessment.id,
-    course: item.staffCourse.enrollment.course_title,
-    module: item.assessment.module_title,
-  }))
-);
-
-setItems(allItems);
-
-        setItems(assessmentGroups.flat());
-        setAttempts(await loadAssessmentAttempts());
+        setAssessments(all.filter((assessment) => assessment.module == null));
+        setAttempts(attemptList);
         setError("");
       } catch (loadError) {
         setError(
           loadError instanceof Error
             ? loadError.message
-            : "Could not load assessments.",
+            : "Could not load examinations.",
         );
       } finally {
         setLoading(false);
@@ -101,19 +53,25 @@ setItems(allItems);
     void fetchData();
   }, []);
 
+  const standaloneIds = useMemo(
+    () => new Set(assessments.map((assessment) => assessment.id)),
+    [assessments],
+  );
   const submittedAttempts = useMemo(
     () =>
       attempts.filter(
-        (attempt) => (attempt.attempt_status ?? "SUBMITTED") === "SUBMITTED",
+        (attempt) =>
+          standaloneIds.has(attempt.assessment) &&
+          (attempt.attempt_status ?? "SUBMITTED") === "SUBMITTED",
       ),
-    [attempts],
+    [attempts, standaloneIds],
   );
-  const completedAssessmentIds = useMemo(
+  const completedIds = useMemo(
     () => new Set(submittedAttempts.map((attempt) => attempt.assessment)),
     [submittedAttempts],
   );
-  const availableItems = items.filter(
-    (item) => !completedAssessmentIds.has(item.assessment.id),
+  const availableItems = assessments.filter(
+    (assessment) => !completedIds.has(assessment.id),
   );
   const averageScore =
     submittedAttempts.length === 0
@@ -128,11 +86,10 @@ setItems(allItems);
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <div>
-        <h2 className="mb-1 text-2xl font-bold text-gray-800">
-          Tests / Exams
-        </h2>
+        <h2 className="mb-1 text-2xl font-bold text-gray-800">Tests / Exams</h2>
         <p className="text-sm text-gray-500">
-          Access assessments attached to your assigned courses.
+          Standalone examinations such as promotion and certification tests.
+          Your course pre- and post-assessments live inside each course module.
         </p>
       </div>
 
@@ -148,7 +105,7 @@ setItems(allItems);
             <Clock size={28} />
           </div>
           <div>
-            <p className="text-sm font-bold text-gray-500">Available Tests</p>
+            <p className="text-sm font-bold text-gray-500">Available Exams</p>
             <h3 className="mt-1 text-3xl font-extrabold text-gray-800">
               {availableItems.length}
             </h3>
@@ -160,9 +117,9 @@ setItems(allItems);
             <CheckCircle2 size={28} />
           </div>
           <div>
-            <p className="text-sm font-bold text-gray-500">Completed Tests</p>
+            <p className="text-sm font-bold text-gray-500">Completed Exams</p>
             <h3 className="mt-1 text-3xl font-extrabold text-gray-800">
-              {completedAssessmentIds.size}
+              {completedIds.size}
             </h3>
           </div>
         </div>
@@ -184,7 +141,7 @@ setItems(allItems);
         <div className="mb-4 flex items-center gap-2">
           <AlertCircle size={20} className="text-[#1a6b3c]" />
           <h3 className="text-lg font-bold text-gray-800">
-            Available Assessments
+            Available Examinations
           </h3>
         </div>
 
@@ -202,103 +159,89 @@ setItems(allItems);
                 <Skeleton className="h-5 w-2/3" />
                 <Skeleton className="mt-2 h-4 w-1/3" />
                 <Skeleton className="mt-6 h-4 w-1/2" />
-                <Skeleton className="mt-6 h-11 w-full rounded-xl" />
               </div>
             ))}
           </div>
         ) : availableItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-14 text-center shadow-sm">
-            <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-50 text-gray-400 ring-1 ring-gray-100">
-              <ClipboardList size={22} />
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-16 text-center shadow-sm">
+            <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gray-50 text-gray-400 ring-1 ring-gray-100">
+              <ClipboardList size={26} />
             </span>
-            <p className="text-sm font-semibold text-gray-900">
-              No available assessments right now
+            <p className="text-base font-semibold text-gray-900">
+              No standalone examinations yet
             </p>
-            <p className="mt-1 max-w-sm text-sm text-gray-500">
-              Assessments appear here when your assigned courses include a
-              pre-test or post-test you haven&apos;t completed.
+            <p className="mt-1.5 max-w-md text-sm text-gray-500">
+              This section is reserved for promotion, certification and
+              organisation-wide exams. Your course{" "}
+              <span className="font-medium text-gray-700">Pre-Assessments</span>{" "}
+              and{" "}
+              <span className="font-medium text-gray-700">
+                Post-Assessments
+              </span>{" "}
+              are taken inside each course module.
             </p>
+            <a
+              href="/staff/training"
+              className="mt-5 inline-flex items-center gap-2 rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-[#1a6b3c] hover:text-[#1a6b3c]"
+            >
+              <Layers size={16} /> Go to my courses
+            </a>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            {availableItems.map(({ assessment, staffCourse }) => {
-              const courseId =
-                staffCourse.course?.id ?? staffCourse.cohortCourse?.course;
-
-              return (
-                <div
-                  key={assessment.id}
-                  className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:shadow-md"
-                >
-                  <div className="mb-4 flex items-start justify-between">
-                    <div className="rounded-xl bg-blue-50 p-3 text-blue-600 shadow-sm">
-                      <Timer size={24} />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`rounded-full px-3 py-1.5 text-xs font-bold shadow-sm ${
-                          assessment.type === "POST_TEST"
-                            ? "bg-purple-50 text-purple-700"
-                            : "bg-blue-50 text-blue-700"
-                        }`}
-                      >
-                        {assessment.type === "POST_TEST"
-                          ? "Post-test"
-                          : "Pre-test"}
-                      </span>
-                      <span className="rounded-full bg-green-100 px-3 py-1.5 text-xs font-bold text-green-700 shadow-sm">
-                        Available
-                      </span>
-                    </div>
+            {availableItems.map((assessment) => (
+              <div
+                key={assessment.id}
+                className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:shadow-md"
+              >
+                <div className="mb-4 flex items-start justify-between">
+                  <div className="rounded-xl bg-blue-50 p-3 text-blue-600 shadow-sm">
+                    <FileText size={24} />
                   </div>
-
-                  <h4 className="mb-1 text-lg font-bold text-gray-800">
-                    {assessment.title}
-                  </h4>
-                  <p className="mb-5 text-sm font-bold text-[#1a6b3c]">
-                    {assessment.module_title ||
-                      assessment.course_title ||
-                      staffCourse.enrollment.course_title}
-                  </p>
-
-                  <div className="mb-8 flex flex-wrap items-center gap-5 text-sm font-medium text-gray-500">
-                    <span className="flex items-center gap-1.5">
-                      <FileText size={16} />
-                      {assessment.questions.length} Questions
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <Award size={16} />
-                      Pass mark: {assessment.pass_mark}%
-                    </span>
-                    {assessment.duration ? (
-                      <span className="flex items-center gap-1.5">
-                        <Clock size={16} />
-                        {assessment.duration} min
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-auto">
-                    {courseId && (
-                      <Link
-                        href={assessmentRoute(courseId, assessment.type)}
-                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#145530]"
-                      >
-                        <PlayCircle size={18} />
-                        Start Assessment
-                      </Link>
-                    )}
-                  </div>
+                  <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 shadow-sm">
+                    Examination
+                  </span>
                 </div>
-              );
-            })}
+
+                <h4 className="mb-1 text-lg font-bold text-gray-800">
+                  {assessment.title}
+                </h4>
+
+                <div className="mb-8 mt-4 flex flex-wrap items-center gap-5 text-sm font-medium text-gray-500">
+                  <span className="flex items-center gap-1.5">
+                    <FileText size={16} />
+                    {assessment.questions.length} Questions
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Award size={16} />
+                    Pass mark: {assessment.pass_mark}%
+                  </span>
+                  {assessment.duration ? (
+                    <span className="flex items-center gap-1.5">
+                      <Clock size={16} />
+                      {assessment.duration} min
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mt-auto">
+                  <button
+                    type="button"
+                    disabled
+                    className="flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-bold text-gray-400"
+                  >
+                    Opens when scheduled
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
       <p className="text-xs text-gray-500">
-        Completed tests and scores come directly from your graded attempts on
-        the server.
+        Completed exams and scores come directly from your graded attempts on the
+        server.
       </p>
     </div>
   );

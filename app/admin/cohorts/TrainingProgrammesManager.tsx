@@ -517,7 +517,10 @@ export default function TrainingProgrammesManager() {
       setStaffDirectory(directory);
       setProgrammeEnrollments(
         readApiList<CourseEnrollment>(payload).filter(
-          (enrollment) => enrollment.cohort_course === programme.id,
+          // The backend enrollment FK is `programme`; older payloads used
+          // `cohort_course`. Match either so enrolled staff always show.
+          (enrollment) =>
+            (enrollment.programme ?? enrollment.cohort_course) === programme.id,
         ),
       );
     } catch (staffError) {

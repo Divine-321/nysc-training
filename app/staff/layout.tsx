@@ -341,8 +341,11 @@ export default function StaffLayout({
     setIsSidebarOpen(false);
   }
 
+  // Only the immersive learning views (the course player and the proctored
+  // assessment) take over the whole screen. The Modules page, live-session
+  // list and evaluation keep the main dashboard sidebar for navigation.
   const isFullScreenView =
-    pathname.includes("/staff/course/") ||
+    /\/staff\/course\/\d+\/(learn|assessment)\b/.test(pathname) ||
     (pathname.includes("/staff/cbt/") && pathname !== "/staff/cbt");
 
   const displayName = user

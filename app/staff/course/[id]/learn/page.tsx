@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   Award,
+  BookOpen,
   Calendar,
   CheckCircle2,
   ChevronLeft,
@@ -20,6 +21,7 @@ import {
   MonitorPlay,
   PlayCircle,
   Presentation,
+  Star,
   UserCheck,
   Video,
   X,
@@ -31,6 +33,7 @@ import {
   loadLiveSessionsForCourse,
   loadStaffCourse,
   markDocumentComplete,
+  toPercentage,
   type Assessment,
   type LiveSession,
   type ModuleDocument,
@@ -45,6 +48,15 @@ import { formatDateTime } from "@/app/lib/format";
 // Session → Post-Test (any missing item is simply omitted). Assessments and
 // live sessions belong to their module (assessment.module / session.module).
 // ---------------------------------------------------------------------------
+
+type OverviewItem = {
+  key: string;
+  kind: "overview";
+  moduleId: number;
+  moduleIndex: number;
+  title: string;
+  description: string | null;
+};
 
 type DocItem = {
   key: string;
@@ -71,7 +83,15 @@ type LiveItem = {
   session: LiveSession;
 };
 
-type PlayerItem = DocItem | AssessmentItem | LiveItem;
+// The course-closing step. Only one exists, appended after the final module.
+type EvalItem = {
+  key: string;
+  kind: "evaluation";
+  moduleId: number;
+  moduleIndex: number;
+};
+
+type PlayerItem = OverviewItem | DocItem | AssessmentItem | LiveItem | EvalItem;
 
 type ModuleSection = {
   moduleId: number;
@@ -147,16 +167,20 @@ function documentIcon(doc: ModuleDocument) {
 }
 
 function itemIcon(item: PlayerItem) {
+  if (item.kind === "overview") return BookOpen;
   if (item.kind === "assessment") return ClipboardCheck;
   if (item.kind === "live") return Video;
+  if (item.kind === "evaluation") return Star;
   return documentIcon(item.doc);
 }
 
 function itemTitle(item: PlayerItem) {
+  if (item.kind === "overview") return "Overview";
   if (item.kind === "assessment") {
-    return item.phase === "pre" ? "Pre-Test" : "Post-Test";
+    return item.phase === "pre" ? "Pre-Assessment" : "Post-Assessment";
   }
   if (item.kind === "live") return item.session.title || "Live Session";
+  if (item.kind === "evaluation") return "Course Evaluation";
   return item.doc.title;
 }
 
@@ -261,6 +285,10 @@ function CoursePlayer() {
   const [moduleSwitcherOpen, setModuleSwitcherOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [joiningSessionId, setJoiningSessionId] = useState<number | null>(null);
+  const [evalRating, setEvalRating] = useState(5);
+  const [evalFeedback, setEvalFeedback] = useState("");
+  const [evalSubmitting, setEvalSubmitting] = useState(false);
+  const [evalDone, setEvalDone] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -276,6 +304,16 @@ function CoursePlayer() {
 
     const built: ModuleSection[] = orderedModules.map((module, moduleIndex) => {
       const items: PlayerItem[] = [];
+
+      // 0. Module overview (introduction + description) — always first.
+      items.push({
+        key: `overview-${module.id}`,
+        kind: "overview",
+        moduleId: module.id,
+        moduleIndex,
+        title: module.title,
+        description: module.description,
+      });
 
       // 1. Pre-Test (this module's PRE_TEST assessment).
       const preTest = assessments.find(
@@ -376,6 +414,17 @@ function CoursePlayer() {
       });
     }
 
+    // Course-closing evaluation — the final step after the last module.
+    if (built.length > 0) {
+      const last = built[built.length - 1];
+      last.items.push({
+        key: "evaluation",
+        kind: "evaluation",
+        moduleId: last.moduleId,
+        moduleIndex: last.moduleIndex,
+      });
+    }
+
     return built;
   }, [staffCourse, assessments, liveSessions]);
 
@@ -395,7 +444,10 @@ function CoursePlayer() {
       ) ?? null)
     : (sections[0] ?? null);
 
-  // Progress — course-wide and per (current) module, counted from real docs.
+  // Course-wide progress comes from the backend's authoritative
+  // completion_percentage (updated after every activity completion), so the
+  // player always agrees with the dashboard, course cards and modules page.
+  // The local doc count is only a fallback before the backend value arrives.
   const allDocs = useMemo(
     () => items.filter((item): item is DocItem => item.kind === "doc"),
     [items],
@@ -404,8 +456,12 @@ function CoursePlayer() {
   const completedDocs = allDocs.filter((item) =>
     completedIds.has(item.doc.id),
   ).length;
-  const progress =
+  const localProgress =
     totalDocs === 0 ? 0 : Math.round((completedDocs / totalDocs) * 100);
+  const progress =
+    staffCourse?.enrollment.completion_percentage != null
+      ? toPercentage(staffCourse.enrollment.completion_percentage)
+      : localProgress;
 
   const sectionDocs = (currentSection?.items ?? []).filter(
     (item): item is DocItem => item.kind === "doc",
@@ -434,9 +490,27 @@ function CoursePlayer() {
         setStaffCourse(courseData);
         setAssessments(assessmentData);
 
+        // Seed the closing evaluation from any previously submitted feedback.
+        if (courseData.enrollment.evaluation) {
+          setEvalDone(true);
+          setEvalRating(courseData.enrollment.evaluation.rating);
+          setEvalFeedback(courseData.enrollment.evaluation.feedback ?? "");
+        }
+
+        // `?step=` lets the standalone /live and /evaluation routes deep-link
+        // straight into the matching timeline step so notifications never feel
+        // like they leave the module flow.
+        const requestedStep = searchParams.get("step");
+
         // Live sessions belong to this enrollment's programme delivery.
         void loadLiveSessionsForCourse([courseData.enrollment.cohort_course])
-          .then((sessions) => setLiveSessions(sessions))
+          .then((sessions) => {
+            setLiveSessions(sessions);
+            if (requestedStep === "live" && sessions.length > 0) {
+              // Only if the learner hasn't already navigated elsewhere.
+              setCurrentKey((current) => current ?? `live-${sessions[0].id}`);
+            }
+          })
           .catch(() => setLiveSessions([]));
 
         const done = new Set<number>();
@@ -466,31 +540,24 @@ function CoursePlayer() {
           (module) => module.id === requestedModuleId,
         );
 
-        if (requestedModule) {
-          // Resume inside the requested module: its first incomplete
-          // material, else its first material, else its pre/post-test.
+        if (requestedStep === "evaluation") {
+          // The evaluation is the single course-closing step.
+          setCurrentKey("evaluation");
+        } else if (requestedStep === "live") {
+          // Landing is applied once live sessions resolve (see .then above).
+        } else if (requestedModule) {
+          // A fresh module opens on its overview (introduction); a module
+          // already in progress resumes at its first incomplete material.
           const moduleDocs = requestedModule.documents
             .slice()
             .sort((first, second) => first.order - second.order);
-          const moduleLanding =
-            moduleDocs.find((doc) => !done.has(doc.id)) ?? moduleDocs[0];
+          const hasProgress = moduleDocs.some((doc) => done.has(doc.id));
+          const nextDoc = moduleDocs.find((doc) => !done.has(doc.id));
 
-          if (moduleLanding) {
-            setCurrentKey(`doc-${moduleLanding.id}`);
-          } else if (
-            assessmentData.some(
-              (item) =>
-                item.type === "PRE_TEST" && item.module === requestedModule.id,
-            )
-          ) {
-            setCurrentKey(`pre-${requestedModule.id}`);
-          } else if (
-            assessmentData.some(
-              (item) =>
-                item.type === "POST_TEST" && item.module === requestedModule.id,
-            )
-          ) {
-            setCurrentKey(`post-${requestedModule.id}`);
+          if (hasProgress && nextDoc) {
+            setCurrentKey(`doc-${nextDoc.id}`);
+          } else {
+            setCurrentKey(`overview-${requestedModule.id}`);
           }
         } else {
           const requested = orderedDocs.find(
@@ -593,8 +660,45 @@ function CoursePlayer() {
     if (currentIndex >= 0 && currentIndex < items.length - 1) {
       goTo(items[currentIndex + 1].key);
     } else {
-      // Reached the end of the course.
-      router.push(`/staff/course/${courseId}`);
+      // Finished the final step — celebrate and take them to their
+      // certificate (the certificates page shows eligibility/requirements).
+      router.push(`/staff/certifications`);
+    }
+  };
+
+  const handleEvalSubmit = async () => {
+    if (!staffCourse || evalDone) return;
+
+    setEvalSubmitting(true);
+    setNotice("");
+
+    try {
+      const response = await fetch("/api/training/evaluations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enrollment: staffCourse.enrollment.id,
+          rating: evalRating,
+          feedback: evalFeedback.trim() || null,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not submit your evaluation."),
+        );
+      }
+
+      setEvalDone(true);
+    } catch (submitError) {
+      setNotice(
+        submitError instanceof Error
+          ? submitError.message
+          : "Could not submit your evaluation.",
+      );
+    } finally {
+      setEvalSubmitting(false);
     }
   };
 
@@ -824,14 +928,15 @@ function CoursePlayer() {
             const Icon = itemIcon(item);
             const isCurrent = effectiveKey === item.key;
             const isDone =
-              item.kind === "doc" && completedIds.has(item.doc.id);
+              (item.kind === "doc" && completedIds.has(item.doc.id)) ||
+              (item.kind === "evaluation" && evalDone);
+            // Assessment items already read "Pre-/Post-Assessment" in their
+            // title, so only live sessions and the evaluation carry a badge.
             const badge =
-              item.kind === "assessment"
-                ? item.phase === "pre"
-                  ? "Pre-test"
-                  : "Post-test"
-                : item.kind === "live"
-                  ? "Live"
+              item.kind === "live"
+                ? "Live"
+                : item.kind === "evaluation"
+                  ? "Final"
                   : null;
 
             return (
@@ -864,16 +969,18 @@ function CoursePlayer() {
                     className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
                       item.kind === "live"
                         ? "bg-blue-50 text-blue-700"
-                        : "bg-amber-50 text-amber-700"
+                        : item.kind === "evaluation"
+                          ? "bg-[#e3f2ea] text-[#1a6b3c]"
+                          : "bg-amber-50 text-amber-700"
                     }`}
                   >
                     {badge}
                   </span>
-                ) : (
+                ) : item.kind === "doc" ? (
                   <span className="shrink-0 text-[11px] font-medium text-gray-300">
                     {index + 1}
                   </span>
-                )}
+                ) : null}
               </button>
             );
           })
@@ -972,6 +1079,75 @@ function CoursePlayer() {
                   Module {currentSection.moduleIndex + 1}: {currentSection.title}
                 </p>
               ) : null}
+
+              {/* Module overview / introduction */}
+              {currentItem?.kind === "overview" && currentSection && (
+                <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm sm:p-10">
+                  <span className="inline-flex items-center gap-2 rounded-full bg-[#e3f2ea] px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#1a6b3c]">
+                    <BookOpen size={14} /> Module {currentSection.moduleIndex + 1} of{" "}
+                    {sections.length}
+                  </span>
+                  <h2 className="mt-3 text-2xl font-bold text-gray-800 sm:text-3xl">
+                    {currentItem.title}
+                  </h2>
+                  {currentItem.description ? (
+                    <p className="mt-3 text-sm leading-relaxed text-gray-600">
+                      {currentItem.description}
+                    </p>
+                  ) : (
+                    <p className="mt-3 text-sm text-gray-400">
+                      No description has been added for this module.
+                    </p>
+                  )}
+                  {currentSection.trainer ? (
+                    <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-sm font-medium text-[#1a6b3c]">
+                      <UserCheck size={15} /> {currentSection.trainer}
+                    </p>
+                  ) : null}
+
+                  {currentSection.items.some(
+                    (entry) =>
+                      entry.kind !== "overview" && entry.kind !== "evaluation",
+                  ) ? (
+                    <div className="mt-6 border-t border-gray-100 pt-6">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                        What this module includes
+                      </p>
+                      <ul className="space-y-2.5">
+                        {currentSection.items
+                          .filter(
+                            (entry) =>
+                              entry.kind !== "overview" &&
+                              entry.kind !== "evaluation",
+                          )
+                          .map((entry) => {
+                            const LineIcon = itemIcon(entry);
+                            return (
+                              <li
+                                key={entry.key}
+                                className="flex items-center gap-2.5 text-sm text-gray-600"
+                              >
+                                <LineIcon
+                                  size={16}
+                                  className="shrink-0 text-[#1a6b3c]"
+                                />
+                                {itemTitle(entry)}
+                              </li>
+                            );
+                          })}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#1a6b3c] px-8 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
+                  >
+                    Begin Module <ChevronRight size={17} />
+                  </button>
+                </div>
+              )}
 
               {/* Reading material */}
               {currentItem?.kind === "doc" &&
@@ -1153,6 +1329,95 @@ function CoursePlayer() {
                   );
                 })()}
 
+              {/* Course-closing evaluation */}
+              {currentItem?.kind === "evaluation" && (
+                <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm sm:p-10">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#e3f2ea] text-[#1a6b3c]">
+                    <Star size={28} />
+                  </div>
+                  <h2 className="text-center text-2xl font-bold text-gray-800">
+                    Course Evaluation
+                  </h2>
+                  <p className="mx-auto mt-2 max-w-md text-center text-sm text-gray-500">
+                    You have reached the end of the course. Share quick feedback,
+                    then finish to view your certificate.
+                  </p>
+
+                  {evalDone ? (
+                    <div className="mx-auto mt-6 max-w-md rounded-xl border border-green-100 bg-[#f0f7f3] p-5 text-center">
+                      <CheckCircle2
+                        size={24}
+                        className="mx-auto mb-2 text-[#1a6b3c]"
+                      />
+                      <p className="font-semibold text-[#1a6b3c]">
+                        Thank you — your feedback has been submitted.
+                      </p>
+                      <p className="mt-1 text-sm text-gray-600">
+                        Rating: {evalRating}/5
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mx-auto mt-6 max-w-md space-y-5">
+                      <div>
+                        <p className="mb-2 text-center text-sm font-medium text-gray-700">
+                          How useful was this course?
+                        </p>
+                        <div className="flex justify-center gap-2">
+                          {[1, 2, 3, 4, 5].map((value) => (
+                            <button
+                              key={value}
+                              type="button"
+                              aria-label={`Rate ${value} of 5`}
+                              onClick={() => setEvalRating(value)}
+                              className={`rounded-lg border p-2.5 transition ${
+                                value <= evalRating
+                                  ? "border-[#1a6b3c] bg-green-50 text-[#1a6b3c]"
+                                  : "border-gray-200 text-gray-300 hover:border-gray-300"
+                              }`}
+                            >
+                              <Star
+                                size={22}
+                                fill={value <= evalRating ? "currentColor" : "none"}
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                          Any comments? (optional)
+                        </label>
+                        <textarea
+                          value={evalFeedback}
+                          onChange={(event) => setEvalFeedback(event.target.value)}
+                          rows={4}
+                          placeholder="What worked well? What could be better?"
+                          className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-[#1a6b3c] focus:ring-2 focus:ring-[#1a6b3c]/15"
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleEvalSubmit()}
+                        disabled={evalSubmitting}
+                        className="w-full rounded-xl bg-[#1a6b3c] py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530] disabled:opacity-60"
+                      >
+                        {evalSubmitting ? "Submitting..." : "Submit Evaluation"}
+                      </button>
+                    </div>
+                  )}
+
+                  <p className="mt-6 text-center text-xs text-gray-400">
+                    Click{" "}
+                    <span className="font-semibold text-gray-500">
+                      Finish Course
+                    </span>{" "}
+                    below to view your certificate.
+                  </p>
+                </div>
+              )}
+
               {!currentItem && (
                 <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-10 text-center text-sm text-gray-500">
                   No learning materials have been added to this course yet.
@@ -1185,7 +1450,7 @@ function CoursePlayer() {
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#1a6b3c] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#145530]"
             >
               {!nextItem
-                ? "Finish"
+                ? "Finish Course"
                 : nextCrossesModule
                   ? "Next Module"
                   : "Next"}

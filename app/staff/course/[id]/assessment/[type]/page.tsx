@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -11,17 +11,24 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
+  History,
   HelpCircle,
+  Lock,
   PlayCircle,
+  RotateCcw,
   ShieldCheck,
+  Timer,
+  XCircle,
 } from "lucide-react";
 import {
+  loadAssessmentAttempts,
   loadAssessments,
   loadStaffCourse,
   markDocumentComplete,
   startAssessment,
   submitAssessment,
   type Assessment,
+  type AssessmentAttempt,
   type AssessmentQuestion,
   type AssessmentResult,
   type StaffCourse,
@@ -29,11 +36,46 @@ import {
 import IdentityVerificationModal from "@/app/components/IdentityVerificationModal";
 import ProctoringMonitor from "@/app/components/ProctoringMonitor";
 import { closeProctoringSession } from "@/app/lib/proctoring";
+import { formatDateTime } from "@/app/lib/format";
 import type { ProctoringStartResult } from "@/app/lib/training-types";
 
 // The exam runs in three phases (PDF sections 14-15): an intro screen, a
 // blocking identity-verification step, and the proctored questions view.
 type ExamPhase = "intro" | "verifying" | "in_progress";
+
+// Fisher–Yates. Used only as a client-side fallback when the backend's
+// per-attempt shuffle endpoint is unavailable — grading is by question/option
+// id, so reordering never affects correctness.
+function shuffle<T>(input: T[]): T[] {
+  const copy = input.slice();
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [copy[index], copy[swap]] = [copy[swap], copy[index]];
+  }
+  return copy;
+}
+
+function shuffleAssessment(
+  questions: AssessmentQuestion[],
+): AssessmentQuestion[] {
+  return shuffle(questions).map((question) => ({
+    ...question,
+    options: shuffle(question.options),
+  }));
+}
+
+// "12m 30s" style label for time between starting and submitting an attempt.
+function timeTaken(attempt: AssessmentAttempt): string | null {
+  if (!attempt.start_time || !attempt.submission_time) return null;
+  const ms =
+    new Date(attempt.submission_time).getTime() -
+    new Date(attempt.start_time).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
 
 export default function AssessmentPage() {
   const router = useRouter();
@@ -42,7 +84,7 @@ export default function AssessmentPage() {
   const assessmentType =
     params.type === "post-test" ? "POST_TEST" : "PRE_TEST";
   const assessmentLabel =
-    assessmentType === "POST_TEST" ? "Post-Course Test" : "Pre-Course Test";
+    assessmentType === "POST_TEST" ? "Post-Assessment" : "Pre-Assessment";
 
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [staffCourse, setStaffCourse] = useState<StaffCourse | null>(null);
@@ -58,9 +100,30 @@ export default function AssessmentPage() {
     AssessmentQuestion[] | null
   >(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
+  const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // This assessment's submitted attempts, newest first. The list serializer
+  // omits attempt_number, so number them chronologically ourselves.
+  const refreshAttempts = useCallback(async (assessmentId: number) => {
+    const all = await loadAssessmentAttempts().catch(() => []);
+    const chronological = all
+      .filter(
+        (attempt) =>
+          attempt.assessment === assessmentId &&
+          (attempt.attempt_status ?? "SUBMITTED") === "SUBMITTED",
+      )
+      .sort((first, second) => {
+        const firstTime = first.submitted_at ?? first.submission_time ?? "";
+        const secondTime = second.submitted_at ?? second.submission_time ?? "";
+        return firstTime.localeCompare(secondTime);
+      })
+      .map((attempt, index) => ({ ...attempt, attempt_number: index + 1 }));
+
+    setAttempts(chronological.reverse());
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -70,7 +133,9 @@ export default function AssessmentPage() {
           loadStaffCourse(courseId),
         ]);
         // Prefer a specific assessment id (per-module tests share the same
-        // pre-test/post-test route); fall back to the first of that type.
+        // pre-test/post-test route). Legacy links without an id fall back to
+        // the course-level (orphan) test of that type, and only then to the
+        // first module test of that type.
         const requestedId = Number(
           new URLSearchParams(window.location.search).get("assessment"),
         );
@@ -78,10 +143,17 @@ export default function AssessmentPage() {
           (requestedId
             ? assessments.find((item) => item.id === requestedId)
             : null) ??
+          assessments.find(
+            (item) => item.type === assessmentType && item.module == null,
+          ) ??
           assessments.find((item) => item.type === assessmentType) ??
           null;
         setAssessment(selectedAssessment);
         setStaffCourse(course);
+
+        if (selectedAssessment) {
+          await refreshAttempts(selectedAssessment.id);
+        }
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -94,7 +166,21 @@ export default function AssessmentPage() {
     };
 
     void fetchData();
-  }, [assessmentType, courseId]);
+  }, [assessmentType, courseId, refreshAttempts]);
+
+  // Attempt accounting. max_attempts of null/0 means unlimited.
+  const maxAttempts =
+    assessment?.max_attempts && assessment.max_attempts > 0
+      ? assessment.max_attempts
+      : null;
+  const attemptsUsed = attempts.length;
+  const attemptsRemaining =
+    maxAttempts === null ? Infinity : Math.max(0, maxAttempts - attemptsUsed);
+  const canAttempt = attemptsRemaining > 0;
+  const bestPercentage = attempts.reduce(
+    (best, attempt) => Math.max(best, Number(attempt.percentage ?? 0)),
+    0,
+  );
 
   const sortedQuestions = useMemo(() => {
     // Server-shuffled attempt order wins; the legacy sort only applies when
@@ -160,6 +246,10 @@ export default function AssessmentPage() {
       if (proctoring?.sessionId) {
         void closeProctoringSession(proctoring.sessionId);
       }
+
+      // Refresh the attempt history so the new result appears immediately,
+      // without the learner needing to reload the page.
+      await refreshAttempts(assessment.id);
       setExamPhase("intro");
     } catch (submitError) {
       setError(
@@ -184,23 +274,43 @@ export default function AssessmentPage() {
       return;
     }
 
+    if (!canAttempt) {
+      setError("You have used all of your attempts for this assessment.");
+      return;
+    }
+
     setExamPhase("verifying");
+  };
+
+  // Resets back to a fresh attempt (used by "Try Again" when attempts remain).
+  const handleRetake = () => {
+    setResult(null);
+    setAnswers({});
+    setLiveQuestions(null);
+    setCurrentQuestion(0);
+    setProctoring(null);
+    setError("");
+    setExamPhase("intro");
   };
 
   const handleVerified = async (verification: ProctoringStartResult) => {
     setProctoring(verification);
 
-    // Start/resume the attempt — the backend returns this attempt's
-    // randomized question/option order (stable across refreshes). Falls back
-    // silently to the assessment's own questions if unavailable.
+    // Ask the backend to start the attempt and return its randomized
+    // question/option order (stable across refreshes). If that endpoint is
+    // unavailable, shuffle client-side so every attempt is still randomized.
+    let ordered: AssessmentQuestion[] | null = null;
+
     if (assessment) {
       const started = await startAssessment(assessment.id);
-
-      if (started?.questions?.length) {
-        setLiveQuestions(started.questions);
-      }
+      ordered = started?.questions?.length
+        ? started.questions
+        : shuffleAssessment(assessment.questions);
     }
 
+    setLiveQuestions(ordered);
+    setCurrentQuestion(0);
+    setAnswers({});
     setExamPhase("in_progress");
   };
 
@@ -404,19 +514,45 @@ export default function AssessmentPage() {
                 </div>
               ) : result ? (
                 <div className="mx-auto max-w-xl py-8">
-                  <div className="rounded-2xl border border-green-100 bg-[#f0f7f3] p-8 text-center">
-                    <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-[#1a6b3c]">
-                      <CheckCircle2 size={32} />
+                  <div
+                    className={`rounded-2xl border p-8 text-center ${
+                      result.passed
+                        ? "border-green-100 bg-[#f0f7f3]"
+                        : "border-red-100 bg-red-50/60"
+                    }`}
+                  >
+                    <div
+                      className={`mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full ${
+                        result.passed
+                          ? "bg-green-100 text-[#1a6b3c]"
+                          : "bg-red-100 text-red-600"
+                      }`}
+                    >
+                      {result.passed ? (
+                        <CheckCircle2 size={32} />
+                      ) : (
+                        <XCircle size={32} />
+                      )}
                     </div>
-                    <h3 className="mb-2 text-2xl font-bold text-[#1a6b3c]">
-                      Assessment Submitted
+                    <h3
+                      className={`mb-2 text-2xl font-bold ${
+                        result.passed ? "text-[#1a6b3c]" : "text-red-600"
+                      }`}
+                    >
+                      {result.passed ? "Assessment Passed" : "Not Passed Yet"}
                     </h3>
                     <p className="mb-8 text-gray-600">
-                      Your answers have been graded by the backend.
+                      {result.passed
+                        ? "Well done — your answers have been graded."
+                        : `You needed ${assessment.pass_mark}% to pass. ${
+                            canAttempt
+                              ? "You can try again."
+                              : "You have used all of your attempts."
+                          }`}
                     </p>
 
                     <div className="mb-8 grid grid-cols-2 gap-4">
-                      <div className="rounded-xl border border-green-50 bg-white p-4 shadow-sm">
+                      <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
                         <p className="mb-1 text-sm font-medium text-gray-500">
                           Score
                         </p>
@@ -424,7 +560,7 @@ export default function AssessmentPage() {
                           {result.score}
                         </p>
                       </div>
-                      <div className="rounded-xl border border-green-50 bg-white p-4 shadow-sm">
+                      <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
                         <p className="mb-1 text-sm font-medium text-gray-500">
                           Percentage
                         </p>
@@ -438,12 +574,28 @@ export default function AssessmentPage() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => router.push("/staff/result")}
-                      className="w-full rounded-xl bg-[#1a6b3c] px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-[#145530]"
-                    >
-                      View Detailed Result
-                    </button>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      {!result.passed && canAttempt ? (
+                        <button
+                          onClick={handleRetake}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-[#145530]"
+                        >
+                          <RotateCcw size={18} /> Try Again
+                        </button>
+                      ) : null}
+                      <button
+                        onClick={() => router.back()}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-xl border-2 border-[#1a6b3c] px-6 py-3 font-semibold text-[#1a6b3c] transition hover:bg-green-50"
+                      >
+                        Back to Module
+                      </button>
+                    </div>
+                    {!canAttempt && (
+                      <p className="mt-4 text-xs text-gray-500">
+                        Attempt {attemptsUsed} of {maxAttempts} — no attempts
+                        remaining.
+                      </p>
+                    )}
                   </div>
                 </div>
               ) : (
@@ -479,15 +631,109 @@ export default function AssessmentPage() {
                       </p>
                     </div>
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                      <AlertCircle size={18} className="mb-2 text-[#1a6b3c]" />
+                      <History size={18} className="mb-2 text-[#1a6b3c]" />
                       <p className="text-xs font-medium text-gray-500">
-                        Max attempts
+                        Attempts
                       </p>
                       <p className="text-lg font-bold text-gray-800">
-                        {assessment.max_attempts || "Unlimited"}
+                        {maxAttempts
+                          ? `${attemptsUsed} / ${maxAttempts}`
+                          : `${attemptsUsed} used`}
                       </p>
                     </div>
                   </div>
+
+                  {/* Attempt history */}
+                  {attempts.length > 0 && (
+                    <div className="mb-8 overflow-hidden rounded-xl border border-gray-100 text-left">
+                      <div className="flex items-center justify-between gap-2 border-b border-gray-100 bg-gray-50 px-4 py-2.5">
+                        <p className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                          <History size={15} className="text-[#1a6b3c]" />
+                          Your attempts
+                        </p>
+                        {bestPercentage > 0 && (
+                          <p className="text-xs font-semibold text-gray-500">
+                            Best: {Math.round(bestPercentage)}%
+                          </p>
+                        )}
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="text-xs text-gray-400">
+                            <tr>
+                              <th className="px-4 py-2 text-left font-medium">
+                                #
+                              </th>
+                              <th className="px-4 py-2 text-left font-medium">
+                                Date
+                              </th>
+                              <th className="px-4 py-2 text-left font-medium">
+                                Score
+                              </th>
+                              <th className="px-4 py-2 text-left font-medium">
+                                Time
+                              </th>
+                              <th className="px-4 py-2 text-left font-medium">
+                                Result
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {attempts.map((attempt) => {
+                              const taken = timeTaken(attempt);
+                              const when =
+                                attempt.submitted_at ??
+                                attempt.submission_time ??
+                                null;
+
+                              return (
+                                <tr key={attempt.id} className="text-gray-700">
+                                  <td className="px-4 py-2.5 font-semibold">
+                                    {attempt.attempt_number}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-gray-500">
+                                    {when ? formatDateTime(when) : "—"}
+                                  </td>
+                                  <td className="px-4 py-2.5 font-medium">
+                                    {attempt.percentage !== null
+                                      ? `${attempt.percentage}%`
+                                      : "—"}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-gray-500">
+                                    <span className="inline-flex items-center gap-1">
+                                      {taken ? (
+                                        <>
+                                          <Timer size={13} /> {taken}
+                                        </>
+                                      ) : (
+                                        "—"
+                                      )}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <span
+                                      className={`inline-flex items-center gap-1 text-xs font-bold ${
+                                        attempt.passed
+                                          ? "text-green-700"
+                                          : "text-red-600"
+                                      }`}
+                                    >
+                                      {attempt.passed ? (
+                                        <CheckCircle2 size={14} />
+                                      ) : (
+                                        <XCircle size={14} />
+                                      )}
+                                      {attempt.passed ? "Passed" : "Failed"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="mb-8 flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 p-4 text-left text-sm text-amber-800">
                     <Camera size={18} className="mt-0.5 shrink-0" />
@@ -499,19 +745,43 @@ export default function AssessmentPage() {
                     </p>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={handleStartExam}
-                    disabled={!enrollmentId}
-                    className="mx-auto flex items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] px-8 py-3 font-semibold text-white shadow-sm transition hover:bg-[#145530] disabled:opacity-50"
-                  >
-                    <PlayCircle size={18} /> Start Assessment
-                  </button>
-                  {!enrollmentId && (
-                    <p className="mt-3 text-xs text-red-600">
-                      You are not enrolled in this course, so the assessment
-                      cannot start.
+                  {maxAttempts && canAttempt ? (
+                    <p className="mb-3 text-sm font-medium text-gray-500">
+                      Attempt {attemptsUsed + 1} of {maxAttempts} ·{" "}
+                      {attemptsRemaining} remaining
                     </p>
+                  ) : null}
+
+                  {canAttempt ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleStartExam}
+                        disabled={!enrollmentId}
+                        className="mx-auto flex items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] px-8 py-3 font-semibold text-white shadow-sm transition hover:bg-[#145530] disabled:opacity-50"
+                      >
+                        <PlayCircle size={18} />
+                        {attemptsUsed > 0 ? "Retake Assessment" : "Start Assessment"}
+                      </button>
+                      {!enrollmentId && (
+                        <p className="mt-3 text-xs text-red-600">
+                          You are not enrolled in this course, so the assessment
+                          cannot start.
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <div className="mx-auto max-w-md rounded-xl border border-gray-200 bg-gray-50 p-5 text-center">
+                      <Lock size={20} className="mx-auto mb-2 text-gray-400" />
+                      <p className="text-sm font-semibold text-gray-700">
+                        No attempts remaining
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        You have used all {maxAttempts} attempt
+                        {maxAttempts === 1 ? "" : "s"} for this assessment. Your
+                        best score was {Math.round(bestPercentage)}%.
+                      </p>
+                    </div>
                   )}
                 </div>
               )}
