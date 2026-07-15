@@ -17,6 +17,7 @@ import {
   FileText,
   Headphones,
   Image as ImageIcon,
+  Lock,
   Menu,
   MonitorPlay,
   PlayCircle,
@@ -29,6 +30,7 @@ import {
 import RichTextViewer from "@/app/components/RichTextViewer";
 import {
   documentIsComplete,
+  loadAssessmentAttempts,
   loadAssessments,
   loadLiveSessionsForCourse,
   loadStaffCourse,
@@ -102,6 +104,8 @@ type ModuleSection = {
 };
 
 const AUDIO_URL_PATTERN = /\.(mp3|wav|m4a|aac|ogg|oga|opus)(\?|#|$)/i;
+// Office documents we can render inline via the Microsoft Office viewer.
+const OFFICE_URL_PATTERN = /\.(pptx?|ppsx?|potx?|docx?|xlsx?)(\?|#|$)/i;
 
 function documentUrl(doc: ModuleDocument) {
   return doc.content_url ?? doc.file_url ?? "";
@@ -113,6 +117,7 @@ type DocumentKind =
   | "IMAGE"
   | "AUDIO"
   | "TEXT"
+  | "OFFICE"
   | "ASSESSMENT"
   | "OTHER";
 
@@ -129,6 +134,7 @@ function documentKind(doc: ModuleDocument): DocumentKind {
     case "ASSESSMENT":
       return "ASSESSMENT";
     case "PPT":
+      return "OFFICE";
     case "EXTERNAL":
       return "OTHER";
   }
@@ -141,10 +147,13 @@ function documentKind(doc: ModuleDocument): DocumentKind {
     case "IMAGE":
       return "IMAGE";
     case "PPT":
-      return "OTHER";
-    default:
-      if (doc.text_content && !documentUrl(doc)) return "TEXT";
-      return AUDIO_URL_PATTERN.test(documentUrl(doc)) ? "AUDIO" : "OTHER";
+      return "OFFICE";
+    default: {
+      const url = documentUrl(doc);
+      if (doc.text_content && !url) return "TEXT";
+      if (OFFICE_URL_PATTERN.test(url)) return "OFFICE";
+      return AUDIO_URL_PATTERN.test(url) ? "AUDIO" : "OTHER";
+    }
   }
 }
 
@@ -161,8 +170,10 @@ function documentIcon(doc: ModuleDocument) {
       return Headphones;
     case "ASSESSMENT":
       return ClipboardCheck;
+    case "OFFICE":
+      return Presentation;
     default:
-      return doc.doc_type === "PPT" ? Presentation : ExternalLink;
+      return ExternalLink;
   }
 }
 
@@ -191,7 +202,9 @@ function DocumentContent({ doc }: { doc: ModuleDocument }) {
   if (kind === "TEXT") {
     return doc.text_content ? (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-        <RichTextViewer html={doc.text_content} />
+        <div className="mx-auto max-w-3xl">
+          <RichTextViewer html={doc.text_content} />
+        </div>
       </div>
     ) : (
       <div className="rounded-xl border border-gray-200 bg-gray-50 p-10 text-center text-sm text-gray-500">
@@ -253,6 +266,37 @@ function DocumentContent({ doc }: { doc: ModuleDocument }) {
     );
   }
 
+  if (kind === "OFFICE") {
+    // Render PowerPoint/Word/Excel inline via the Microsoft Office viewer so
+    // the learner stays inside the module. The file must be publicly reachable
+    // (Cloudinary URLs are). A fallback link covers the rare viewer failure.
+    const viewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(
+      url,
+    )}`;
+
+    return (
+      <div className="space-y-3">
+        <iframe
+          src={viewerUrl}
+          title={doc.title}
+          className="h-[70vh] w-full rounded-xl border border-gray-200 bg-white shadow-sm"
+          allowFullScreen
+        />
+        <p className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+          <span>Slides not loading?</span>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-semibold text-[#1a6b3c] hover:underline"
+          >
+            <ExternalLink size={13} /> Open in a new tab
+          </a>
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 p-10 text-center">
       <ExternalLink size={26} className="mx-auto mb-3 text-[#1a6b3c]" />
@@ -279,6 +323,9 @@ function CoursePlayer() {
 
   const [staffCourse, setStaffCourse] = useState<StaffCourse | null>(null);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [passedAssessmentIds, setPassedAssessmentIds] = useState<Set<number>>(
+    new Set(),
+  );
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
   const [currentKey, setCurrentKey] = useState<string | null>(null);
@@ -444,10 +491,6 @@ function CoursePlayer() {
       ) ?? null)
     : (sections[0] ?? null);
 
-  // Course-wide progress comes from the backend's authoritative
-  // completion_percentage (updated after every activity completion), so the
-  // player always agrees with the dashboard, course cards and modules page.
-  // The local doc count is only a fallback before the backend value arrives.
   const allDocs = useMemo(
     () => items.filter((item): item is DocItem => item.kind === "doc"),
     [items],
@@ -458,10 +501,60 @@ function CoursePlayer() {
   ).length;
   const localProgress =
     totalDocs === 0 ? 0 : Math.round((completedDocs / totalDocs) * 100);
+
+  // Post-assessment gate per module: a module only counts as "done" once its
+  // POST_TEST (if any) is passed. Mirrors the Modules page so the two agree.
+  const postAssessmentByModule = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const assessment of assessments) {
+      if (assessment.type === "POST_TEST" && assessment.module != null) {
+        map.set(assessment.module, assessment.id);
+      }
+    }
+    return map;
+  }, [assessments]);
+
+  const modulePostSatisfied = (moduleId: number) => {
+    const postId = postAssessmentByModule.get(moduleId);
+    return postId === undefined || passedAssessmentIds.has(postId);
+  };
+
+  // Course progress is step-based — every content item PLUS each module's
+  // post-assessment — so the player agrees with the Modules page and only
+  // reaches 100% once every module (assessments included) is truly complete.
+  // (The dashboard/training cards still show the backend content-only % until
+  // B1/B3 land server-side.) Falls back to the backend value pre-hydration.
+  const { totalSteps, doneSteps } = useMemo(() => {
+    let total = 0;
+    let done = 0;
+    for (const section of sections) {
+      const secDocs = section.items.filter(
+        (item): item is DocItem => item.kind === "doc",
+      );
+      total += secDocs.length;
+      done += secDocs.filter((item) => completedIds.has(item.doc.id)).length;
+      const postId = postAssessmentByModule.get(section.moduleId);
+      if (postId !== undefined) {
+        total += 1;
+        if (passedAssessmentIds.has(postId)) done += 1;
+      }
+    }
+    return { totalSteps: total, doneSteps: done };
+  }, [sections, completedIds, postAssessmentByModule, passedAssessmentIds]);
+
   const progress =
-    staffCourse?.enrollment.completion_percentage != null
-      ? toPercentage(staffCourse.enrollment.completion_percentage)
-      : localProgress;
+    totalSteps > 0
+      ? Math.round((doneSteps / totalSteps) * 100)
+      : staffCourse?.enrollment.completion_percentage != null
+        ? toPercentage(staffCourse.enrollment.completion_percentage)
+        : localProgress;
+
+  // The course evaluation is the final, mandatory step and stays locked until
+  // every other module — including its post-assessment — is complete. Once
+  // submitted it is never re-locked, so a learner can always revisit feedback.
+  const evalUnlocked =
+    totalSteps > 0 ? doneSteps >= totalSteps : progress >= 100;
+  const evalLocked = !evalDone && !evalUnlocked;
 
   const sectionDocs = (currentSection?.items ?? []).filter(
     (item): item is DocItem => item.kind === "doc",
@@ -477,9 +570,10 @@ function CoursePlayer() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [courseData, assessmentData] = await Promise.all([
+        const [courseData, assessmentData, attemptData] = await Promise.all([
           loadStaffCourse(courseId),
           loadAssessments(courseId).catch(() => []),
+          loadAssessmentAttempts().catch(() => []),
         ]);
 
         if (!courseData) {
@@ -489,6 +583,13 @@ function CoursePlayer() {
 
         setStaffCourse(courseData);
         setAssessments(assessmentData);
+        setPassedAssessmentIds(
+          new Set(
+            attemptData
+              .filter((attempt) => attempt.passed)
+              .map((attempt) => attempt.assessment),
+          ),
+        );
 
         // Seed the closing evaluation from any previously submitted feedback.
         if (courseData.enrollment.evaluation) {
@@ -657,6 +758,22 @@ function CoursePlayer() {
       void markComplete(currentItem.doc);
     }
 
+    // The course-closing evaluation is mandatory: the learner cannot finish the
+    // course (and reach their certificate) until it has been submitted — and it
+    // only unlocks once every other module is complete.
+    if (currentItem?.kind === "evaluation" && !evalDone) {
+      setNotice(
+        evalLocked
+          ? "Complete all modules to unlock the course evaluation."
+          : "Please complete the course evaluation below before finishing the course.",
+      );
+      contentRef.current?.scrollTo({
+        top: contentRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+      return;
+    }
+
     if (currentIndex >= 0 && currentIndex < items.length - 1) {
       goTo(items[currentIndex + 1].key);
     } else {
@@ -813,6 +930,8 @@ function CoursePlayer() {
     prevItem != null &&
     currentItem != null &&
     prevItem.moduleId !== currentItem.moduleId;
+  // "Finish Course" is only reachable once the mandatory evaluation is in.
+  const finishBlocked = currentItem?.kind === "evaluation" && !evalDone;
 
   const sidebar = (
     <div className="flex h-full flex-col">
@@ -881,8 +1000,11 @@ function CoursePlayer() {
                     (item) =>
                       item.kind === "doc" && completedIds.has(item.doc.id),
                   ).length;
+                  // Content finished AND the module's post-assessment passed.
                   const done =
-                    secDocs.length > 0 && secDone === secDocs.length;
+                    secDocs.length > 0 &&
+                    secDone === secDocs.length &&
+                    modulePostSatisfied(section.moduleId);
                   const isCurrent = section.moduleId === currentSection.moduleId;
 
                   return (
@@ -930,6 +1052,7 @@ function CoursePlayer() {
             const isDone =
               (item.kind === "doc" && completedIds.has(item.doc.id)) ||
               (item.kind === "evaluation" && evalDone);
+            const itemLocked = item.kind === "evaluation" && evalLocked;
             // Assessment items already read "Pre-/Post-Assessment" in their
             // title, so only live sessions and the evaluation carry a badge.
             const badge =
@@ -954,6 +1077,8 @@ function CoursePlayer() {
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[11px] font-semibold text-gray-400">
                   {isDone ? (
                     <CheckCircle2 size={16} className="text-green-500" />
+                  ) : itemLocked ? (
+                    <Lock size={14} className="text-gray-400" />
                   ) : (
                     <Icon
                       size={15}
@@ -1065,7 +1190,7 @@ function CoursePlayer() {
         {/* Content pane */}
         <main className="flex min-w-0 flex-1 flex-col">
           <div ref={contentRef} className="flex-1 overflow-y-auto">
-            <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-8 sm:py-8">
+            <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-8 sm:py-8">
               {notice && (
                 <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
                   <AlertCircle size={16} className="mt-0.5 shrink-0" />
@@ -1332,29 +1457,77 @@ function CoursePlayer() {
               {/* Course-closing evaluation */}
               {currentItem?.kind === "evaluation" && (
                 <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm sm:p-10">
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-[#e3f2ea] text-[#1a6b3c]">
-                    <Star size={28} />
+                  <div
+                    className={`mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full ${
+                      evalLocked
+                        ? "bg-amber-50 text-amber-600"
+                        : "bg-[#e3f2ea] text-[#1a6b3c]"
+                    }`}
+                  >
+                    {evalLocked ? <Lock size={26} /> : <Star size={28} />}
                   </div>
                   <h2 className="text-center text-2xl font-bold text-gray-800">
                     Course Evaluation
                   </h2>
                   <p className="mx-auto mt-2 max-w-md text-center text-sm text-gray-500">
-                    You have reached the end of the course. Share quick feedback,
-                    then finish to view your certificate.
+                    {evalLocked
+                      ? "This is the final step of the course. It unlocks once you have completed every other module."
+                      : "This is the final step of the course. You must submit this evaluation to finish and unlock your certificate."}
                   </p>
 
-                  {evalDone ? (
-                    <div className="mx-auto mt-6 max-w-md rounded-xl border border-green-100 bg-[#f0f7f3] p-5 text-center">
-                      <CheckCircle2
-                        size={24}
-                        className="mx-auto mb-2 text-[#1a6b3c]"
-                      />
-                      <p className="font-semibold text-[#1a6b3c]">
-                        Thank you — your feedback has been submitted.
+                  {evalLocked ? (
+                    <div className="mx-auto mt-6 max-w-md rounded-xl border border-amber-100 bg-amber-50 p-5 text-center">
+                      <Lock size={22} className="mx-auto mb-2 text-amber-600" />
+                      <p className="font-semibold text-amber-800">
+                        Complete all modules to unlock
                       </p>
-                      <p className="mt-1 text-sm text-gray-600">
-                        Rating: {evalRating}/5
+                      <p className="mt-1 text-sm text-amber-700">
+                        Finish every module in this course, then return here to
+                        submit your evaluation and get your certificate.
                       </p>
+                      <div className="mx-auto mt-4 max-w-xs">
+                        <div className="mb-1 flex items-center justify-between text-xs font-medium text-amber-700">
+                          <span>Course progress</span>
+                          <span className="font-bold">{progress}%</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-amber-100">
+                          <div
+                            className="h-full rounded-full bg-amber-500 transition-all duration-500"
+                            style={{ width: `${Math.max(progress, 2)}%` }}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(`/staff/course/${courseId}`)
+                        }
+                        className="mt-5 inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-white px-6 py-2.5 text-sm font-semibold text-amber-800 transition hover:bg-amber-50"
+                      >
+                        <ChevronLeft size={16} /> Back to Modules
+                      </button>
+                    </div>
+                  ) : evalDone ? (
+                    <div className="mx-auto mt-6 max-w-md space-y-4">
+                      <div className="rounded-xl border border-green-100 bg-[#f0f7f3] p-5 text-center">
+                        <CheckCircle2
+                          size={24}
+                          className="mx-auto mb-2 text-[#1a6b3c]"
+                        />
+                        <p className="font-semibold text-[#1a6b3c]">
+                          Thank you — your feedback has been submitted.
+                        </p>
+                        <p className="mt-1 text-sm text-gray-600">
+                          Rating: {evalRating}/5
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={goNext}
+                        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
+                      >
+                        <Award size={17} /> Finish Course &amp; View Certificate
+                      </button>
                     </div>
                   ) : (
                     <div className="mx-auto mt-6 max-w-md space-y-5">
@@ -1408,13 +1581,15 @@ function CoursePlayer() {
                     </div>
                   )}
 
-                  <p className="mt-6 text-center text-xs text-gray-400">
-                    Click{" "}
-                    <span className="font-semibold text-gray-500">
-                      Finish Course
-                    </span>{" "}
-                    below to view your certificate.
-                  </p>
+                  {!evalLocked && !evalDone ? (
+                    <p className="mt-6 text-center text-xs text-gray-400">
+                      Submit your evaluation, then click{" "}
+                      <span className="font-semibold text-gray-500">
+                        Finish Course
+                      </span>{" "}
+                      to view your certificate.
+                    </p>
+                  ) : null}
                 </div>
               )}
 
@@ -1447,7 +1622,13 @@ function CoursePlayer() {
             <button
               type="button"
               onClick={goNext}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#1a6b3c] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#145530]"
+              disabled={finishBlocked}
+              title={
+                finishBlocked
+                  ? "Submit the course evaluation to finish"
+                  : undefined
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#1a6b3c] px-5 py-2 text-sm font-semibold text-white transition hover:bg-[#145530] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#1a6b3c]"
             >
               {!nextItem
                 ? "Finish Course"

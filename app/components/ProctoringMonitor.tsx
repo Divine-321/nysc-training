@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  Maximize2,
+  Minimize2,
+  ShieldCheck,
+} from "lucide-react";
 import CameraPreview from "@/app/components/CameraPreview";
 import { useCamera } from "@/app/components/useCamera";
 import {
@@ -51,9 +57,43 @@ export default function ProctoringMonitor({
   });
 
   const [warning, setWarning] = useState<string | null>(null);
+  // The learner can shrink the preview and dock it to either corner so it never
+  // covers the questions. The camera keeps running the whole time — only the
+  // on-screen preview changes — so monitoring is unaffected.
+  const [collapsed, setCollapsed] = useState(false);
+  // Default to the LEFT corner — the assessment's questions and navigator sit
+  // on the right, so a right-docked preview would cover them.
+  const [side, setSide] = useState<"left" | "right">("left");
   const warningTimerRef = useRef<number | null>(null);
   const wasFullscreenRef = useRef(false);
   const lastEventFrameAtRef = useRef(0);
+
+  // Remember the learner's placement between the pre- and post-assessment.
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("proctoring-widget");
+      if (!saved) return;
+      const prefs = JSON.parse(saved) as {
+        collapsed?: boolean;
+        side?: "left" | "right";
+      };
+      if (typeof prefs.collapsed === "boolean") setCollapsed(prefs.collapsed);
+      if (prefs.side === "left" || prefs.side === "right") setSide(prefs.side);
+    } catch {
+      // Ignore malformed/unavailable storage — defaults are fine.
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "proctoring-widget",
+        JSON.stringify({ collapsed, side }),
+      );
+    } catch {
+      // Non-fatal — preference just won't persist.
+    }
+  }, [collapsed, side]);
 
   const showWarning = (eventType: ProctoringEventType) => {
     const text = WARNING_TEXT[eventType];
@@ -150,25 +190,82 @@ export default function ProctoringMonitor({
   }, [sessionId]);
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-40 flex w-56 flex-col gap-2">
+    <div
+      className={`pointer-events-none fixed bottom-4 z-40 flex flex-col gap-2 ${
+        side === "left" ? "left-4 items-start" : "right-4 items-end"
+      }`}
+    >
       {warning && (
-        <div className="pointer-events-auto flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800 shadow-lg">
+        <div className="pointer-events-auto flex w-56 items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-800 shadow-lg">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" />
           <p>{warning}</p>
         </div>
       )}
 
-      <div className="pointer-events-auto overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
-        <CameraPreview
-          videoRef={camera.videoRef}
-          status={camera.status}
-          error={camera.error}
-          className="aspect-video w-full rounded-none"
-        />
-        <div className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold text-gray-500">
-          <ShieldCheck size={13} className="text-[#1a6b3c]" />
-          Proctoring active — stay visible on camera
+      <div
+        className={`pointer-events-auto overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg ${
+          collapsed ? "" : "w-56"
+        }`}
+      >
+        {/* The video element stays mounted even when collapsed — frame capture
+            reads the stream's intrinsic size, not the on-screen size, so
+            monitoring continues regardless of this preview being visible. */}
+        <div className={collapsed ? "h-0 w-0 overflow-hidden" : ""}>
+          <CameraPreview
+            videoRef={camera.videoRef}
+            status={camera.status}
+            error={camera.error}
+            className="aspect-video w-full rounded-none"
+          />
         </div>
+
+        <div className="flex items-center gap-1.5 px-2 py-1.5">
+          <ShieldCheck
+            size={15}
+            strokeWidth={2.5}
+            className="shrink-0 text-[#1a6b3c]"
+          />
+          <span className="flex-1 truncate text-[11px] font-bold text-gray-600">
+            Proctoring active
+          </span>
+
+          <button
+            type="button"
+            onClick={() =>
+              setSide((current) => (current === "left" ? "right" : "left"))
+            }
+            title="Move to the other side"
+            aria-label="Move camera to the other side"
+            className="flex shrink-0 items-center justify-center rounded-md bg-gray-100 p-1.5 text-gray-700 transition hover:bg-gray-200"
+          >
+            <ArrowLeftRight size={16} strokeWidth={2.75} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setCollapsed((current) => !current)}
+            title={collapsed ? "Show camera preview" : "Hide camera preview"}
+            aria-label={
+              collapsed ? "Show camera preview" : "Hide camera preview"
+            }
+            className="flex shrink-0 items-center gap-1 rounded-md bg-gray-100 px-2 py-1.5 text-[11px] font-bold text-gray-700 transition hover:bg-gray-200"
+          >
+            {collapsed ? (
+              <>
+                <Maximize2 size={16} strokeWidth={2.75} /> Show
+              </>
+            ) : (
+              <>
+                <Minimize2 size={16} strokeWidth={2.75} /> Hide
+              </>
+            )}
+          </button>
+        </div>
+
+        {!collapsed && (
+          <p className="px-2.5 pb-2 text-[10px] font-medium leading-tight text-gray-400">
+            Stay visible on camera · use Hide/Move if it covers anything
+          </p>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+} from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -9,6 +15,7 @@ import {
   BookOpen,
   CalendarDays,
   CheckCircle2,
+  ClipboardCheck,
   Cpu,
   HeartPulse,
   Landmark,
@@ -24,11 +31,14 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Star,
   Users,
 } from "lucide-react";
 import { Skeleton } from "@/app/components/ui";
 import {
   documentIsComplete,
+  loadAssessmentAttempts,
+  loadAssessments,
   loadStaffCourse,
   toPercentage,
   type CourseModule,
@@ -94,13 +104,30 @@ type ModuleStat = {
   completed: number;
   percent: number;
   status: "completed" | "inprogress" | "notstarted";
+  /** True when every content item is done but the post-assessment isn't. */
+  awaitingPost: boolean;
 };
 
-function statFor(module: CourseModule, enrollment: CourseEnrollment): ModuleStat {
-  const total = module.documents.length;
-  const completed = module.documents.filter((doc) =>
+/** A module's post-assessment gate (the pre-assessment never gates progress). */
+type PostGate = { required: boolean; passed: boolean };
+
+function statFor(
+  module: CourseModule,
+  enrollment: CourseEnrollment,
+  post: PostGate,
+): ModuleStat {
+  const docsTotal = module.documents.length;
+  const docsDone = module.documents.filter((doc) =>
     documentIsComplete(enrollment, doc.id),
   ).length;
+
+  // The post-assessment counts as one required step, so a module cannot reach
+  // 100%/Completed until it is passed. The pre-assessment is never counted.
+  const extraTotal = post.required ? 1 : 0;
+  const extraDone = post.required && post.passed ? 1 : 0;
+
+  const total = docsTotal + extraTotal;
+  const completed = docsDone + extraDone;
   const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
   const status =
     total > 0 && completed >= total
@@ -108,8 +135,9 @@ function statFor(module: CourseModule, enrollment: CourseEnrollment): ModuleStat
       : completed > 0
         ? "inprogress"
         : "notstarted";
+  const awaitingPost = post.required && !post.passed && docsDone === docsTotal;
 
-  return { total, completed, percent, status };
+  return { total, completed, percent, status, awaitingPost };
 }
 
 const STATUS_LABEL: Record<ModuleStat["status"], string> = {
@@ -134,11 +162,40 @@ export default function CourseModulesPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<"all" | "inprogress" | "completed">("all");
   const [view, setView] = useState<"grid" | "list">("grid");
+  // Each module's POST_TEST assessment id, and the ids the staff has passed —
+  // used to gate module completion on the post-assessment.
+  const [postByModule, setPostByModule] = useState<Map<number, number>>(
+    new Map(),
+  );
+  const [passedAssessmentIds, setPassedAssessmentIds] = useState<Set<number>>(
+    new Set(),
+  );
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setStaffCourse(await loadStaffCourse(courseId));
+        const [course, assessments, attempts] = await Promise.all([
+          loadStaffCourse(courseId),
+          loadAssessments(courseId).catch(() => []),
+          loadAssessmentAttempts().catch(() => []),
+        ]);
+
+        setStaffCourse(course);
+
+        const postMap = new Map<number, number>();
+        for (const assessment of assessments) {
+          if (assessment.type === "POST_TEST" && assessment.module != null) {
+            postMap.set(assessment.module, assessment.id);
+          }
+        }
+        setPostByModule(postMap);
+
+        const passed = new Set<number>();
+        for (const attempt of attempts) {
+          if (attempt.passed) passed.add(attempt.assessment);
+        }
+        setPassedAssessmentIds(passed);
+
         setError("");
       } catch (loadError) {
         setError(
@@ -154,6 +211,18 @@ export default function CourseModulesPage() {
     void fetchData();
   }, [courseId]);
 
+  // Resolves the post-assessment gate for one module.
+  const postGateFor = useCallback(
+    (moduleId: number): PostGate => {
+      const postId = postByModule.get(moduleId);
+      return {
+        required: postId !== undefined,
+        passed: postId !== undefined && passedAssessmentIds.has(postId),
+      };
+    },
+    [postByModule, passedAssessmentIds],
+  );
+
   const orderedModules = useMemo(
     () =>
       (staffCourse?.modules ?? [])
@@ -167,7 +236,11 @@ export default function CourseModulesPage() {
     const query = search.trim().toLowerCase();
 
     return orderedModules.filter((module) => {
-      const status = statFor(module, staffCourse.enrollment).status;
+      const status = statFor(
+        module,
+        staffCourse.enrollment,
+        postGateFor(module.id),
+      ).status;
       const matchesTab =
         tab === "all" ||
         (tab === "completed" && status === "completed") ||
@@ -180,16 +253,18 @@ export default function CourseModulesPage() {
 
       return matchesTab && matchesSearch;
     });
-  }, [orderedModules, search, tab, staffCourse]);
+  }, [orderedModules, search, tab, staffCourse, postGateFor]);
 
   // Resume target: first not-yet-complete module, else the first module.
   const resumeModuleId = useMemo(() => {
     if (!staffCourse) return null;
     const firstIncomplete = orderedModules.find(
-      (module) => statFor(module, staffCourse.enrollment).status !== "completed",
+      (module) =>
+        statFor(module, staffCourse.enrollment, postGateFor(module.id))
+          .status !== "completed",
     );
     return (firstIncomplete ?? orderedModules[0])?.id ?? null;
-  }, [orderedModules, staffCourse]);
+  }, [orderedModules, staffCourse, postGateFor]);
 
   if (loading) {
     return (
@@ -238,18 +313,49 @@ export default function CourseModulesPage() {
   }
 
   const { enrollment, course } = staffCourse;
-  const courseProgress = toPercentage(enrollment.completion_percentage);
-  const isCompleted = enrollment.status === "COMPLETED" || courseProgress >= 100;
   const isLocked = course?.is_locked ?? false;
-  // A module with no activities has nothing to complete, so it must not sit in
-  // the "modules done" denominator — otherwise the count can never reach the
-  // total even when the backend reports the course at 100%.
+
+  // A module counts toward the course tally if it has any required step —
+  // content items or a post-assessment. (A module with nothing to complete
+  // must not sit in the denominator, or the count could never reach the total.)
   const contentModules = orderedModules.filter(
-    (module) => module.documents.length > 0,
+    (module) =>
+      module.documents.length > 0 || postGateFor(module.id).required,
   );
-  const completedModules = contentModules.filter(
-    (module) => statFor(module, enrollment).status === "completed",
+  const moduleStats = contentModules.map((module) =>
+    statFor(module, enrollment, postGateFor(module.id)),
+  );
+  const completedModules = moduleStats.filter(
+    (stat) => stat.status === "completed",
   ).length;
+
+  // The hero % is built from the same per-module steps as the cards below it —
+  // including post-assessments — so it only reaches 100% when every module is
+  // truly done, not just its content. (The dashboard/training cards still show
+  // the backend's content-only % until B1/B3 land server-side.)
+  const totalSteps = moduleStats.reduce((sum, stat) => sum + stat.total, 0);
+  const doneSteps = moduleStats.reduce((sum, stat) => sum + stat.completed, 0);
+  const courseProgress =
+    totalSteps > 0
+      ? Math.round((doneSteps / totalSteps) * 100)
+      : toPercentage(enrollment.completion_percentage);
+  const isCompleted =
+    totalSteps > 0 ? doneSteps >= totalSteps : enrollment.status === "COMPLETED";
+
+  // The course evaluation is a mandatory closing "module" shown after all the
+  // real modules. It links straight into the player's evaluation step; once
+  // submitted, finishing there issues the certificate.
+  const evaluationDone = enrollment.evaluation != null;
+  const evalQuery = search.trim().toLowerCase();
+  const showEvalCard =
+    (tab === "all" || (tab === "completed" && evaluationDone)) &&
+    (!evalQuery || "course evaluation feedback".includes(evalQuery));
+  // The evaluation stays locked until every content module is complete (or the
+  // backend reports the whole course at 100%). Once submitted it never re-locks.
+  const allModulesDone =
+    courseProgress >= 100 ||
+    (contentModules.length > 0 && completedModules === contentModules.length);
+  const evalLocked = !evaluationDone && !allModulesDone;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -426,7 +532,7 @@ export default function CourseModulesPage() {
             This course has no modules added yet. Please check back later.
           </p>
         </div>
-      ) : visibleModules.length === 0 ? (
+      ) : visibleModules.length === 0 && !showEvalCard ? (
         <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-12 text-center shadow-sm">
           <Search className="mx-auto mb-3 text-gray-300" size={38} />
           <p className="font-semibold text-gray-700">No modules here</p>
@@ -441,7 +547,7 @@ export default function CourseModulesPage() {
       ) : view === "grid" ? (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {visibleModules.map((module) => {
-            const stat = statFor(module, enrollment);
+            const stat = statFor(module, enrollment, postGateFor(module.id));
             const { gradient, glow, Icon } = bannerFor(module.title);
             const moduleNumber =
               orderedModules.findIndex((item) => item.id === module.id) + 1;
@@ -492,7 +598,7 @@ export default function CourseModulesPage() {
                   <div className="mb-4">
                     <div className="mb-1.5 flex items-center justify-between text-xs font-medium">
                       <span className="text-gray-500">
-                        {stat.completed} of {stat.total} material
+                        {stat.completed} of {stat.total} step
                         {stat.total === 1 ? "" : "s"}
                       </span>
                       <span
@@ -516,6 +622,13 @@ export default function CourseModulesPage() {
                       />
                     </div>
                   </div>
+
+                  {stat.awaitingPost ? (
+                    <p className="mb-3 flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700">
+                      <ClipboardCheck size={13} className="shrink-0" />
+                      Post-assessment pending
+                    </p>
+                  ) : null}
 
                   <Link
                     href={`/staff/course/${courseId}/learn?module=${module.id}`}
@@ -545,11 +658,108 @@ export default function CourseModulesPage() {
               </div>
             );
           })}
+
+          {showEvalCard ? (
+            <div
+              className={`group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 ${
+                evalLocked
+                  ? ""
+                  : "hover:-translate-y-1 hover:border-gray-200 hover:shadow-xl"
+              }`}
+            >
+              <div
+                className={`relative h-28 overflow-hidden bg-gradient-to-br ${
+                  evalLocked
+                    ? "from-gray-400 via-gray-500 to-gray-600"
+                    : "from-amber-500 via-orange-600 to-rose-600"
+                }`}
+              >
+                <div className="absolute inset-0" style={DOT_TEXTURE} />
+                {!evalLocked ? (
+                  <div className="absolute -right-8 -top-10 h-32 w-32 rounded-full bg-amber-300/40 blur-2xl" />
+                ) : null}
+                {evalLocked ? (
+                  <Lock
+                    size={92}
+                    strokeWidth={1.25}
+                    className="absolute -bottom-2 right-2 text-white/15"
+                  />
+                ) : (
+                  <Star
+                    size={104}
+                    strokeWidth={1.25}
+                    className="absolute -bottom-3 right-1 text-white/15 transition-transform duration-500 group-hover:scale-110"
+                  />
+                )}
+                <div className="absolute inset-x-0 top-0 flex items-start justify-between p-4">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-white/80">
+                    Final Step
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold text-gray-700 shadow-sm">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        evaluationDone
+                          ? "bg-emerald-500"
+                          : evalLocked
+                            ? "bg-gray-400"
+                            : "bg-amber-500"
+                      }`}
+                    />
+                    {evaluationDone
+                      ? "Completed"
+                      : evalLocked
+                        ? "Locked"
+                        : "Required"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-1 flex-col p-5">
+                <h3 className="mb-1.5 line-clamp-2 font-bold leading-snug text-gray-800 transition group-hover:text-[#1a6b3c]">
+                  Course Evaluation
+                </h3>
+                <p className="mb-4 line-clamp-2 flex-1 text-sm leading-relaxed text-gray-500">
+                  {evalLocked
+                    ? "Complete all modules above to unlock the course evaluation and your certificate."
+                    : "Share your feedback to complete the course and unlock your certificate."}
+                </p>
+
+                {evalLocked ? (
+                  <div className="mt-auto flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-gray-100 py-2.5 text-sm font-bold text-gray-400">
+                    <Lock size={15} /> Complete all modules first
+                  </div>
+                ) : (
+                  <Link
+                    href={`/staff/course/${courseId}/learn?step=evaluation`}
+                    className={`group/btn mt-auto flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold transition-all ${
+                      evaluationDone
+                        ? "border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+                        : "bg-[#1a6b3c] text-white shadow-sm hover:bg-[#155831] hover:shadow-md"
+                    }`}
+                  >
+                    {evaluationDone ? (
+                      <>
+                        <RotateCcw size={16} /> Review Feedback
+                      </>
+                    ) : (
+                      <>
+                        Start Evaluation
+                        <ArrowRight
+                          size={16}
+                          className="transition-transform group-hover/btn:translate-x-1"
+                        />
+                      </>
+                    )}
+                  </Link>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-3">
           {visibleModules.map((module) => {
-            const stat = statFor(module, enrollment);
+            const stat = statFor(module, enrollment, postGateFor(module.id));
             const { gradient, Icon } = bannerFor(module.title);
             const moduleNumber =
               orderedModules.findIndex((item) => item.id === module.id) + 1;
@@ -584,6 +794,11 @@ export default function CourseModulesPage() {
                       />
                       {STATUS_LABEL[stat.status]}
                     </span>
+                    {stat.awaitingPost ? (
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                        <ClipboardCheck size={11} /> Post-assessment
+                      </span>
+                    ) : null}
                   </div>
                   <p className="mt-0.5 line-clamp-1 text-sm text-gray-500">
                     {module.description || "Open this module to begin."}
@@ -623,6 +838,76 @@ export default function CourseModulesPage() {
               </div>
             );
           })}
+
+          {showEvalCard ? (
+            <div
+              className={`group flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition sm:flex-row sm:items-center ${
+                evalLocked ? "" : "hover:border-gray-200 hover:shadow-md"
+              }`}
+            >
+              <div
+                className={`relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br text-white ${
+                  evalLocked
+                    ? "from-gray-400 via-gray-500 to-gray-600"
+                    : "from-amber-500 via-orange-600 to-rose-600"
+                }`}
+              >
+                <div className="absolute inset-0" style={DOT_TEXTURE} />
+                {evalLocked ? (
+                  <Lock size={24} className="relative" />
+                ) : (
+                  <Star size={26} className="relative" />
+                )}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="truncate font-bold text-gray-800 transition group-hover:text-[#1a6b3c]">
+                    Course Evaluation
+                  </h3>
+                  <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-bold text-gray-600">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        evaluationDone
+                          ? "bg-emerald-500"
+                          : evalLocked
+                            ? "bg-gray-400"
+                            : "bg-amber-500"
+                      }`}
+                    />
+                    {evaluationDone
+                      ? "Completed"
+                      : evalLocked
+                        ? "Locked"
+                        : "Required"}
+                  </span>
+                </div>
+                <p className="mt-0.5 line-clamp-1 text-sm text-gray-500">
+                  {evalLocked
+                    ? "Complete all modules to unlock the course evaluation and your certificate."
+                    : "Share your feedback to complete the course and unlock your certificate."}
+                </p>
+              </div>
+
+              {evalLocked ? (
+                <div className="inline-flex shrink-0 cursor-not-allowed items-center justify-center gap-2 rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-bold text-gray-400">
+                  <Lock size={14} /> Locked
+                </div>
+              ) : (
+                <Link
+                  href={`/staff/course/${courseId}/learn?step=evaluation`}
+                  className={`inline-flex shrink-0 items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition ${
+                    evaluationDone
+                      ? "border-2 border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+                      : "bg-[#1a6b3c] text-white shadow-sm hover:bg-[#155831]"
+                  }`}
+                >
+                  {evaluationDone ? "Review" : "Start"}
+                  <ArrowRight size={15} />
+                </Link>
+              )}
+            </div>
+          ) : null}
         </div>
       )}
     </div>

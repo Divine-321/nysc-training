@@ -196,6 +196,7 @@ export default function TrainingProgrammesManager() {
   const [removingEnrollmentId, setRemovingEnrollmentId] = useState<
     number | null
   >(null);
+  const [removingAllStaff, setRemovingAllStaff] = useState(false);
   const [staffListError, setStaffListError] = useState("");
 
   const loadData = useCallback(async () => {
@@ -573,6 +574,58 @@ export default function TrainingProgrammesManager() {
     } finally {
       setRemovingEnrollmentId(null);
     }
+  };
+
+  const handleUnenrollAll = async () => {
+    if (!staffFor || programmeEnrollments.length === 0) return;
+
+    const confirmed = await confirm(
+      `Remove ALL ${programmeEnrollments.length} staff from "${
+        staffFor.course_details?.title
+      }" (${cohortCourseBatchLabel(staffFor)}${
+        staffFor.year ? ` ${staffFor.year}` : ""
+      })? Every one of their progress records for this training will be deleted. This cannot be undone.`,
+      { danger: true },
+    );
+
+    if (!confirmed) return;
+
+    setRemovingAllStaff(true);
+    setStaffListError("");
+
+    // Fire the deletes together, then keep only the ones that failed so the
+    // admin can retry just those.
+    const targets = programmeEnrollments.slice();
+    const results = await Promise.allSettled(
+      targets.map((enrollment) =>
+        fetch(`/api/training/enrollments/${enrollment.id}`, {
+          method: "DELETE",
+        }),
+      ),
+    );
+
+    const failedIds = new Set(
+      targets
+        .filter((_, index) => {
+          const result = results[index];
+          return !(result.status === "fulfilled" && result.value.ok);
+        })
+        .map((enrollment) => enrollment.id),
+    );
+
+    setProgrammeEnrollments((current) =>
+      current.filter((item) => failedIds.has(item.id)),
+    );
+
+    if (failedIds.size > 0) {
+      setStaffListError(
+        `Removed ${targets.length - failedIds.size} of ${
+          targets.length
+        } staff. ${failedIds.size} could not be removed — please try again.`,
+      );
+    }
+
+    setRemovingAllStaff(false);
   };
 
   // ----- Course modules (per training row) ---------------------------------
@@ -1601,7 +1654,22 @@ export default function TrainingProgrammesManager() {
                 Nobody is enrolled in this course yet.
               </p>
             ) : (
-              <ul className="space-y-2">
+              <>
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    {programmeEnrollments.length} enrolled
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleUnenrollAll()}
+                    disabled={removingAllStaff}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 size={13} />
+                    {removingAllStaff ? "Removing all…" : "Unassign everyone"}
+                  </button>
+                </div>
+                <ul className="space-y-2">
                 {programmeEnrollments.map((enrollment) => {
                   const entry = staffDirectory.get(enrollment.staff);
 
@@ -1634,7 +1702,8 @@ export default function TrainingProgrammesManager() {
                     </li>
                   );
                 })}
-              </ul>
+                </ul>
+              </>
             )}
 
             <p className="mt-5 border-t border-gray-100 pt-4 text-xs text-gray-500">

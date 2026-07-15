@@ -22,6 +22,10 @@ import {
   sortedAssignedModules,
   type Course,
 } from "@/app/lib/portal-api";
+import type {
+  CohortCourse,
+  CourseEnrollment,
+} from "@/app/lib/staff-learning";
 import { formatDate } from "@/app/lib/format";
 import { useConfirm } from "@/app/components/useConfirm";
 import {
@@ -147,17 +151,133 @@ export default function AdminCoursesPage() {
 
     if (!confirmed) return;
 
+    // First try a plain delete — this succeeds when nothing references the
+    // course. If the backend protects it (it's delivered to a cohort or has
+    // enrolled staff), fall through to the force path below.
     const response = await fetch(`/api/training/courses/${course.id}`, {
       method: "DELETE",
     });
 
-    if (!response.ok) {
-      push(`Could not delete course (HTTP ${response.status}).`, "error");
+    if (response.ok) {
+      setCourses((current) => current.filter((item) => item.id !== course.id));
+      push("Course deleted.");
       return;
     }
 
-    setCourses((current) => current.filter((item) => item.id !== course.id));
-    push("Course deleted.");
+    const payload = await readJsonResponse(response);
+    const backendMessage = extractErrorMessage(payload, "");
+    // A course that has been delivered to a cohort (Training) or has enrolled
+    // staff is protected at the database level (PROTECT), so Django refuses the
+    // delete — usually a 500 (ProtectedError, HTML body) or a 409.
+    const blockedByReferences =
+      response.status === 409 ||
+      response.status === 500 ||
+      /protect|referenc|foreign key|in use|assigned|enrol/i.test(backendMessage);
+
+    if (!blockedByReferences) {
+      push(
+        backendMessage || `Could not delete course (HTTP ${response.status}).`,
+        "error",
+      );
+      return;
+    }
+
+    // The course is in use. Work out exactly how much would be removed so the
+    // admin can make an informed decision before force-deleting.
+    let trainings: CohortCourse[] = [];
+    let enrollments: CourseEnrollment[] = [];
+
+    try {
+      const [trainingRes, enrollmentRes] = await Promise.all([
+        fetch("/api/training/cohort-courses", { cache: "no-store" }),
+        fetch("/api/training/enrollments", { cache: "no-store" }),
+      ]);
+
+      trainings = (
+        trainingRes.ok
+          ? readApiList<CohortCourse>(await readJsonResponse(trainingRes))
+          : []
+      ).filter((training) => Number(training.course) === course.id);
+
+      const trainingIds = new Set(trainings.map((training) => training.id));
+      enrollments = (
+        enrollmentRes.ok
+          ? readApiList<CourseEnrollment>(await readJsonResponse(enrollmentRes))
+          : []
+      ).filter((enrollment) =>
+        trainingIds.has(
+          (enrollment.programme ?? enrollment.cohort_course) as number,
+        ),
+      );
+    } catch {
+      // Counts stay at 0 — the force confirmation still explains the intent.
+    }
+
+    const forceConfirmed = await confirm(
+      `"${course.title}" is still in use. Deleting it will also permanently remove ${
+        trainings.length
+      } training${trainings.length === 1 ? "" : "s"} and unassign ${
+        enrollments.length
+      } staff member${
+        enrollments.length === 1 ? "" : "s"
+      } — their progress records for this course are deleted. This cannot be undone. Delete everything?`,
+      { danger: true },
+    );
+
+    if (!forceConfirmed) return;
+
+    // Cascade in dependency order: staff enrolments, then the trainings that
+    // deliver the course, then the course itself.
+    const okResult = (result: PromiseSettledResult<Response>) =>
+      result.status === "fulfilled" && result.value.ok;
+
+    const enrollmentResults = await Promise.allSettled(
+      enrollments.map((enrollment) =>
+        fetch(`/api/training/enrollments/${enrollment.id}`, {
+          method: "DELETE",
+        }),
+      ),
+    );
+    const trainingResults = await Promise.allSettled(
+      trainings.map((training) =>
+        fetch(`/api/training/cohort-courses/${training.id}`, {
+          method: "DELETE",
+        }),
+      ),
+    );
+
+    const cascadeFailed =
+      enrollmentResults.some((result) => !okResult(result)) ||
+      trainingResults.some((result) => !okResult(result));
+
+    const finalResponse = await fetch(`/api/training/courses/${course.id}`, {
+      method: "DELETE",
+    });
+
+    if (finalResponse.ok) {
+      setCourses((current) => current.filter((item) => item.id !== course.id));
+      push(
+        trainings.length || enrollments.length
+          ? `Course deleted — also removed ${trainings.length} training${
+              trainings.length === 1 ? "" : "s"
+            } and unassigned ${enrollments.length} staff.`
+          : "Course deleted.",
+      );
+      return;
+    }
+
+    const finalPayload = await readJsonResponse(finalResponse);
+    push(
+      extractErrorMessage(
+        finalPayload,
+        `Its trainings and staff were removed, but the course itself still could not be deleted (HTTP ${finalResponse.status}).${
+          cascadeFailed
+            ? " Some trainings or enrolments also could not be removed."
+            : ""
+        } It may be linked to other records — please share this with the backend team.`,
+      ),
+      "error",
+    );
   };
 
   const hasFilters = search.trim() !== "";

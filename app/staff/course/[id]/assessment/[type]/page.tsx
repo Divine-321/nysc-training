@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -64,6 +64,14 @@ function shuffleAssessment(
   }));
 }
 
+// "9:05" countdown label for the remaining time in a timed attempt.
+function formatClock(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 // "12m 30s" style label for time between starting and submitting an attempt.
 function timeTaken(attempt: AssessmentAttempt): string | null {
   if (!attempt.start_time || !attempt.submission_time) return null;
@@ -104,6 +112,30 @@ export default function AssessmentPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  // Absolute epoch (ms) when a timed attempt must end. Stored as a wall-clock
+  // deadline (not a countdown), so refreshing the page never resets the timer.
+  // null = the assessment has no time limit.
+  const [deadline, setDeadline] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  const submittingRef = useRef(false);
+  const autoSubmittedRef = useRef(false);
+  const restoredRef = useRef(false);
+  const submitRef = useRef<((auto?: boolean) => void) | null>(null);
+
+  // Where an in-progress attempt is cached so a refresh can resume it.
+  const progressKey = assessment
+    ? `assessment-progress-${courseId}-${assessment.id}`
+    : null;
+
+  const clearPersistedProgress = useCallback(() => {
+    if (!progressKey) return;
+    try {
+      window.localStorage.removeItem(progressKey);
+    } catch {
+      // Non-fatal.
+    }
+  }, [progressKey]);
 
   // This assessment's submitted attempts, newest first. The list serializer
   // omits attempt_number, so number them chronologically ourselves.
@@ -195,28 +227,50 @@ export default function AssessmentPage() {
   const allAnswered =
     sortedQuestions.length > 0 &&
     sortedQuestions.every((item) => answers[item.id] !== undefined);
+  const unansweredCount = sortedQuestions.filter(
+    (item) => answers[item.id] === undefined,
+  ).length;
+  const remainingMs = deadline !== null ? Math.max(0, deadline - nowTick) : null;
+  const timeUp = deadline !== null && nowTick >= deadline;
 
-  const handleSubmit = async () => {
-    if (!assessment) return;
+  const submitAttempt = useCallback(
+    async (auto = false) => {
+      if (!assessment || submittingRef.current) return;
 
-    if (!allAnswered) {
-      setError("Please answer all questions before submitting.");
-      return;
-    }
+      // Once the clock runs out, submission is forced through regardless of how
+      // many answers are missing — that is the only path that lets an
+      // incomplete attempt submit.
+      const timeIsUp = deadline !== null && Date.now() >= deadline;
+      const force = auto || timeIsUp;
 
-    setSubmitting(true);
-    setError("");
+      if (!force && !allAnswered) {
+        setError(
+          `Please answer all questions before submitting — ${unansweredCount} still ${
+            unansweredCount === 1 ? "needs" : "need"
+          } an answer.`,
+        );
+        return;
+      }
 
-    try {
-      const submission = sortedQuestions.map((item) => ({
-        question: item.id,
-        selected_option: answers[item.id],
-      }));
-      const submissionResult = await submitAssessment(
-        assessment.id,
-        submission,
-      );
-      setResult(submissionResult);
+      submittingRef.current = true;
+      setSubmitting(true);
+      setError("");
+
+      try {
+        // Only answered questions are sent; anything left blank when time runs
+        // out is graded as unanswered by the backend.
+        const submission = sortedQuestions
+          .filter((item) => answers[item.id] !== undefined)
+          .map((item) => ({
+            question: item.id,
+            selected_option: answers[item.id],
+          }));
+        const submissionResult = await submitAssessment(
+          assessment.id,
+          submission,
+        );
+        setResult(submissionResult);
+        clearPersistedProgress();
 
       // Passing the assessment completes its linked ASSESSMENT activity in
       // the module flow. The backend does not do this automatically yet, so
@@ -251,16 +305,116 @@ export default function AssessmentPage() {
       // without the learner needing to reload the page.
       await refreshAttempts(assessment.id);
       setExamPhase("intro");
-    } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Could not submit this assessment.",
+      setDeadline(null);
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Could not submit this assessment.",
+        );
+      } finally {
+        submittingRef.current = false;
+        setSubmitting(false);
+      }
+    },
+    [
+      assessment,
+      deadline,
+      allAnswered,
+      unansweredCount,
+      sortedQuestions,
+      answers,
+      staffCourse,
+      proctoring,
+      refreshAttempts,
+      clearPersistedProgress,
+    ],
+  );
+
+  const handleSubmit = () => void submitAttempt(false);
+
+  // Keep a stable ref to the latest submit function so the countdown timer can
+  // fire it on expiry without restarting the interval every render.
+  useEffect(() => {
+    submitRef.current = submitAttempt;
+  }, [submitAttempt]);
+
+  // Countdown tick: refresh the displayed clock every second and, the moment
+  // the deadline passes, force-submit exactly once.
+  useEffect(() => {
+    if (examPhase !== "in_progress" || deadline === null) return;
+
+    const check = () => {
+      setNowTick(Date.now());
+      if (Date.now() >= deadline && !autoSubmittedRef.current) {
+        autoSubmittedRef.current = true;
+        submitRef.current?.(true);
+      }
+    };
+
+    check();
+    const timer = window.setInterval(check, 1000);
+    return () => window.clearInterval(timer);
+  }, [examPhase, deadline]);
+
+  // Cache the live attempt so a refresh (or accidental navigation) resumes it
+  // with the same questions, answers and — crucially — the same wall-clock
+  // deadline, instead of restarting the timer or losing progress.
+  useEffect(() => {
+    if (!progressKey || examPhase !== "in_progress" || !liveQuestions) return;
+    try {
+      window.localStorage.setItem(
+        progressKey,
+        JSON.stringify({
+          questions: liveQuestions,
+          answers,
+          currentQuestion,
+          deadline,
+          proctoring,
+        }),
       );
-    } finally {
-      setSubmitting(false);
+    } catch {
+      // Storage unavailable — resume-on-refresh just won't be possible.
     }
-  };
+  }, [
+    progressKey,
+    examPhase,
+    liveQuestions,
+    answers,
+    currentQuestion,
+    deadline,
+    proctoring,
+  ]);
+
+  // On first load, resume an in-progress attempt if one was cached. The saved
+  // deadline is an absolute time, so a refresh continues counting down from
+  // where it really is; if it has already elapsed, the countdown effect submits.
+  useEffect(() => {
+    if (!assessment || !progressKey || restoredRef.current) return;
+    restoredRef.current = true;
+
+    try {
+      const raw = window.localStorage.getItem(progressKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as {
+        questions?: AssessmentQuestion[];
+        answers?: Record<number, number>;
+        currentQuestion?: number;
+        deadline?: number | null;
+        proctoring?: ProctoringStartResult | null;
+      };
+      if (!saved.questions?.length) return;
+
+      setLiveQuestions(saved.questions);
+      setAnswers(saved.answers ?? {});
+      setCurrentQuestion(saved.currentQuestion ?? 0);
+      setDeadline(saved.deadline ?? null);
+      if (saved.proctoring) setProctoring(saved.proctoring);
+      setExamPhase("in_progress");
+    } catch {
+      // Corrupt cache — start fresh.
+    }
+  }, [assessment, progressKey]);
 
   const enrollmentId = staffCourse?.enrollment.id ?? null;
 
@@ -284,6 +438,9 @@ export default function AssessmentPage() {
 
   // Resets back to a fresh attempt (used by "Try Again" when attempts remain).
   const handleRetake = () => {
+    clearPersistedProgress();
+    autoSubmittedRef.current = false;
+    setDeadline(null);
     setResult(null);
     setAnswers({});
     setLiveQuestions(null);
@@ -308,6 +465,14 @@ export default function AssessmentPage() {
         : shuffleAssessment(assessment.questions);
     }
 
+    const durationMinutes =
+      assessment?.duration && assessment.duration > 0
+        ? assessment.duration
+        : null;
+    autoSubmittedRef.current = false;
+    setDeadline(
+      durationMinutes ? Date.now() + durationMinutes * 60_000 : null,
+    );
     setLiveQuestions(ordered);
     setCurrentQuestion(0);
     setAnswers({});
@@ -370,6 +535,28 @@ export default function AssessmentPage() {
               {!result && examPhase === "in_progress" ? (
                 <div className="flex flex-col gap-8 md:flex-row lg:gap-12">
                   <aside className="w-full shrink-0 md:w-48">
+                    {remainingMs !== null && (
+                      <div
+                        className={`mb-4 rounded-xl border p-4 text-center ${
+                          remainingMs <= 60000
+                            ? "border-red-200 bg-red-50"
+                            : "border-gray-100 bg-white"
+                        }`}
+                      >
+                        <p className="mb-1 flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-500">
+                          <Timer size={13} /> Time left
+                        </p>
+                        <p
+                          className={`text-2xl font-bold tabular-nums ${
+                            remainingMs <= 60000
+                              ? "text-red-600"
+                              : "text-[#1a6b3c]"
+                          }`}
+                        >
+                          {formatClock(remainingMs)}
+                        </p>
+                      </div>
+                    )}
                     <div className="rounded-xl border border-gray-100 bg-gray-50 p-5">
                       <p className="mb-1 text-xs font-bold uppercase tracking-wider text-gray-500">
                         Question
@@ -745,6 +932,15 @@ export default function AssessmentPage() {
                     </p>
                   </div>
 
+                  {assessment.duration && assessment.duration > 0 ? (
+                    <p className="mb-3 flex items-center justify-center gap-1.5 text-sm font-medium text-gray-600">
+                      <Timer size={15} className="text-[#1a6b3c]" />
+                      Time limit: {assessment.duration} minute
+                      {assessment.duration === 1 ? "" : "s"} — the test submits
+                      automatically when the time is up.
+                    </p>
+                  ) : null}
+
                   {maxAttempts && canAttempt ? (
                     <p className="mb-3 text-sm font-medium text-gray-500">
                       Attempt {attemptsUsed + 1} of {maxAttempts} ·{" "}
@@ -818,13 +1014,24 @@ export default function AssessmentPage() {
               })}
             </div>
 
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="mt-auto w-full rounded-xl border-2 border-[#1a6b3c] px-6 py-3 font-bold text-[#1a6b3c] transition hover:bg-[#1a6b3c] hover:text-white disabled:opacity-60"
-            >
-              {submitting ? "Submitting..." : "Submit Attempt"}
-            </button>
+            <div className="mt-auto">
+              {!allAnswered && (
+                <p className="mb-2 text-center text-xs font-medium text-amber-600">
+                  {unansweredCount} question{unansweredCount === 1 ? "" : "s"}{" "}
+                  unanswered
+                  {deadline !== null
+                    ? " — the test auto-submits when time runs out"
+                    : " — answer all to submit"}
+                </p>
+              )}
+              <button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="w-full rounded-xl border-2 border-[#1a6b3c] px-6 py-3 font-bold text-[#1a6b3c] transition hover:bg-[#1a6b3c] hover:text-white disabled:opacity-60"
+              >
+                {submitting ? "Submitting..." : "Submit Attempt"}
+              </button>
+            </div>
           </aside>
         )}
       </div>

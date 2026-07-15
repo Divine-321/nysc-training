@@ -8,12 +8,14 @@ import {
   Layers,
   ListChecks,
   ListPlus,
+  Pencil,
   Plus,
   RotateCcw,
   Shuffle,
   Target,
   Timer,
   Trash2,
+  TriangleAlert,
   Upload,
 } from "lucide-react";
 import { Badge, field, fieldLabel } from "@/app/components/ui";
@@ -112,6 +114,9 @@ export default function CourseAssessmentsManager({
   );
   const [questionForm, setQuestionForm] = useState(emptyQuestionForm);
   const [addingQuestion, setAddingQuestion] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState(emptyForm);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const loadAssessments = useCallback(async () => {
     try {
@@ -316,9 +321,79 @@ export default function CourseAssessmentsManager({
     setError("");
     setNotice("");
     setQuestionForm(emptyQuestionForm);
+    setEditingId(null);
     setOpenQuestionFormId((current) =>
       current === assessment.id ? null : assessment.id,
     );
+  };
+
+  const startEdit = (assessment: Assessment) => {
+    setError("");
+    setNotice("");
+    setOpenQuestionFormId(null);
+
+    if (editingId === assessment.id) {
+      setEditingId(null);
+      return;
+    }
+
+    setEditForm({
+      module: assessment.module != null ? String(assessment.module) : "",
+      type: assessment.type,
+      title: assessment.title,
+      pass_mark: assessment.pass_mark ?? "50.00",
+      max_attempts: String(assessment.max_attempts ?? 1),
+      duration: String(assessment.duration ?? 30),
+      shuffle_questions: assessment.shuffle_questions ?? true,
+      shuffle_options: assessment.shuffle_options ?? true,
+    });
+    setEditingId(assessment.id);
+  };
+
+  const handleUpdate = async (event: FormEvent, assessment: Assessment) => {
+    event.preventDefault();
+    setSavingEdit(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(
+        `/api/training/assessments/${assessment.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: editForm.type,
+            title: editForm.title.trim(),
+            pass_mark: editForm.pass_mark,
+            max_attempts: Number(editForm.max_attempts),
+            duration: Number(editForm.duration) || 30,
+            shuffle_questions: editForm.shuffle_questions,
+            shuffle_options: editForm.shuffle_options,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          extractErrorMessage(payload, "Could not update assessment."),
+        );
+      }
+
+      setNotice("Assessment settings updated.");
+      setEditingId(null);
+      await loadAssessments();
+      await onChanged?.();
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Could not update assessment.",
+      );
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   const handleAddQuestion = async (
@@ -688,7 +763,15 @@ export default function CourseAssessmentsManager({
                           <Timer size={13} className="text-gray-400" />
                           {assessment.duration} min
                         </span>
-                      ) : null}
+                      ) : (
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-amber-700"
+                          title="This assessment has no time limit, so it will not show a countdown or auto-submit. Edit it to set one."
+                        >
+                          <TriangleAlert size={13} />
+                          No time limit — set one
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1.5">
                         <ListChecks size={13} className="text-gray-400" />
                         {assessment.questions?.length ?? 0} question
@@ -698,6 +781,15 @@ export default function CourseAssessmentsManager({
                   </div>
 
                   <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(assessment)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                    >
+                      <Pencil size={16} />
+                      {editingId === assessment.id ? "Close" : "Edit"}
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => toggleQuestionForm(assessment)}
@@ -736,6 +828,152 @@ export default function CourseAssessmentsManager({
                     </button>
                   </div>
                 </div>
+
+                {editingId === assessment.id && (
+                  <form
+                    onSubmit={(event) => handleUpdate(event, assessment)}
+                    className="mt-4 grid gap-4 rounded-xl border border-gray-100 bg-gray-50 p-4 md:grid-cols-2"
+                  >
+                    <p className="flex items-center gap-2 text-sm font-semibold text-gray-700 md:col-span-2">
+                      <Pencil size={15} className="text-[#1a6b3c]" />
+                      Edit assessment settings
+                    </p>
+
+                    <div>
+                      <label className={fieldLabel}>Assessment type</label>
+                      <select
+                        value={editForm.type}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            type: event.target.value as AssessmentType,
+                          })
+                        }
+                        className={field}
+                      >
+                        <option value="PRE_TEST">Pre-Test</option>
+                        <option value="POST_TEST">Post-Test</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className={fieldLabel}>Title</label>
+                      <input
+                        required
+                        value={editForm.title}
+                        onChange={(event) =>
+                          setEditForm({ ...editForm, title: event.target.value })
+                        }
+                        className={field}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={fieldLabel}>Pass mark (%)</label>
+                      <input
+                        required
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={editForm.pass_mark}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            pass_mark: event.target.value,
+                          })
+                        }
+                        className={field}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={fieldLabel}>Max attempts</label>
+                      <input
+                        required
+                        type="number"
+                        min="1"
+                        value={editForm.max_attempts}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            max_attempts: event.target.value,
+                          })
+                        }
+                        className={field}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={fieldLabel}>Duration (minutes)</label>
+                      <input
+                        required
+                        type="number"
+                        min="1"
+                        value={editForm.duration}
+                        onChange={(event) =>
+                          setEditForm({
+                            ...editForm,
+                            duration: event.target.value,
+                          })
+                        }
+                        className={field}
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Staff see a live countdown and the test auto-submits when
+                        it reaches zero.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 md:col-span-2">
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={editForm.shuffle_questions}
+                          onChange={(event) =>
+                            setEditForm({
+                              ...editForm,
+                              shuffle_questions: event.target.checked,
+                            })
+                          }
+                          className="h-4 w-4 rounded border-gray-300 accent-[#1a6b3c]"
+                        />
+                        Shuffle questions
+                      </label>
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={editForm.shuffle_options}
+                          onChange={(event) =>
+                            setEditForm({
+                              ...editForm,
+                              shuffle_options: event.target.checked,
+                            })
+                          }
+                          className="h-4 w-4 rounded border-gray-300 accent-[#1a6b3c]"
+                        />
+                        Shuffle answer options
+                      </label>
+                    </div>
+
+                    <div className="flex justify-end gap-2 md:col-span-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        className="rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        disabled={savingEdit || !editForm.title.trim()}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        <Pencil size={16} />
+                        {savingEdit ? "Saving..." : "Save changes"}
+                      </button>
+                    </div>
+                  </form>
+                )}
 
                 {openQuestionFormId === assessment.id && (
                   <form

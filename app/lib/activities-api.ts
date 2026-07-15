@@ -154,28 +154,59 @@ export async function deleteActivity(id: number): Promise<void> {
   }
 }
 
-/** Swaps two activities' order values (used by the up/down arrows). */
-export async function swapActivityOrder(
-  first: Pick<AdminActivity, "id" | "order">,
-  second: Pick<AdminActivity, "id" | "order">,
+/**
+ * Persists a whole new activity ordering for a module.
+ *
+ * The activities backend exposes a dedicated, atomic reorder endpoint
+ * (`PATCH /activities/reorder/` taking `[{ id, order }]`). We must use it rather
+ * than PATCHing each activity's `order` individually: the model has a
+ * `unique(module, order)` constraint, so swapping orders one row at a time
+ * transiently collides and the write is rejected — which is why the old
+ * up/down arrows appeared to do nothing.
+ *
+ * `ordered` is the activities in their desired final sequence; positions are
+ * derived from the array index so the payload is always a clean 0..n-1 range.
+ */
+export async function reorderActivities(
+  ordered: Array<Pick<AdminActivity, "id">>,
 ): Promise<void> {
-  const base = await activityBasePath();
+  const items = ordered.map((activity, index) => ({
+    id: activity.id,
+    order: index,
+  }));
 
-  const responses = await Promise.all([
-    fetch(`${base}/${first.id}`, {
+  if (await isActivitiesApiLive()) {
+    const response = await fetch("/api/training/activities/reorder", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order: second.order }),
-    }),
-    fetch(`${base}/${second.id}`, {
+      body: JSON.stringify(items),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(
+        extractErrorMessage(payload, "Could not reorder activities."),
+      );
+    }
+    return;
+  }
+
+  // Legacy module-docs backend has no reorder endpoint — apply the new order
+  // one record at a time (best effort; superseded once the activities API is
+  // live, which it now is in every environment).
+  for (const item of items) {
+    const response = await fetch(`/api/training/module-docs/${item.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order: first.order }),
-    }),
-  ]);
+      body: JSON.stringify({ order: item.order }),
+    });
 
-  if (responses.some((response) => !response.ok)) {
-    throw new Error("Could not reorder activities.");
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null);
+      throw new Error(
+        extractErrorMessage(payload, "Could not reorder activities."),
+      );
+    }
   }
 }
 

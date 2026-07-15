@@ -21,7 +21,7 @@ import {
   createActivity,
   deleteActivity,
   isActivitiesApiLive,
-  swapActivityOrder,
+  reorderActivities,
   toViewerActivity,
   updateActivity,
   type AdminActivity,
@@ -253,10 +253,20 @@ export default function ModuleActivitiesManager({
         contentUrl = externalUrl.trim();
       }
 
+      // A module whose activities have been deleted or reordered can have gaps
+      // in its order values (e.g. 0, 1, 3), so `activities.length` may collide
+      // with an existing order and trip the unique(module, order) constraint —
+      // the "module, order must make a unique set" error. Placing new activities
+      // one past the current highest order keeps them unique regardless of gaps.
+      const nextOrder =
+        activities.length === 0
+          ? 0
+          : Math.max(...activities.map((activity) => activity.order)) + 1;
+
       const input = {
         module: moduleId,
         title: title.trim(),
-        order: editingActivity ? editingActivity.order : activities.length,
+        order: editingActivity ? editingActivity.order : nextOrder,
         content_type: contentType,
         content_url: contentUrl,
         text_content: config.input === "text" ? textContent : null,
@@ -324,10 +334,13 @@ export default function ModuleActivitiesManager({
     setError("");
 
     try {
-      await swapActivityOrder(
-        sortedActivities[currentIndex],
-        sortedActivities[newIndex],
-      );
+      // Move the item to its new slot, then persist the whole sequence through
+      // the backend's atomic reorder endpoint.
+      const next = sortedActivities.slice();
+      const [moved] = next.splice(currentIndex, 1);
+      next.splice(newIndex, 0, moved);
+
+      await reorderActivities(next);
       await onChanged();
     } catch (reorderError) {
       setError(
