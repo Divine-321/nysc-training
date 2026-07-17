@@ -26,6 +26,7 @@ import type {
   ProctoringSession,
 } from "@/app/lib/training-types";
 import { formatDateTime } from "@/app/lib/format";
+import { useConfirm } from "@/app/components/useConfirm";
 import ProctoringStatusBadge from "@/app/components/ProctoringStatusBadge";
 
 const EVENT_LABELS: Record<ProctoringEventType, string> = {
@@ -60,6 +61,7 @@ export default function ProctoringSessionDetailPage() {
   const sessionId = Number(params.id);
 
   const invalidId = !Number.isFinite(sessionId);
+  const { confirm, dialog } = useConfirm();
 
   const [session, setSession] = useState<ProctoringSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,6 +71,14 @@ export default function ProctoringSessionDetailPage() {
   const [reviewNotice, setReviewNotice] = useState("");
 
   const handleReview = async (status: "CLEAN" | "INVALIDATED" | "FLAGGED") => {
+    if (status === "INVALIDATED") {
+      const confirmed = await confirm(
+        "Invalidate this proctoring session? This records a reviewer decision that the session cannot be trusted. Review the event timeline and evidence first.",
+        { danger: true },
+      );
+      if (!confirmed) return;
+    }
+
     setReviewing(true);
     setReviewNotice("");
     setError("");
@@ -173,6 +183,7 @@ export default function ProctoringSessionDetailPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
+      {dialog}
       <Link
         href="/admin/proctoring"
         className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-[#1a6b3c]"

@@ -287,12 +287,15 @@ export default function AdminLayout({
             />
           )}
 
+          {/* The panel is viewport-height, so the nav list is the only part
+              allowed to grow: it scrolls on short screens while the branding
+              and Sign out stay pinned and reachable. */}
           <aside
-            className={`fixed left-0 top-0 bottom-0 w-64 bg-[#1a6b3c] px-4 py-6 flex flex-col justify-between z-50 shadow-xl transition-transform duration-300 ease-in-out lg:translate-x-0 print:hidden ${
+            className={`fixed left-0 top-0 bottom-0 w-64 bg-[#1a6b3c] px-4 py-6 flex flex-col z-50 shadow-xl transition-transform duration-300 ease-in-out lg:translate-x-0 print:hidden ${
               isSidebarOpen ? "translate-x-0" : "-translate-x-full"
             }`}
           >
-            <div>
+            <div className="shrink-0">
               <div className="mb-2 flex items-center justify-end lg:hidden">
                 <button
                   type="button"
@@ -320,38 +323,38 @@ export default function AdminLayout({
               </div>
 
               <div className="w-full h-px bg-white/20 mb-4" />
-
-              <nav className="space-y-1">
-                {visibleNavItems.map(({ label, href, icon: Icon }) => {
-                  const active =
-                    pathname === href || pathname.startsWith(`${href}/`);
-
-                  return (
-                    <Link
-                      key={href}
-                      href={href}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition ${
-                        active
-                          ? "bg-white text-[#1a6b3c] font-semibold"
-                          : "text-green-50 hover:bg-white/10 hover:text-white"
-                      }`}
-                    >
-                      <Icon
-                        size={18}
-                        className={
-                          active ? "text-[#1a6b3c]" : "text-green-200"
-                        }
-                      />
-                      {label}
-                    </Link>
-                  );
-                })}
-              </nav>
             </div>
+
+            {/* min-h-0 lets this flex child shrink below its content height —
+                without it the list overflows instead of scrolling. */}
+            <nav className="no-scrollbar flex-1 min-h-0 space-y-1 overflow-y-auto overscroll-contain">
+              {visibleNavItems.map(({ label, href, icon: Icon }) => {
+                const active =
+                  pathname === href || pathname.startsWith(`${href}/`);
+
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition ${
+                      active
+                        ? "bg-white text-[#1a6b3c] font-semibold"
+                        : "text-green-50 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    <Icon
+                      size={18}
+                      className={active ? "text-[#1a6b3c]" : "text-green-200"}
+                    />
+                    {label}
+                  </Link>
+                );
+              })}
+            </nav>
 
             <button
               onClick={handleSignOut}
-              className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-red-200 hover:bg-white/10 hover:text-red-100 w-full mt-4 transition"
+              className="flex shrink-0 items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-red-200 hover:bg-white/10 hover:text-red-100 w-full mt-4 transition"
             >
               <LogOut size={18} />
               Sign out

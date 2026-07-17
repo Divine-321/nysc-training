@@ -9,6 +9,17 @@
   --font-sans: "Inter", sans-serif;
 }
 
+/* Scrolls without painting a scrollbar. Only for surfaces whose scrollability
+   is already obvious from clipped content, e.g. the sidebar nav. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 button:not(:disabled),
 [type="button"]:not(:disabled),
 [type="submit"]:not(:disabled),

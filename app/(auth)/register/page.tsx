@@ -1,13 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { AlertCircle, Eye, EyeOff, X, CheckCircle2 } from "lucide-react";
+import {
+  AlertCircle,
+  Camera,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
+  X,
+} from "lucide-react";
 import CameraCaptureModal, {
   dataUrlToFile,
 } from "@/app/components/CameraCaptureModal";
+import ManualLinks from "@/app/components/ManualLinks";
+import { STAFF_MANUAL } from "@/app/lib/manuals";
+
+const LOOKUP_DEBOUNCE_MS = 500;
+
+type FieldErrors = Partial<
+  Record<"fileNo" | "email" | "phone" | "password" | "photo" | "otp", string>
+>;
+
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+// Accepts 08012345678, +2348012345678 and 2348012345678.
+const isValidPhone = (value: string) => {
+  const digits = value.replace(/[\s-]/g, "");
+  return /^(0\d{10}|\+?234\d{10})$/.test(digits);
+};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -22,6 +47,7 @@ export default function RegisterPage() {
     otp: "",
   });
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -32,41 +58,89 @@ export default function RegisterPage() {
   const [fileNoValid, setFileNoValid] = useState<boolean | null>(null);
   const [fileNoValidationMsg, setFileNoValidationMsg] = useState("");
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
+  const [profilePreview, setProfilePreview] = useState<string | null>(null);
   const [showPhotoModal, setShowPhotoModal] = useState(false);
 
-  const validateFileNumber = async (fileNo: string) => {
-    if (!fileNo) {
-      setFileNoValid(null);
-      setFileNoValidationMsg("");
-      return;
-    }
+  // Guards against a slow earlier lookup overwriting a newer one's result.
+  const lookupIdRef = useRef(0);
 
-    setIsValidatingFileNo(true);
-    try {
-      const response = await fetch("/api/accounts/auth/lookup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ file_number: fileNo }),
-      });
+  const clearFieldError = (field: keyof FieldErrors) =>
+    setFieldErrors((current) => ({ ...current, [field]: undefined }));
 
-      const payload = await response.json();
-
-      if (response.ok) {
-        setFileNoValid(true);
-        setFileNoValidationMsg(
-          `Found: ${payload.data.first_name} ${payload.data.last_name}`,
-        );
-      } else {
-        setFileNoValid(false);
-        setFileNoValidationMsg(payload?.message || "File number not found.");
-      }
-    } catch {
-      setFileNoValid(false);
-      setFileNoValidationMsg("Validation failed. Please try again.");
-    } finally {
-      setIsValidatingFileNo(false);
-    }
+  // Editing the file number invalidates whatever the last lookup resolved to,
+  // so the matched name never lingers next to a different number.
+  const handleFileNoChange = (value: string) => {
+    setFormData((current) => ({
+      ...current,
+      fileNo: value,
+      surname: "",
+      otherNames: "",
+    }));
+    setFileNoValid(null);
+    setFileNoValidationMsg("");
+    // Abandon any in-flight lookup's result.
+    lookupIdRef.current += 1;
+    setIsValidatingFileNo(false);
+    clearFieldError("fileNo");
   };
+
+  // The staff record is the source of truth for the name, so the lookup fills
+  // it in and the fields stay read-only. Debounced so typing a file number
+  // doesn't fire a request per keystroke.
+  useEffect(() => {
+    const fileNo = formData.fileNo.trim();
+
+    if (!fileNo) return;
+
+    const timer = window.setTimeout(async () => {
+      const lookupId = lookupIdRef.current + 1;
+      lookupIdRef.current = lookupId;
+
+      setIsValidatingFileNo(true);
+
+      try {
+        const response = await fetch("/api/accounts/auth/lookup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file_number: fileNo }),
+        });
+        const payload = await response.json();
+
+        if (lookupId !== lookupIdRef.current) return;
+
+        if (response.ok) {
+          const firstName = payload?.data?.first_name ?? "";
+          const lastName = payload?.data?.last_name ?? "";
+
+          setFileNoValid(true);
+          setFileNoValidationMsg(`Found: ${firstName} ${lastName}`.trim());
+          setFormData((current) => ({
+            ...current,
+            surname: lastName,
+            otherNames: firstName,
+          }));
+          clearFieldError("fileNo");
+        } else {
+          setFileNoValid(false);
+          setFileNoValidationMsg(payload?.message || "File number not found.");
+          setFormData((current) => ({
+            ...current,
+            surname: "",
+            otherNames: "",
+          }));
+        }
+      } catch {
+        if (lookupId !== lookupIdRef.current) return;
+
+        setFileNoValid(false);
+        setFileNoValidationMsg("Validation failed. Please try again.");
+      } finally {
+        if (lookupId === lookupIdRef.current) setIsValidatingFileNo(false);
+      }
+    }, LOOKUP_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [formData.fileNo]);
 
   const handleResendOtp = async () => {
     if (!formData.email) {
@@ -103,42 +177,68 @@ export default function RegisterPage() {
     }
   };
 
+  // Every field is required: the backend derives the name from the file number,
+  // but email, phone, password and a live photo all have to come from the user.
+  const validateForm = (): FieldErrors => {
+    const errors: FieldErrors = {};
+
+    if (!formData.fileNo.trim()) {
+      errors.fileNo = "Your file number is required.";
+    } else if (fileNoValid !== true) {
+      errors.fileNo = "Enter a valid staff file number.";
+    }
+
+    if (!formData.email.trim()) {
+      errors.email = "Your email address is required.";
+    } else if (!isValidEmail(formData.email.trim())) {
+      errors.email = "Enter a valid email address.";
+    }
+
+    if (!formData.phone.trim()) {
+      errors.phone = "Your phone number is required.";
+    } else if (!isValidPhone(formData.phone.trim())) {
+      errors.phone = "Enter a valid Nigerian phone number.";
+    }
+
+    if (!profilePicture) {
+      errors.photo = "A live profile photo is required.";
+    }
+
+    if (!formData.password) {
+      errors.password = "A password is required.";
+    } else if (formData.password.length < 8) {
+      errors.password = "Password must be at least 8 characters.";
+    }
+
+    return errors;
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    setIsLoading(true);
+    setFieldErrors({});
 
     if (awaitingOtp) {
-      if (!formData.email || !formData.otp) {
-        setError("Please enter the OTP sent to your email.");
-        setIsLoading(false);
+      if (!formData.otp.trim()) {
+        setFieldErrors({ otp: "Enter the OTP sent to your email." });
         return;
       }
+
+      setIsLoading(true);
 
       try {
         const response = await fetch("/api/accounts/auth/verify-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: formData.email, otp: formData.otp }),
+          body: JSON.stringify({
+            email: formData.email.trim(),
+            otp: formData.otp.trim(),
+          }),
         });
         const payload = await response.json();
 
         if (!response.ok) {
-          let errorMessage = "Registration failed.";
-
-          if (payload?.message) {
-            errorMessage = payload.message;
-          } else if (payload?.email?.[0]) {
-            errorMessage = payload.email[0];
-          } else if (payload?.password?.[0]) {
-            errorMessage = payload.password[0];
-          } else if (payload?.file_number?.[0]) {
-            errorMessage = payload.file_number[0];
-          } else if (payload?.phone_number?.[0]) {
-            errorMessage = payload.phone_number[0];
-          }
-
-          throw new Error(errorMessage);
+          throw new Error(readRegisterError(payload));
         }
 
         setSuccess(true);
@@ -154,44 +254,28 @@ export default function RegisterPage() {
             ? verificationError.message
             : "Email verification failed.",
         );
-      } finally {
         setIsLoading(false);
       }
       return;
     }
 
-    if (
-      !formData.surname ||
-      !formData.email ||
-      !formData.password ||
-      !formData.fileNo ||
-      !formData.phone ||
-      !profilePicture
-    ) {
-      setError("Please fill in all required fields.");
-      setIsLoading(false);
+    const errors = validateForm();
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setError("Please correct the highlighted fields.");
       return;
     }
 
-    if (fileNoValid !== true) {
-      setError("Please enter a valid staff file number.");
-      setIsLoading(false);
-      return;
-    }
-
-    if (formData.password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      setIsLoading(false);
-      return;
-    }
+    setIsLoading(true);
 
     try {
       const registerPayload = new FormData();
-      registerPayload.set("file_number", formData.fileNo);
-      registerPayload.set("email", formData.email);
+      registerPayload.set("file_number", formData.fileNo.trim());
+      registerPayload.set("email", formData.email.trim());
       registerPayload.set("password", formData.password);
-      registerPayload.set("phone_number", formData.phone);
-      registerPayload.set("profile_picture_url", profilePicture);
+      registerPayload.set("phone_number", formData.phone.trim());
+      registerPayload.set("profile_picture_url", profilePicture!);
 
       const response = await fetch("/api/accounts/auth/register", {
         method: "POST",
@@ -200,21 +284,7 @@ export default function RegisterPage() {
       const payload = await response.json();
 
       if (!response.ok) {
-        let errorMessage = "Registration failed.";
-
-        if (payload?.message) {
-          errorMessage = payload.message;
-        } else if (payload?.email?.[0]) {
-          errorMessage = payload.email[0];
-        } else if (payload?.password?.[0]) {
-          errorMessage = payload.password[0];
-        } else if (payload?.file_number?.[0]) {
-          errorMessage = payload.file_number[0];
-        } else if (payload?.phone_number?.[0]) {
-          errorMessage = payload.phone_number[0];
-        }
-
-        throw new Error(errorMessage);
+        throw new Error(readRegisterError(payload));
       }
 
       setSuccess(true);
@@ -230,10 +300,15 @@ export default function RegisterPage() {
     }
   };
 
+  const inputClass = (field: keyof FieldErrors) =>
+    `w-full border rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-nysc-green ${
+      fieldErrors[field] ? "border-red-500" : "border-nysc-green"
+    }`;
+
   return (
     <div className="min-h-screen bg-white flex">
       {/* Left — Branding */}
-      <div className="hidden md:flex flex-1 flex-col items-center justify-center bg-[#1a6b3c] p-12 text-white">
+      <div className="hidden md:flex flex-1 flex-col items-center justify-center bg-nysc-green p-12 text-white">
         <Image
           src="/images/nysc-logo.png"
           alt="NYSC Logo"
@@ -254,31 +329,37 @@ export default function RegisterPage() {
       {/* Right — Form */}
       <div className="flex-1 flex flex-col items-center justify-center p-8 sm:p-12 overflow-y-auto">
         {/* Login / Register Toggle */}
-        <div className="flex bg-[#e8f5ee] rounded-full p-1 mb-6 w-64 shrink-0 mt-8 md:mt-0">
+        <div className="flex bg-nysc-green-light rounded-full p-1 mb-6 w-64 shrink-0 mt-8 md:mt-0">
           <Link
             href="/login"
-            className="flex-1 text-center text-[#1a6b3c] rounded-full py-2 text-sm font-semibold"
+            className="flex-1 text-center text-nysc-green rounded-full py-2 text-sm font-semibold"
           >
             Login
           </Link>
-          <button className="flex-1 bg-[#1a6b3c] text-white rounded-full py-2 text-sm font-semibold">
+          <button className="flex-1 bg-nysc-green text-white rounded-full py-2 text-sm font-semibold">
             Register
           </button>
         </div>
 
         <p className="text-gray-500 text-sm mb-6">
-          Enter your details to create an account
+          {awaitingOtp
+            ? "Verify your email to finish creating your account"
+            : "Start with your file number — we'll find your staff record"}
         </p>
 
         {/* Toast Notification - Error */}
         {error && (
-          <div className="fixed top-6 right-6 z-50 bg-white border-l-4 border-red-500 p-4 rounded-xl shadow-2xl flex items-center gap-3 w-80 transform transition-all duration-300">
+          <div
+            role="alert"
+            className="fixed top-6 right-6 z-50 bg-white border-l-4 border-red-500 p-4 rounded-xl shadow-2xl flex items-center gap-3 w-80 transform transition-all duration-300"
+          >
             <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center shrink-0">
               <AlertCircle className="text-red-500" size={18} />
             </div>
             <p className="text-sm text-gray-700 font-medium flex-1">{error}</p>
             <button
               onClick={() => setError("")}
+              aria-label="Dismiss"
               className="text-gray-400 hover:text-gray-600 p-1"
             >
               <X size={16} />
@@ -304,53 +385,30 @@ export default function RegisterPage() {
         <form onSubmit={handleRegister} className="w-full max-w-sm space-y-4">
           {!awaitingOtp ? (
             <>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2 md:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Surname
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. ABBA"
-                    value={formData.surname}
-                    onChange={(e) =>
-                      setFormData({ ...formData, surname: e.target.value })
-                    }
-                    className="w-full border border-[#1a6b3c] rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                  />
-                </div>
-                <div className="col-span-2 md:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Other Names
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Sulaiman"
-                    value={formData.otherNames}
-                    onChange={(e) =>
-                      setFormData({ ...formData, otherNames: e.target.value })
-                    }
-                    className="w-full border border-[#1a6b3c] rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                  />
-                </div>
-              </div>
+              {/* File number comes first — it identifies the staff record. */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  File No
+                <label
+                  htmlFor="register-fileno"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  File No <span className="text-red-600">*</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="e.g. NYSC/STF/123"
-                  value={formData.fileNo}
-                  onChange={(e) => {
-                    setFormData({ ...formData, fileNo: e.target.value });
-                    validateFileNumber(e.target.value);
-                  }}
-                  className="w-full border border-[#1a6b3c] rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-                />
-                {isValidatingFileNo && (
-                  <p className="text-xs text-gray-500 mt-1">Validating...</p>
-                )}
+                <div className="relative">
+                  <input
+                    id="register-fileno"
+                    type="text"
+                    placeholder="e.g. NYSC/STF/123"
+                    value={formData.fileNo}
+                    onChange={(e) => handleFileNoChange(e.target.value)}
+                    className={`${inputClass("fileNo")} pr-10`}
+                  />
+                  {isValidatingFileNo && (
+                    <Loader2
+                      size={16}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 animate-spin text-gray-400"
+                    />
+                  )}
+                </div>
                 {fileNoValid === true && (
                   <p className="text-xs text-green-600 mt-1">
                     ✓ {fileNoValidationMsg}
@@ -361,34 +419,107 @@ export default function RegisterPage() {
                     ✗ {fileNoValidationMsg}
                   </p>
                 )}
+                {fieldErrors.fileNo && fileNoValid === null && (
+                  <p className="text-xs text-red-600 mt-1">
+                    {fieldErrors.fileNo}
+                  </p>
+                )}
               </div>
+
+              {/* Names come from the staff record, so they are read-only. */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Surname
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      readOnly
+                      placeholder="From your record"
+                      value={formData.surname}
+                      className="w-full border border-gray-200 bg-gray-50 rounded-full px-4 py-2.5 pr-9 text-sm text-gray-600 outline-none cursor-not-allowed"
+                    />
+                    <Lock
+                      size={13}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300"
+                    />
+                  </div>
+                </div>
+                <div className="col-span-2 md:col-span-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Other Names
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      readOnly
+                      placeholder="From your record"
+                      value={formData.otherNames}
+                      className="w-full border border-gray-200 bg-gray-50 rounded-full px-4 py-2.5 pr-9 text-sm text-gray-600 outline-none cursor-not-allowed"
+                    />
+                    <Lock
+                      size={13}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-300"
+                    />
+                  </div>
+                </div>
+                <p className="col-span-2 -mt-1 text-xs text-gray-400">
+                  Your name is taken from your staff record. Contact your
+                  administrator if it is wrong.
+                </p>
+              </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email Address
+                <label
+                  htmlFor="register-email"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Email Address <span className="text-red-600">*</span>
                 </label>
                 <input
+                  id="register-email"
                   type="email"
+                  autoComplete="email"
                   placeholder="e.g. name@nysc.com.ng"
                   value={formData.email}
-                  onChange={(e) =>
-                    setFormData({ ...formData, email: e.target.value })
-                  }
-                  className="w-full border border-[#1a6b3c] rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  onChange={(e) => {
+                    setFormData({ ...formData, email: e.target.value });
+                    clearFieldError("email");
+                  }}
+                  className={inputClass("email")}
                 />
+                {fieldErrors.email && (
+                  <p className="text-xs text-red-600 mt-1">
+                    {fieldErrors.email}
+                  </p>
+                )}
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number
+                <label
+                  htmlFor="register-phone"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Phone Number <span className="text-red-600">*</span>
                 </label>
                 <input
+                  id="register-phone"
                   type="tel"
+                  autoComplete="tel"
                   placeholder="e.g. 08012345678"
                   value={formData.phone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, phone: e.target.value })
-                  }
-                  className="w-full border border-[#1a6b3c] rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  onChange={(e) => {
+                    setFormData({ ...formData, phone: e.target.value });
+                    clearFieldError("phone");
+                  }}
+                  className={inputClass("phone")}
                 />
+                {fieldErrors.phone && (
+                  <p className="text-xs text-red-600 mt-1">
+                    {fieldErrors.phone}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -396,72 +527,130 @@ export default function RegisterPage() {
                   Profile Picture <span className="text-red-600">*</span>
                 </label>
 
-                <button
-                  type="button"
-                  onClick={() => setShowPhotoModal(true)}
-                  className="w-full rounded-full border border-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-[#1a6b3c] transition hover:bg-green-50"
-                >
-                  {profilePicture
-                    ? "Retake photo with camera"
-                    : "Take photo with camera"}
-                </button>
+                {profilePreview ? (
+                  <div
+                    className={`flex items-center gap-4 rounded-2xl border p-3 ${
+                      fieldErrors.photo
+                        ? "border-red-500"
+                        : "border-nysc-green bg-green-50/40"
+                    }`}
+                  >
+                    {/* Mirrored to match the camera preview the user approved;
+                        the uploaded file itself is not flipped. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={profilePreview}
+                      alt="Your captured profile photo"
+                      className="h-20 w-20 shrink-0 -scale-x-100 rounded-full border-2 border-white object-cover shadow-sm"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center gap-1 text-sm font-semibold text-nysc-green">
+                        <CheckCircle2 size={14} /> Photo captured
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        Make sure your face is clear and well lit.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setShowPhotoModal(true)}
+                        className="mt-1.5 text-xs font-semibold text-nysc-green hover:underline"
+                      >
+                        Retake photo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowPhotoModal(true)}
+                    className={`flex w-full items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-sm font-semibold text-nysc-green transition hover:bg-green-50 ${
+                      fieldErrors.photo ? "border-red-500" : "border-nysc-green"
+                    }`}
+                  >
+                    <Camera size={16} /> Take photo with camera
+                  </button>
+                )}
 
-                <p className="mt-1 text-xs text-gray-500">
-                  Required. Your photo must be taken live with your camera —
-                  it is used to verify your identity during assessments.
-                </p>
-
-                {profilePicture && (
-                  <p className="mt-1 text-xs font-medium text-[#1a6b3c]">
-                    Photo captured ✓
+                {fieldErrors.photo ? (
+                  <p className="mt-1 text-xs text-red-600">
+                    {fieldErrors.photo}
                   </p>
+                ) : (
+                  !profilePreview && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      Required. Your photo must be taken live with your camera —
+                      it is used to verify your identity during assessments.
+                    </p>
+                  )
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password
+                <label
+                  htmlFor="register-password"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Password <span className="text-red-600">*</span>
                 </label>
                 <div className="relative">
                   <input
+                    id="register-password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Create a strong password"
+                    autoComplete="new-password"
+                    placeholder="At least 8 characters"
                     value={formData.password}
-                    onChange={(e) =>
-                      setFormData({ ...formData, password: e.target.value })
-                    }
-                    className="w-full border border-[#1a6b3c] rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] pr-12"
+                    onChange={(e) => {
+                      setFormData({ ...formData, password: e.target.value });
+                      clearFieldError("password");
+                    }}
+                    className={`${inputClass("password")} pr-12`}
                   />
                   <button
                     type="button"
-                    aria-label={
-                      showPassword ? "Hide password" : "Show password"
-                    }
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-pressed={showPassword}
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-[#1a6b3c] transition"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-nysc-green transition"
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
+                {fieldErrors.password && (
+                  <p className="text-xs text-red-600 mt-1">
+                    {fieldErrors.password}
+                  </p>
+                )}
               </div>
             </>
           ) : (
             <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label
+                  htmlFor="register-otp"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
                   Email OTP
                 </label>
                 <input
+                  id="register-otp"
                   type="text"
                   inputMode="numeric"
                   maxLength={6}
+                  autoComplete="one-time-code"
                   placeholder="Enter 6-digit OTP"
                   value={formData.otp}
-                  onChange={(e) =>
-                    setFormData({ ...formData, otp: e.target.value })
-                  }
-                  className="w-full border border-[#1a6b3c] rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+                  onChange={(e) => {
+                    setFormData({ ...formData, otp: e.target.value });
+                    clearFieldError("otp");
+                  }}
+                  className={`${inputClass("otp")} tracking-[0.3em] text-center font-semibold`}
                 />
+                {fieldErrors.otp && (
+                  <p className="text-xs text-red-600 mt-1">{fieldErrors.otp}</p>
+                )}
+                <p className="mt-1 text-xs text-gray-500">
+                  Sent to {formData.email}
+                </p>
               </div>
               {resendMessage && (
                 <p
@@ -474,23 +663,27 @@ export default function RegisterPage() {
                 type="button"
                 onClick={handleResendOtp}
                 disabled={isResendingOtp}
-                className="w-full text-sm text-[#1a6b3c] font-medium py-2 rounded-full border border-[#1a6b3c] hover:bg-[#f0f7f3] transition disabled:opacity-60"
+                className="w-full text-sm text-nysc-green font-medium py-2 rounded-full border border-nysc-green hover:bg-[#f0f7f3] transition disabled:opacity-60"
               >
                 {isResendingOtp ? "Sending..." : "Resend OTP"}
               </button>
             </div>
           )}
+
           <button
             type="submit"
             disabled={isLoading}
-            className="flex items-center justify-center w-full bg-[#1a6b3c] hover:bg-[#145530] text-white font-semibold py-3 rounded-full transition disabled:opacity-70 disabled:cursor-not-allowed mt-2"
+            className="flex items-center justify-center gap-2 w-full bg-nysc-green hover:bg-nysc-green-dark text-white font-semibold py-3 rounded-full transition disabled:opacity-70 disabled:cursor-not-allowed mt-2"
           >
+            {isLoading && <Loader2 size={16} className="animate-spin" />}
             {isLoading
               ? "Please wait..."
               : awaitingOtp
                 ? "Verify Email"
                 : "Create Account"}
           </button>
+
+          <ManualLinks manuals={[STAFF_MANUAL]} className="pt-2" />
         </form>
       </div>
 
@@ -499,9 +692,9 @@ export default function RegisterPage() {
           title="Profile photo"
           description="Take a clear photo of your face. It is used to verify your identity during assessments."
           onCapture={(imageDataUrl) => {
-            setProfilePicture(
-              dataUrlToFile(imageDataUrl, "profile-photo.jpg"),
-            );
+            setProfilePicture(dataUrlToFile(imageDataUrl, "profile-photo.jpg"));
+            setProfilePreview(imageDataUrl);
+            clearFieldError("photo");
             setError("");
             setShowPhotoModal(false);
           }}
@@ -510,4 +703,22 @@ export default function RegisterPage() {
       )}
     </div>
   );
+}
+
+// The backend returns field-keyed arrays for validation failures.
+function readRegisterError(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "Registration failed.";
+
+  const record = payload as Record<string, unknown>;
+
+  if (typeof record.message === "string") return record.message;
+
+  for (const field of ["email", "password", "file_number", "phone_number"]) {
+    const value = record[field];
+    if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  }
+
+  if (typeof record.detail === "string") return record.detail;
+
+  return "Registration failed.";
 }

@@ -542,12 +542,15 @@ export default function StaffLayout({
             />
           )}
 
+          {/* Matches the admin sidebar: the panel is viewport-height, so the
+              nav is the only part allowed to grow and scroll while the
+              branding and Sign out stay pinned and reachable. */}
           <aside
-            className={`w-64 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col justify-between py-6 px-4 z-50 shadow-xl overflow-y-auto transition-transform duration-300 ease-in-out lg:w-60 lg:translate-x-0 print:hidden ${
+            className={`w-64 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col py-6 px-4 z-50 shadow-xl transition-transform duration-300 ease-in-out lg:w-60 lg:translate-x-0 print:hidden ${
               isSidebarOpen ? "translate-x-0" : "-translate-x-full"
             }`}
           >
-            <div>
+            <div className="shrink-0">
               <div className="mb-2 flex items-center justify-end lg:hidden">
                 <button
                   type="button"
@@ -575,8 +578,12 @@ export default function StaffLayout({
               </div>
 
               <div className="w-full h-px bg-white/20 mb-4" />
+            </div>
 
-              <nav className="space-y-1">
+            {/* min-h-0 lets this flex child shrink below its content height —
+                without it the list overflows instead of scrolling. */}
+            <div className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
+              <nav className="shrink-0 space-y-1">
                 {navItems.map(({ label, href, icon: Icon }) => {
                   const isActive =
                     pathname === href || pathname.startsWith(`${href}/`);
@@ -601,29 +608,34 @@ export default function StaffLayout({
                     </Link>
                   );
                 })}
-
-                <button
-                  onClick={handleSignOut}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-200 hover:bg-white/10 hover:text-red-100 w-full mt-4"
-                >
-                  <LogOut size={18} />
-                  Sign out
-                </button>
               </nav>
+
+              {/* mt-auto holds the card at the bottom of the scroll area while
+                  there is room, then collapses to 0 once the nav overflows —
+                  pt-4 keeps a gap above it either way. */}
+              <div className="mt-auto shrink-0 pt-4">
+                <div className="rounded-2xl bg-black/20 p-4 text-sm text-white">
+                  <div className="w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center mb-2 text-[#1a6b3c] font-bold">
+                    ?
+                  </div>
+                  <p className="font-semibold mb-1">Need help?</p>
+                  <p className="text-xs text-green-200 mb-3">
+                    Please contact us for more questions
+                  </p>
+                  <button className="w-full border border-white rounded-full py-1.5 text-xs font-medium">
+                    +234 800 0000 000
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div className="bg-black/20 rounded-2xl p-4 text-white text-sm">
-              <div className="w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center mb-2 text-[#1a6b3c] font-bold">
-                ?
-              </div>
-              <p className="font-semibold mb-1">Need help?</p>
-              <p className="text-xs text-green-200 mb-3">
-                Please contact us for more questions
-              </p>
-              <button className="w-full border border-white rounded-full py-1.5 text-xs font-medium">
-                +234 800 0000 000
-              </button>
-            </div>
+            <button
+              onClick={handleSignOut}
+              className="flex shrink-0 items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-red-200 hover:bg-white/10 hover:text-red-100 w-full mt-4 transition"
+            >
+              <LogOut size={18} />
+              Sign out
+            </button>
           </aside>
 
           <main className="ml-0 lg:ml-60 flex-1 bg-gray-100 min-h-screen p-4 sm:p-6 print:ml-0 print:min-h-0 print:bg-white print:p-0">
