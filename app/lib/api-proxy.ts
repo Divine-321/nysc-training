@@ -14,6 +14,39 @@ const JSON_HEADERS = {
   "Content-Type": "application/json",
 };
 
+// The backend's DRF pagination contract (per the OpenAPI schema): `page`
+// defaults to 1, `page_size` defaults to 20 and is capped at 100. Requesting a
+// larger page_size is silently reduced to 100 server-side, so callers that
+// don't honour the cap risk assuming they received the whole list. Clamping
+// here makes the proxy the single authority on the documented bounds.
+export const MAX_PAGE_SIZE = 100;
+export const DEFAULT_PAGE_SIZE = 20;
+
+function clampInt(value: string | null, fallback: number, min: number, max: number) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
+/**
+ * Appends doc-compliant `page`/`page_size` query params to a backend path,
+ * reading them from the incoming request and clamping to the documented
+ * bounds (page ≥ 1; page_size 1–100, default 20).
+ */
+export function withPagination(basePath: string, request: Request): string {
+  const params = new URL(request.url).searchParams;
+  const page = clampInt(params.get("page"), 1, 1, Number.MAX_SAFE_INTEGER);
+  const pageSize = clampInt(
+    params.get("page_size"),
+    DEFAULT_PAGE_SIZE,
+    1,
+    MAX_PAGE_SIZE,
+  );
+  const separator = basePath.includes("?") ? "&" : "?";
+
+  return `${basePath}${separator}page=${page}&page_size=${pageSize}`;
+}
+
 const isProduction = process.env.NODE_ENV === "production";
 const ACCESS_TOKEN_MAX_AGE = 60 * 20;
 const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24;
