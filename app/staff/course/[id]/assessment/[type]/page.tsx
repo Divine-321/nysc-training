@@ -433,6 +433,14 @@ export default function AssessmentPage() {
       return;
     }
 
+    // The pre-test is not proctored: skip identity verification and start the
+    // attempt directly with no proctoring session. Only the post-test requires
+    // the camera/identity step.
+    if (assessmentType === "PRE_TEST") {
+      void beginAttempt(null);
+      return;
+    }
+
     setExamPhase("verifying");
   };
 
@@ -450,7 +458,14 @@ export default function AssessmentPage() {
     setExamPhase("intro");
   };
 
-  const handleVerified = async (verification: ProctoringStartResult) => {
+  const handleVerified = (verification: ProctoringStartResult) =>
+    beginAttempt(verification);
+
+  // Starts the attempt. `verification` is the proctoring session for proctored
+  // assessments, or null for the (unproctored) pre-test.
+  const beginAttempt = async (
+    verification: ProctoringStartResult | null,
+  ) => {
     setProctoring(verification);
 
     // Ask the backend to start the attempt and return its randomized
@@ -922,15 +937,17 @@ export default function AssessmentPage() {
                     </div>
                   )}
 
-                  <div className="mb-8 flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 p-4 text-left text-sm text-amber-800">
-                    <Camera size={18} className="mt-0.5 shrink-0" />
-                    <p>
-                      This assessment is proctored. Your camera must stay on:
-                      we will verify your identity before you start, and
-                      periodic snapshots are taken while you work. Switching
-                      tabs or windows is recorded.
-                    </p>
-                  </div>
+                  {assessmentType === "POST_TEST" && (
+                    <div className="mb-8 flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 p-4 text-left text-sm text-amber-800">
+                      <Camera size={18} className="mt-0.5 shrink-0" />
+                      <p>
+                        This assessment is proctored. Your camera must stay on:
+                        we will verify your identity before you start, and
+                        periodic snapshots are taken while you work. Switching
+                        tabs or windows is recorded.
+                      </p>
+                    </div>
+                  )}
 
                   {assessment.duration && assessment.duration > 0 ? (
                     <p className="mb-3 flex items-center justify-center gap-1.5 text-sm font-medium text-gray-600">

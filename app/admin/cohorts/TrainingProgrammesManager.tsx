@@ -11,6 +11,7 @@ import {
   ClipboardList,
   FileStack,
   Layers,
+  Pencil,
   Plus,
   Trash2,
   UserPlus,
@@ -83,6 +84,18 @@ const emptySessionForm = {
   start_time: "",
   end_time: "",
 };
+
+// Converts an ISO timestamp to the `YYYY-MM-DDTHH:mm` shape a datetime-local
+// input expects, in the admin's local timezone. Used to pre-fill the edit form.
+function toDateTimeLocalValue(iso?: string): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate(),
+  )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 // Attendance rows are parsed tolerantly — the endpoint is new and its
 // serializer shape may still move.
@@ -169,6 +182,9 @@ export default function TrainingProgrammesManager() {
   const [sessionForm, setSessionForm] = useState(emptySessionForm);
   const [savingSession, setSavingSession] = useState(false);
   const [sessionError, setSessionError] = useState("");
+  // When set, the session form edits this existing session (PATCH) instead of
+  // creating a new one (POST).
+  const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
 
   // Attendance viewer (per live session, inside the sessions modal).
   const [attendanceForId, setAttendanceForId] = useState<number | null>(null);
@@ -789,6 +805,26 @@ export default function TrainingProgrammesManager() {
     }
   };
 
+  // Loads an existing session into the form for editing (PATCH on submit).
+  const startEditSession = (session: LiveSession) => {
+    setEditingSessionId(session.id);
+    setSessionError("");
+    setSessionForm({
+      module: session.module == null ? "general" : String(session.module),
+      title: session.title ?? "",
+      description: session.description ?? "",
+      meeting_url: session.meeting_url ?? "",
+      start_time: toDateTimeLocalValue(session.start_time),
+      end_time: toDateTimeLocalValue(session.end_time),
+    });
+  };
+
+  const cancelEditSession = () => {
+    setEditingSessionId(null);
+    setSessionForm(emptySessionForm);
+    setSessionError("");
+  };
+
   const handleScheduleSession = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!sessionsFor) return;
@@ -801,6 +837,7 @@ export default function TrainingProgrammesManager() {
     setSavingSession(true);
     setSessionError("");
 
+    const isEditing = editingSessionId !== null;
     const moduleId =
       sessionForm.module && sessionForm.module !== "general"
         ? Number(sessionForm.module)
@@ -812,22 +849,31 @@ export default function TrainingProgrammesManager() {
             ?.trainerId ?? null)
         : null;
 
+    const body: Record<string, unknown> = {
+      programme: sessionsFor.id,
+      module: moduleId,
+      trainer: trainerId,
+      title: sessionForm.title.trim(),
+      description: sessionForm.description.trim() || null,
+      meeting_url: sessionForm.meeting_url.trim(),
+      start_time: new Date(sessionForm.start_time).toISOString(),
+      end_time: new Date(sessionForm.end_time).toISOString(),
+    };
+    // Only stamp the status when creating; editing leaves the existing status
+    // untouched (PATCH is partial).
+    if (!isEditing) body.status = "SCHEDULED";
+
     try {
-      const response = await fetch("/api/training/live-sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          programme: sessionsFor.id,
-          module: moduleId,
-          trainer: trainerId,
-          title: sessionForm.title.trim(),
-          description: sessionForm.description.trim() || null,
-          meeting_url: sessionForm.meeting_url.trim(),
-          start_time: new Date(sessionForm.start_time).toISOString(),
-          end_time: new Date(sessionForm.end_time).toISOString(),
-          status: "SCHEDULED",
-        }),
-      });
+      const response = await fetch(
+        isEditing
+          ? `/api/training/live-sessions/${editingSessionId}`
+          : "/api/training/live-sessions",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
@@ -835,22 +881,23 @@ export default function TrainingProgrammesManager() {
         // clearer hint than the generic proxy message.
         if (response.status >= 500) {
           throw new Error(
-            "The server could not create this session (HTTP 500). This is a backend error — please share it with the backend team.",
+            "The server could not save this session (HTTP 500). This is a backend error — please share it with the backend team.",
           );
         }
 
         throw new Error(
-          extractErrorMessage(payload, "Could not schedule this session."),
+          extractErrorMessage(payload, "Could not save this session."),
         );
       }
 
       setSessionForm(emptySessionForm);
+      setEditingSessionId(null);
       await loadData();
     } catch (sessionSaveError) {
       setSessionError(
         sessionSaveError instanceof Error
           ? sessionSaveError.message
-          : "Could not schedule this session.",
+          : "Could not save this session.",
       );
     } finally {
       setSavingSession(false);
@@ -1137,6 +1184,7 @@ export default function TrainingProgrammesManager() {
                             onClick={() => {
                               setSessionsFor(programme);
                               setSessionForm(emptySessionForm);
+                              setEditingSessionId(null);
                               setSessionError("");
                             }}
                             className="inline-flex items-center gap-1.5 rounded-lg border border-[#1a6b3c] px-3 py-1.5 text-xs font-semibold text-[#1a6b3c] transition hover:bg-green-50"
@@ -1371,7 +1419,11 @@ export default function TrainingProgrammesManager() {
               </div>
               <button
                 type="button"
-                onClick={() => setSessionsFor(null)}
+                onClick={() => {
+                  setSessionsFor(null);
+                  setEditingSessionId(null);
+                  setSessionForm(emptySessionForm);
+                }}
                 aria-label="Close"
                 className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600"
               >
@@ -1488,13 +1540,31 @@ export default function TrainingProgrammesManager() {
                 placeholder="Session description (optional)"
                 className="h-20 rounded-lg border px-4 py-3 text-sm md:col-span-2"
               />
-              <button
-                disabled={savingSession}
-                className="flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530] disabled:opacity-60 md:col-span-2"
-              >
-                <Video size={16} />
-                {savingSession ? "Scheduling..." : "Schedule Session"}
-              </button>
+              <div className="flex gap-2 md:col-span-2">
+                <button
+                  disabled={savingSession}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530] disabled:opacity-60"
+                >
+                  <Video size={16} />
+                  {editingSessionId !== null
+                    ? savingSession
+                      ? "Updating..."
+                      : "Update Session"
+                    : savingSession
+                      ? "Scheduling..."
+                      : "Schedule Session"}
+                </button>
+                {editingSessionId !== null && (
+                  <button
+                    type="button"
+                    onClick={cancelEditSession}
+                    disabled={savingSession}
+                    className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-60"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
             </form>
 
             {sessionModuleOptions.length > 0 &&
@@ -1518,7 +1588,14 @@ export default function TrainingProgrammesManager() {
             {programmeSessions.length > 0 && (
               <div className="mt-5 space-y-2 border-t border-gray-100 pt-4">
                 {programmeSessions.map((session) => (
-                  <div key={session.id} className="rounded-lg bg-gray-50 p-3">
+                  <div
+                    key={session.id}
+                    className={`rounded-lg p-3 ${
+                      editingSessionId === session.id
+                        ? "bg-green-50 ring-1 ring-[#1a6b3c]"
+                        : "bg-gray-50"
+                    }`}
+                  >
                     <div className="flex items-center justify-between gap-4">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
@@ -1545,6 +1622,14 @@ export default function TrainingProgrammesManager() {
                           {attendanceForId === session.id
                             ? "Hide attendance"
                             : "Attendance"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => startEditSession(session)}
+                          className="text-gray-500 transition hover:text-[#1a6b3c]"
+                          aria-label={`Edit ${session.title}`}
+                        >
+                          <Pencil size={16} />
                         </button>
                         <button
                           type="button"

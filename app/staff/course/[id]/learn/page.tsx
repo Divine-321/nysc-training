@@ -1372,7 +1372,7 @@ function CoursePlayer() {
                   <p className="mx-auto mt-3 max-w-md text-sm text-gray-500">
                     {currentItem.assessment.description ||
                       (currentItem.phase === "pre"
-                        ? "A short check of what you already know. Your camera will verify your identity before it starts."
+                        ? "A short check of what you already know."
                         : "Pass this assessment to complete the module. Your camera will verify your identity before it starts.")}
                   </p>
                   <p className="mt-2 text-xs text-gray-400">
@@ -1394,9 +1394,20 @@ function CoursePlayer() {
               {currentItem?.kind === "live" &&
                 (() => {
                   const session = currentItem.session;
+                  // Treat a past end_time as closed too: the backend often
+                  // leaves status at SCHEDULED/ONGOING after a session ends, and
+                  // joining an ended session just hits a dead end.
+                  const hasEnded =
+                    !!session.end_time &&
+                    new Date(session.end_time).getTime() < Date.now();
                   const isClosed =
                     session.status === "COMPLETED" ||
-                    session.status === "CANCELLED";
+                    session.status === "CANCELLED" ||
+                    hasEnded;
+                  const closedLabel =
+                    session.status === "CANCELLED"
+                      ? "This session was cancelled"
+                      : "This session has ended";
 
                   return (
                     <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm sm:p-12">
@@ -1424,7 +1435,7 @@ function CoursePlayer() {
                       <div className="mt-6">
                         {isClosed ? (
                           <span className="inline-flex items-center gap-2 rounded-full bg-gray-100 px-5 py-2 text-sm font-semibold text-gray-500">
-                            {session.status}
+                            {closedLabel}
                           </span>
                         ) : (
                           <button
@@ -1445,10 +1456,12 @@ function CoursePlayer() {
                                 : "Join Session"}
                           </button>
                         )}
-                        <p className="mt-3 text-xs text-gray-400">
-                          Set your meeting name to your full name and file
-                          number so your attendance is recorded.
-                        </p>
+                        {!isClosed && (
+                          <p className="mt-3 text-xs text-gray-400">
+                            Set your meeting name to your full name and file
+                            number so your attendance is recorded.
+                          </p>
+                        )}
                       </div>
                     </div>
                   );
