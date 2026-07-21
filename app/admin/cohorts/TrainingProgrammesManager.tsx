@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,6 +8,8 @@ import {
   ArrowRight,
   BookOpen,
   CalendarPlus,
+  CheckCircle2,
+  Circle,
   ClipboardList,
   FileStack,
   Layers,
@@ -185,6 +187,9 @@ export default function TrainingProgrammesManager() {
   // When set, the session form edits this existing session (PATCH) instead of
   // creating a new one (POST).
   const [editingSessionId, setEditingSessionId] = useState<number | null>(null);
+  // Scroll container of the sessions modal, so picking a module can bring the
+  // form back into view.
+  const sessionModalRef = useRef<HTMLDivElement>(null);
 
   // Attendance viewer (per live session, inside the sessions modal).
   const [attendanceForId, setAttendanceForId] = useState<number | null>(null);
@@ -825,6 +830,22 @@ export default function TrainingProgrammesManager() {
     setSessionError("");
   };
 
+  // Clicking a module in the coverage list: if it already has a session, load
+  // it for editing; otherwise start a fresh session with that module preset.
+  const handlePickModule = (moduleId: number) => {
+    const existing = programmeSessions.find(
+      (session) => session.module === moduleId,
+    );
+    if (existing) {
+      startEditSession(existing);
+    } else {
+      setEditingSessionId(null);
+      setSessionError("");
+      setSessionForm({ ...emptySessionForm, module: String(moduleId) });
+    }
+    sessionModalRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const handleScheduleSession = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!sessionsFor) return;
@@ -1404,7 +1425,10 @@ export default function TrainingProgrammesManager() {
 
       {sessionsFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+          <div
+            ref={sessionModalRef}
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl"
+          >
             <div className="mb-5 flex items-start justify-between gap-3">
               <div>
                 <h3 className="flex items-center gap-2 text-lg font-bold text-gray-800">
@@ -1463,9 +1487,6 @@ export default function TrainingProgrammesManager() {
                         {option.title}
                       </option>
                     ))}
-                    <option value="general">
-                      General — whole training (no specific module)
-                    </option>
                   </select>
                   <p className="mt-1 text-xs text-gray-500">
                     Each module of the course should have its own live
@@ -1474,9 +1495,8 @@ export default function TrainingProgrammesManager() {
                 </div>
               ) : (
                 <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 md:col-span-2">
-                  This course has no modules yet, so the session will apply to
-                  the whole training. Attach modules in the course builder to
-                  schedule per-module sessions.
+                  This course has no modules yet. Attach modules in the course
+                  builder first — each live session must belong to a module.
                 </p>
               )}
 
@@ -1542,7 +1562,7 @@ export default function TrainingProgrammesManager() {
               />
               <div className="flex gap-2 md:col-span-2">
                 <button
-                  disabled={savingSession}
+                  disabled={savingSession || sessionModuleOptions.length === 0}
                   className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530] disabled:opacity-60"
                 >
                   <Video size={16} />
@@ -1567,23 +1587,61 @@ export default function TrainingProgrammesManager() {
               </div>
             </form>
 
-            {sessionModuleOptions.length > 0 &&
-              (modulesWithoutSession.length > 0 ? (
-                <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  No live session yet for:{" "}
-                  <span className="font-semibold">
-                    {modulesWithoutSession
-                      .map((option) => option.title)
-                      .join(", ")}
+            {sessionModuleOptions.length > 0 && (
+              <div className="mt-4 overflow-hidden rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between bg-gray-50 px-3 py-2">
+                  <span className="text-xs font-semibold text-gray-700">
+                    Module coverage
                   </span>
-                </p>
-              ) : (
-                programmeSessions.length > 0 && (
-                  <p className="mt-4 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-700">
-                    Every module in this course has a live session scheduled.
-                  </p>
-                )
-              ))}
+                  <span className="text-xs font-medium text-gray-500">
+                    {sessionModuleOptions.length -
+                      modulesWithoutSession.length}{" "}
+                    of {sessionModuleOptions.length} scheduled
+                  </span>
+                </div>
+                <ul className="divide-y divide-gray-100">
+                  {sessionModuleOptions.map((option) => {
+                    const covered = coveredModuleIds.has(option.id);
+                    return (
+                      <li key={option.id}>
+                        <button
+                          type="button"
+                          onClick={() => handlePickModule(option.id)}
+                          title={
+                            covered
+                              ? "Edit this module's live session"
+                              : "Schedule a live session for this module"
+                          }
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition hover:bg-gray-50"
+                        >
+                          {covered ? (
+                            <CheckCircle2
+                              size={14}
+                              className="shrink-0 text-[#1a6b3c]"
+                            />
+                          ) : (
+                            <Circle
+                              size={14}
+                              className="shrink-0 text-amber-400"
+                            />
+                          )}
+                          <span className="min-w-0 flex-1 truncate text-gray-700">
+                            {option.title}
+                          </span>
+                          <span
+                            className={`shrink-0 font-medium ${
+                              covered ? "text-[#1a6b3c]" : "text-amber-600"
+                            }`}
+                          >
+                            {covered ? "Scheduled" : "Not scheduled"}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
 
             {programmeSessions.length > 0 && (
               <div className="mt-5 space-y-2 border-t border-gray-100 pt-4">

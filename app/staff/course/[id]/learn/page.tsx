@@ -808,6 +808,13 @@ function CoursePlayer() {
       }
 
       setEvalDone(true);
+
+      // The evaluation is the final requirement — it only unlocks once every
+      // other module (post-assessment included) is complete. So the moment it
+      // is submitted the course is 100% done and the backend issues the
+      // certificate. Take the learner straight to it instead of making them
+      // click "Finish Course" afterwards.
+      router.push("/staff/certifications");
     } catch (submitError) {
       setNotice(
         submitError instanceof Error

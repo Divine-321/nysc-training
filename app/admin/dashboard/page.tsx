@@ -92,11 +92,14 @@ export default function AdminDashboardPage() {
 
         setAnalytics(data);
         setError("");
-      } catch (loadError) {
+      } catch {
+        // The backend is frequently slow/unreachable (connection timeouts), so
+        // lead with a plain-language explanation rather than a raw HTTP error.
+        // Not logged to console: in dev that pops Next's error overlay for an
+        // error we've already handled. The detail still shows in the network
+        // tab and the server (proxy) logs.
         setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Could not load dashboard."
+          "Couldn't load the latest figures — the server didn't respond in time. This is usually a temporary backend/connection issue. Refresh to try again.",
         );
       } finally {
         setLoading(false);
@@ -223,8 +226,15 @@ export default function AdminDashboardPage() {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="shrink-0 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+          >
+            Retry
+          </button>
         </div>
       )}
 
@@ -243,7 +253,7 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <p className="text-3xl font-extrabold text-[#1a6b3c]">
-                  {loading ? "..." : (stat.value ?? 0)}
+                  {loading ? "..." : (stat.value ?? "—")}
                 </p>
               </div>
 
@@ -270,7 +280,7 @@ export default function AdminDashboardPage() {
             </p>
 
             <p className="mt-2 text-3xl font-extrabold text-[#1a6b3c]">
-              {loading ? "..." : (stat.value ?? 0)}
+              {loading ? "..." : (stat.value ?? "—")}
             </p>
           </div>
         ))}

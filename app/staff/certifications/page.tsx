@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Award,
   Download,
@@ -253,6 +253,36 @@ export default function CertificationsPage() {
       ),
   );
 
+  // A course that meets every requirement but has no certificate yet: the
+  // backend issues certificates automatically, so this is the short window
+  // between finishing and the certificate landing. We poll for it below.
+  const awaitingIssue = useMemo(
+    () =>
+      !loadingEligibility &&
+      pendingCourses.some((staffCourse) =>
+        buildRequirements(staffCourse, assessments, attempts).every(
+          (item) => item.met,
+        ),
+      ),
+    [loadingEligibility, pendingCourses, assessments, attempts],
+  );
+
+  // Re-fetch certificates a few times while one is awaiting issue, so a learner
+  // arriving straight from the final evaluation sees it appear without a manual
+  // refresh. Self-terminating: stops as soon as the certificate shows up (the
+  // course leaves `pendingCourses`) or after the retry cap.
+  const [issueRetries, setIssueRetries] = useState(0);
+  useEffect(() => {
+    if (loading || !awaitingIssue || issueRetries >= 6) return;
+
+    const timer = setTimeout(() => {
+      void loadCertificates();
+      setIssueRetries((count) => count + 1);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [awaitingIssue, loading, issueRetries, loadCertificates]);
+
   const handleDownload = () => {
     if (selectedCert?.pdf_url) {
       window.open(selectedCert.pdf_url, "_blank", "noopener,noreferrer");
@@ -276,6 +306,16 @@ export default function CertificationsPage() {
       {error && (
         <div className="rounded-lg bg-red-50 p-4 text-sm text-red-700 print:hidden">
           {error}
+        </div>
+      )}
+
+      {awaitingIssue && (
+        <div className="flex items-center gap-3 rounded-lg border border-green-100 bg-[#f0f7f3] p-4 text-sm text-[#1a6b3c] print:hidden">
+          <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[#1a6b3c]/30 border-t-[#1a6b3c]" />
+          <span>
+            You&apos;ve completed everything — your certificate is being
+            generated and will appear here in a moment.
+          </span>
         </div>
       )}
 
