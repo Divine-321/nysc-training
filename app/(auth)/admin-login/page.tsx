@@ -7,7 +7,6 @@ import Link from "next/link";
 import { AlertCircle, Eye, EyeOff, Loader2, X } from "lucide-react";
 import { ADMIN_MANUAL, STAFF_MANUAL } from "@/app/lib/manuals";
 import ManualLinks from "@/app/components/ManualLinks";
-import ManualPrompt from "@/app/components/ManualPrompt";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -208,12 +207,6 @@ export default function AdminLoginPage() {
           />
         </form>
       </div>
-
-      <ManualPrompt
-        manuals={[ADMIN_MANUAL]}
-        title="New to the admin portal?"
-        description="A guide to managing courses, modules, cohorts, staff records and reports."
-      />
     </div>
   );
 }

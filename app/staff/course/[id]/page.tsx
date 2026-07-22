@@ -37,6 +37,7 @@ import {
 import { Skeleton } from "@/app/components/ui";
 import {
   documentIsComplete,
+  attemptsForEnrollment,
   loadAssessmentAttempts,
   loadAssessments,
   loadStaffCourse,
@@ -190,8 +191,14 @@ export default function CourseModulesPage() {
         }
         setPostByModule(postMap);
 
+        // Only attempts made under THIS enrollment count — passes from an
+        // earlier delivery of the same course must not pre-complete a
+        // re-assigned (refresher) run.
         const passed = new Set<number>();
-        for (const attempt of attempts) {
+        for (const attempt of attemptsForEnrollment(
+          attempts,
+          course?.enrollment,
+        )) {
           if (attempt.passed) passed.add(attempt.assessment);
         }
         setPassedAssessmentIds(passed);

@@ -274,6 +274,35 @@ async function getJson(path: string) {
   return payload;
 }
 
+/**
+ * Scopes a staff member's assessment attempts to one enrollment. The backend
+ * stores attempts per staff+assessment with NO enrollment link, so when the
+ * same course is delivered to a staff member again (a refresher), attempts and
+ * passes from the previous run would leak into the new one — pre-passing its
+ * post-tests and silently consuming its attempt allowance. Until the backend
+ * tags attempts with their enrollment, treat only attempts submitted after
+ * this enrollment began as belonging to it. (Attempts without a parseable
+ * timestamp are kept, preserving the old behaviour rather than over-filtering;
+ * a module shared by two *concurrent* trainings still cross-credits — only the
+ * backend fix closes that.)
+ */
+export function attemptsForEnrollment(
+  attempts: AssessmentAttempt[],
+  enrollment: Pick<CourseEnrollment, "enrolled_at"> | null | undefined,
+): AssessmentAttempt[] {
+  const enrolledAt = enrollment?.enrolled_at
+    ? new Date(enrollment.enrolled_at).getTime()
+    : NaN;
+  if (!Number.isFinite(enrolledAt)) return attempts;
+
+  return attempts.filter((attempt) => {
+    const submitted = new Date(
+      attempt.submitted_at ?? attempt.submission_time ?? "",
+    ).getTime();
+    return !Number.isFinite(submitted) || submitted >= enrolledAt;
+  });
+}
+
 export function toPercentage(value: string | number | null | undefined) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? Math.round(parsed) : 0;
@@ -396,7 +425,19 @@ export async function loadStaffCourses() {
     )
   ).flat();
 
-  return enrollments.map((enrollment) => {
+  // Orphaned enrollments: when a training is deleted the backend keeps the
+  // enrollment for history with programme SET_NULL. There is no course behind
+  // them — nothing to open, learn, or certify — so staff screens never show
+  // them.
+  const liveEnrollments = enrollments.filter(
+    (enrollment) =>
+      (enrollment.programme ?? enrollment.cohort_course) != null &&
+      cohortCourses.some(
+        (item) => item.id === (enrollment.programme ?? enrollment.cohort_course),
+      ),
+  );
+
+  return liveEnrollments.map((enrollment) => {
     const cohortCourse =
       cohortCourses.find((item) => item.id === enrollment.cohort_course) ??
       null;
@@ -603,39 +644,69 @@ export async function markDocumentComplete(
  */
 export async function startAssessment(
   assessmentId: number,
+  enrollmentId?: number | null,
 ): Promise<{ questions: AssessmentQuestion[] } | null> {
+  let response: Response;
+
   try {
-    const response = await fetch(
+    // The backend counts attempts PER enrollment, so the enrollment must be
+    // explicit — otherwise the same course in a new cohort reuses the old
+    // enrollment's exhausted attempts.
+    response = await fetch(
       `/api/training/assessments/${assessmentId}/start`,
-      { method: "POST" },
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          enrollmentId != null ? { enrollment_id: enrollmentId } : {},
+        ),
+      },
     );
-
-    if (!response.ok) return null;
-
-    const payload = await response.json().catch(() => null);
-    const data = readApiItem<{
-      questions?: AssessmentQuestion[];
-      assessment?: { questions?: AssessmentQuestion[] };
-    }>(payload);
-
-    const questions = data?.questions ?? data?.assessment?.questions;
-
-    if (!Array.isArray(questions) || questions.length === 0) return null;
-
-    return { questions };
   } catch {
+    // Network failure — fall back to the client-side shuffle.
     return null;
   }
+
+  // 404/405 = old backend without the start endpoint — callers fall back to
+  // a client-side shuffle. Any OTHER failure is a real refusal (e.g. 403
+  // "Maximum attempts reached"): the exam must NOT open, because without a
+  // server-side attempt the submit is guaranteed to fail after the staff has
+  // answered everything. Surface it to the caller.
+  if (response.status === 404 || response.status === 405) return null;
+
+  if (!response.ok) {
+    const errorPayload = await response.json().catch(() => null);
+    throw new Error(
+      extractErrorMessage(errorPayload, "Could not start this assessment."),
+    );
+  }
+
+  const payload = await response.json().catch(() => null);
+  const data = readApiItem<{
+    questions?: AssessmentQuestion[];
+    assessment?: { questions?: AssessmentQuestion[] };
+  }>(payload);
+
+  const questions = data?.questions ?? data?.assessment?.questions;
+
+  if (!Array.isArray(questions) || questions.length === 0) return null;
+
+  return { questions };
 }
 
 export async function submitAssessment(
   assessmentId: number,
   answers: { question: number; selected_option: number }[],
+  enrollmentId?: number | null,
 ) {
   const response = await fetch(`/api/training/assessments/${assessmentId}/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ answers }),
+    // enrollment_id must match the attempt started for this enrollment so the
+    // grade and post_test_passed flag land on the right (per-cohort) run.
+    body: JSON.stringify(
+      enrollmentId != null ? { enrollment_id: enrollmentId, answers } : { answers },
+    ),
   });
   const payload = await response.json().catch(() => null);
 

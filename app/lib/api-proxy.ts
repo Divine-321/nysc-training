@@ -54,6 +54,12 @@ export function withPagination(basePath: string, request: Request): string {
     query += `&sortBy=${sortBy}`;
   }
 
+  // Registration-status filter for staff-records (unregistered-only listing).
+  const isRegistered = params.get("is_registered");
+  if (isRegistered === "true" || isRegistered === "false") {
+    query += `&is_registered=${isRegistered}`;
+  }
+
   return `${basePath}${separator}${query}`;
 }
 

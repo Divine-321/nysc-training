@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -8,7 +8,6 @@ import { AlertCircle, Eye, EyeOff, Loader2, X } from "lucide-react";
 import type { LoginManual } from "@/app/lib/login-manual";
 import { ADMIN_MANUAL, STAFF_MANUAL, type Manual } from "@/app/lib/manuals";
 import ManualLinks from "@/app/components/ManualLinks";
-import ManualPrompt from "@/app/components/ManualPrompt";
 
 const REMEMBERED_LOGIN_KEY = "nysc-remembered-login";
 
@@ -68,11 +67,6 @@ export default function LoginPage() {
 
     void loadManual();
   }, []);
-
-  const promptManuals = useMemo(
-    () => (uploadedManual ? [STAFF_MANUAL, uploadedManual] : [STAFF_MANUAL]),
-    [uploadedManual],
-  );
 
   const canSubmit = username.trim() !== "" && password !== "" && !isLoading;
 
@@ -314,11 +308,6 @@ export default function LoginPage() {
           />
         </form>
       </div>
-
-      <ManualPrompt
-        manuals={promptManuals}
-        description="Short guides on how to register, log in, take your courses and download your certificate."
-      />
     </div>
   );
 }

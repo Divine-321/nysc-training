@@ -210,6 +210,15 @@ export function extractErrorMessage(payload: unknown, fallback: string): string 
 
   const record = payload as Record<string, unknown>;
 
+  // The backend envelope often puts a generic label in `message` ("Validation
+  // Error") with the real reason nested in `data` (e.g. {message: "Validation
+  // Error", data: {error: ["No active assessment attempt found..."]}}). Dig
+  // out the nested detail first so users see the actual cause.
+  if (record.data && typeof record.data === "object") {
+    const detail = extractErrorMessage(record.data, "");
+    if (detail) return detail;
+  }
+
   if (typeof record.message === "string") return record.message;
   if (typeof record.detail === "string") return record.detail;
   if (

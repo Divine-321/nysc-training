@@ -297,7 +297,7 @@ function formatCohortAssignmentError(message: string) {
 // loading every record and paging in the browser. Until then it stays false
 // and the list loads all records, filters `!is_registered`, and pages client-
 // side. This is the only line to change to switch over.
-const UNREGISTERED_SERVER_PAGINATION = false;
+const UNREGISTERED_SERVER_PAGINATION = true;
 
 export default function AdminUsersPage() {
   const { confirm, dialog } = useConfirm();
@@ -873,7 +873,12 @@ export default function AdminUsersPage() {
           }
 
           setUnregisteredSupported(true);
-          setUnregisteredStaff(allRecords);
+          // Defensive: keep only unregistered rows even though we asked the
+          // backend to filter — harmless if the filter works, safe if it ever
+          // doesn't.
+          setUnregisteredStaff(
+            allRecords.filter((record) => !record.is_registered),
+          );
           setUnregisteredError("");
           return;
         }
@@ -901,7 +906,11 @@ export default function AdminUsersPage() {
         }
 
         setUnregisteredSupported(true);
-        setUnregisteredStaff(payload?.data?.results ?? []);
+        setUnregisteredStaff(
+          (payload?.data?.results ?? []).filter(
+            (record) => !record.is_registered,
+          ),
+        );
         setUnregisteredTotal(payload?.data?.count ?? 0);
         setUnregisteredError("");
       } catch (loadError) {
@@ -959,6 +968,60 @@ export default function AdminUsersPage() {
     if (selectedStaffIds.length === 0) {
       setAssignmentError("Please select at least one staff member.");
       return;
+    }
+
+    // Refresher guard: the same course may legitimately be delivered to a
+    // staff member again (yearly refreshers), but it should be deliberate —
+    // progress and attempts start over on the new enrollment. Warn when any
+    // selected staff already has this training's course from another delivery.
+    if (programmeMode) {
+      const targetProgramme = programmes.find(
+        (programme) => programme.id === Number(selectedCohort),
+      );
+      const targetCourseId = targetProgramme?.course ?? null;
+
+      if (targetCourseId != null) {
+        const enrollmentsPayload = await fetch("/api/training/enrollments", {
+          cache: "no-store",
+        })
+          .then((response) => (response.ok ? response.json() : null))
+          .catch(() => null);
+        const courseByProgrammeId = new Map(
+          programmes.map((programme) => [programme.id, programme.course]),
+        );
+        const staffWithCourse = new Set(
+          readApiList<CourseEnrollment>(enrollmentsPayload)
+            .filter((enrollment) => {
+              const programmeId =
+                enrollment.programme ?? enrollment.cohort_course;
+              return (
+                programmeId != null &&
+                courseByProgrammeId.get(programmeId) === targetCourseId
+              );
+            })
+            .map((enrollment) => String(enrollment.staff)),
+        );
+        const alreadyAssigned = selectedStaffIds.filter((staffId) =>
+          staffWithCourse.has(staffId),
+        );
+
+        if (alreadyAssigned.length > 0) {
+          const names = alreadyAssigned
+            .map((staffId) => {
+              const staff = staffList.find((item) => item.id === staffId);
+              return staff ? `${staff.surname} ${staff.otherNames}`.trim() : null;
+            })
+            .filter(Boolean)
+            .join(", ");
+          const confirmed = await confirm(
+            `${names || `${alreadyAssigned.length} selected staff`} already ${
+              alreadyAssigned.length === 1 ? "has" : "have"
+            } "${targetProgramme?.course_details?.title ?? "this course"}" from an earlier training. Assign again as a fresh run? Their progress, tests and attempts will start over for the new training.`,
+          );
+
+          if (!confirmed) return;
+        }
+      }
     }
 
     setAssigningStaff(true);
@@ -2023,7 +2086,6 @@ export default function AdminUsersPage() {
                       <th className="px-5 py-3 font-medium">File No</th>
                       <th className="px-5 py-3 font-medium">Name</th>
                       <th className="px-5 py-3 font-medium">Sex</th>
-                      <th className="px-5 py-3 font-medium">Date of Birth</th>
                       <th className="px-5 py-3 font-medium">Employment Date</th>
                       <th className="px-5 py-3 font-medium">Rank</th>
                       <th className="px-5 py-3 font-medium">Grade Level</th>
@@ -2066,9 +2128,6 @@ export default function AdminUsersPage() {
                         </td>
                         <td className="px-5 py-3 text-gray-600 capitalize">
                           {record.sex || "Not assigned"}
-                        </td>
-                        <td className="px-5 py-3 text-gray-600">
-                          {record.date_of_birth || "Not assigned"}
                         </td>
                         <td className="px-5 py-3 text-gray-600">
                           {record.employment_date || "Not assigned"}

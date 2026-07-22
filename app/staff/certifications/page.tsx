@@ -16,6 +16,7 @@ import {
   readApiList,
 } from "@/app/lib/portal-api";
 import {
+  attemptsForEnrollment,
   documentIsComplete,
   flagIsTrue,
   loadAssessmentAttempts,
@@ -86,10 +87,11 @@ function buildRequirements(
         : assessment.course === courseId),
   );
   // The enrollment now carries the authoritative flag; attempts are a
-  // fallback for older payloads.
+  // fallback for older payloads — scoped to this enrollment so passes from a
+  // previous delivery of the same course don't tick a refresher's checklist.
   const passedPostTest = postTest
     ? flagIsTrue(enrollment.post_test_passed) ||
-      attempts.some(
+      attemptsForEnrollment(attempts, enrollment).some(
         (attempt) =>
           attempt.assessment === postTest.id &&
           attempt.passed &&
@@ -97,18 +99,28 @@ function buildRequirements(
       )
     : false;
 
+  // A course with no content is trivially complete on both content rows — the
+  // backend's progress engine treats it exactly that way (it stamps
+  // completed_at immediately), so an empty course must not sit "In progress"
+  // forever on 0-of-0 rows.
   const items: RequirementItem[] = [
     {
       label: "Complete every activity",
       met:
-        modulesWithContent.length > 0 &&
+        modulesWithContent.length === 0 ||
         completedModules === modulesWithContent.length,
-      detail: `${completedModules} of ${modulesWithContent.length} activity(ies) at 100%`,
+      detail:
+        modulesWithContent.length === 0
+          ? "This course has no activities"
+          : `${completedModules} of ${modulesWithContent.length} activity(ies) at 100%`,
     },
     {
       label: "Complete all learning materials",
-      met: allDocs.length > 0 && completedDocs === allDocs.length,
-      detail: `${completedDocs} of ${allDocs.length} material(s) completed`,
+      met: allDocs.length === 0 || completedDocs === allDocs.length,
+      detail:
+        allDocs.length === 0
+          ? "This course has no materials"
+          : `${completedDocs} of ${allDocs.length} material(s) completed`,
     },
   ];
 
@@ -245,9 +257,13 @@ export default function CertificationsPage() {
   };
 
   // Enrolled courses that do not have a certificate yet — these get the
-  // "what's left" checklist.
+  // "what's left" checklist. Orphaned enrollments are skipped: when a training
+  // is deleted the backend keeps the enrollment for history with its programme
+  // SET_NULL, so there is no course to finish and no certificate will ever be
+  // issued for it — showing it as forever "In progress" is just confusing.
   const pendingCourses = staffCourses.filter(
     (staffCourse) =>
+      (staffCourse.cohortCourse != null || staffCourse.course != null) &&
       !certificates.some((certificate) =>
         certificateMatchesCourse(certificate, staffCourse),
       ),
@@ -309,15 +325,25 @@ export default function CertificationsPage() {
         </div>
       )}
 
-      {awaitingIssue && (
-        <div className="flex items-center gap-3 rounded-lg border border-green-100 bg-[#f0f7f3] p-4 text-sm text-[#1a6b3c] print:hidden">
-          <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[#1a6b3c]/30 border-t-[#1a6b3c]" />
-          <span>
-            You&apos;ve completed everything — your certificate is being
-            generated and will appear here in a moment.
-          </span>
-        </div>
-      )}
+      {awaitingIssue &&
+        (issueRetries < 6 ? (
+          <div className="flex items-center gap-3 rounded-lg border border-green-100 bg-[#f0f7f3] p-4 text-sm text-[#1a6b3c] print:hidden">
+            <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-[#1a6b3c]/30 border-t-[#1a6b3c]" />
+            <span>
+              You&apos;ve completed everything — your certificate is being
+              generated and will appear here in a moment.
+            </span>
+          </div>
+        ) : (
+          // The poll gave up: don't keep promising an imminent certificate.
+          // The backend hasn't issued it — that needs admin/backend attention,
+          // not more waiting on this page.
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 print:hidden">
+            You&apos;ve completed every requirement, but your certificate is
+            taking longer than expected. Please check back later — if it still
+            doesn&apos;t appear, contact an administrator.
+          </div>
+        ))}
 
       {loading ? (
         <p className="rounded-2xl bg-white p-6 text-sm text-gray-500 shadow-sm">

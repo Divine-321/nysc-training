@@ -30,6 +30,7 @@ import {
 import RichTextViewer from "@/app/components/RichTextViewer";
 import {
   documentIsComplete,
+  attemptsForEnrollment,
   loadAssessmentAttempts,
   loadAssessments,
   loadLiveSessionsForCourse,
@@ -339,6 +340,9 @@ function CoursePlayer() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Wall-clock reference for "has this live session already ended?" — captured
+  // once per mount (render must stay pure, so no Date.now() inline).
+  const [pageLoadedAt] = useState(() => Date.now());
   const contentRef = useRef<HTMLDivElement | null>(null);
 
   // Build the per-module sections in the fixed learning order.
@@ -583,9 +587,11 @@ function CoursePlayer() {
 
         setStaffCourse(courseData);
         setAssessments(assessmentData);
+        // Scoped to this enrollment: passes from a previous delivery of the
+        // same course must not tick off a refresher run's assessments.
         setPassedAssessmentIds(
           new Set(
-            attemptData
+            attemptsForEnrollment(attemptData, courseData.enrollment)
               .filter((attempt) => attempt.passed)
               .map((attempt) => attempt.assessment),
           ),
@@ -1406,7 +1412,7 @@ function CoursePlayer() {
                   // joining an ended session just hits a dead end.
                   const hasEnded =
                     !!session.end_time &&
-                    new Date(session.end_time).getTime() < Date.now();
+                    new Date(session.end_time).getTime() < pageLoadedAt;
                   const isClosed =
                     session.status === "COMPLETED" ||
                     session.status === "CANCELLED" ||

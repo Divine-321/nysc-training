@@ -21,6 +21,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
+  attemptsForEnrollment,
   loadAssessmentAttempts,
   loadAssessments,
   loadStaffCourse,
@@ -128,6 +129,10 @@ export default function AssessmentPage() {
     ? `assessment-progress-${courseId}-${assessment.id}`
     : null;
 
+  // The enrollment this attempt belongs to — sent to start/submit so the
+  // backend scopes attempts to the right (per-cohort) run.
+  const enrollmentId = staffCourse?.enrollment.id ?? null;
+
   const clearPersistedProgress = useCallback(() => {
     if (!progressKey) return;
     try {
@@ -138,9 +143,19 @@ export default function AssessmentPage() {
   }, [progressKey]);
 
   // This assessment's submitted attempts, newest first. The list serializer
-  // omits attempt_number, so number them chronologically ourselves.
-  const refreshAttempts = useCallback(async (assessmentId: number) => {
-    const all = await loadAssessmentAttempts().catch(() => []);
+  // omits attempt_number, so number them chronologically ourselves. Scoped to
+  // the given enrollment: each delivery of a course has its own attempt
+  // allowance, so tries spent under a previous enrollment of the same course
+  // must not count against (or be listed for) this one.
+  const refreshAttempts = useCallback(
+    async (
+      assessmentId: number,
+      enrollment: { enrolled_at: string } | null | undefined,
+    ) => {
+    const all = attemptsForEnrollment(
+      await loadAssessmentAttempts().catch(() => []),
+      enrollment,
+    );
     const chronological = all
       .filter(
         (attempt) =>
@@ -155,7 +170,9 @@ export default function AssessmentPage() {
       .map((attempt, index) => ({ ...attempt, attempt_number: index + 1 }));
 
     setAttempts(chronological.reverse());
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     const fetchData = async () => {
@@ -184,7 +201,7 @@ export default function AssessmentPage() {
         setStaffCourse(course);
 
         if (selectedAssessment) {
-          await refreshAttempts(selectedAssessment.id);
+          await refreshAttempts(selectedAssessment.id, course?.enrollment);
         }
       } catch (loadError) {
         setError(
@@ -268,6 +285,7 @@ export default function AssessmentPage() {
         const submissionResult = await submitAssessment(
           assessment.id,
           submission,
+          enrollmentId,
         );
         setResult(submissionResult);
         clearPersistedProgress();
@@ -303,7 +321,7 @@ export default function AssessmentPage() {
 
       // Refresh the attempt history so the new result appears immediately,
       // without the learner needing to reload the page.
-      await refreshAttempts(assessment.id);
+      await refreshAttempts(assessment.id, staffCourse?.enrollment);
       setExamPhase("intro");
       setDeadline(null);
       } catch (submitError) {
@@ -325,6 +343,7 @@ export default function AssessmentPage() {
       sortedQuestions,
       answers,
       staffCourse,
+      enrollmentId,
       proctoring,
       refreshAttempts,
       clearPersistedProgress,
@@ -416,7 +435,6 @@ export default function AssessmentPage() {
     }
   }, [assessment, progressKey]);
 
-  const enrollmentId = staffCourse?.enrollment.id ?? null;
 
   const handleStartExam = () => {
     setError("");
@@ -471,10 +489,30 @@ export default function AssessmentPage() {
     // Ask the backend to start the attempt and return its randomized
     // question/option order (stable across refreshes). If that endpoint is
     // unavailable, shuffle client-side so every attempt is still randomized.
+    // If the backend REFUSES the attempt (e.g. "Maximum attempts reached"),
+    // do not open the exam — a submit without a server-side attempt is
+    // guaranteed to fail after the staff has answered everything.
     let ordered: AssessmentQuestion[] | null = null;
 
     if (assessment) {
-      const started = await startAssessment(assessment.id);
+      let started: Awaited<ReturnType<typeof startAssessment>> = null;
+
+      try {
+        started = await startAssessment(assessment.id, enrollmentId);
+      } catch (startError) {
+        if (verification?.sessionId) {
+          void closeProctoringSession(verification.sessionId);
+        }
+        setProctoring(null);
+        setExamPhase("intro");
+        setError(
+          startError instanceof Error
+            ? startError.message
+            : "Could not start this assessment.",
+        );
+        return;
+      }
+
       ordered = started?.questions?.length
         ? started.questions
         : shuffleAssessment(assessment.questions);
