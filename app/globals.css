@@ -57,4 +57,23 @@ button:disabled,
     print-color-adjust: exact;
     color-adjust: exact;
   }
+
+  /* The on-screen certificate is scaled to fit its card via an inline
+     transform. Reset that for print and lay it out at full page size.
+     !important is required so these rules override the inline styles. */
+  .cert-print-box {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  #certificate-canvas {
+    position: static !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 1000px !important;
+    height: auto !important;
+    aspect-ratio: 800 / 565 !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+  }
 }

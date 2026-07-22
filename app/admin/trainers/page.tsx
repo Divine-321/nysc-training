@@ -293,7 +293,8 @@ export default function AdminTrainersPage() {
           }
 
           return (
-          <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="bg-gray-50 text-gray-500">
               <tr>
                 <th className="p-4">Trainer</th>
@@ -351,6 +352,7 @@ export default function AdminTrainersPage() {
               ))}
             </tbody>
           </table>
+          </div>
           );
         })()}
       </div>

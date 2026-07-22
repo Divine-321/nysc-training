@@ -150,7 +150,7 @@ export default function AssessmentPage() {
   const refreshAttempts = useCallback(
     async (
       assessmentId: number,
-      enrollment: { enrolled_at: string } | null | undefined,
+      enrollment: { id: number; enrolled_at: string } | null | undefined,
     ) => {
     const all = attemptsForEnrollment(
       await loadAssessmentAttempts().catch(() => []),

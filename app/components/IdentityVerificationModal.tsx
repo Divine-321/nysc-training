@@ -88,8 +88,8 @@ export default function IdentityVerificationModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-3 sm:p-4">
+      <div className="my-auto max-h-[95vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6">
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-50 text-[#1a6b3c]">
             <ShieldCheck size={22} />
@@ -109,14 +109,14 @@ export default function IdentityVerificationModal({
           <img
             src={capturedImage ?? ""}
             alt="Captured verification"
-            className="aspect-video w-full -scale-x-100 rounded-xl bg-gray-900 object-cover"
+            className="aspect-video max-h-[50vh] w-full -scale-x-100 rounded-xl bg-gray-900 object-cover"
           />
         ) : (
           <CameraPreview
             videoRef={camera.videoRef}
             status={camera.status}
             error={camera.error}
-            className="aspect-video w-full"
+            className="aspect-video max-h-[50vh] w-full"
           />
         )}
 
@@ -140,7 +140,7 @@ export default function IdentityVerificationModal({
           anywhere else.
         </p>
 
-        <div className="mt-5 flex items-center justify-end gap-3">
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-2 sm:gap-3">
           <button
             type="button"
             onClick={handleCancel}

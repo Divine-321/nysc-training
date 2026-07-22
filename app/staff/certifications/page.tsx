@@ -164,6 +164,25 @@ export default function CertificationsPage() {
   const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
   const [loadingEligibility, setLoadingEligibility] = useState(true);
 
+  // The certificate is a fixed 800×565 design. We measure the available width
+  // and scale the whole canvas to fit, so it always shows in full on any screen
+  // (no clipping, no sideways scroll) while staying pixel-perfect. A measured
+  // number is used instead of CSS container-query units, which some browsers
+  // dropped here — leaving the certificate cut off.
+  const [certWrap, setCertWrap] = useState<HTMLDivElement | null>(null);
+  const [certScale, setCertScale] = useState(1);
+  useEffect(() => {
+    if (!certWrap) return;
+
+    const update = () => setCertScale(Math.min(1, certWrap.clientWidth / 800));
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(certWrap);
+
+    return () => observer.disconnect();
+  }, [certWrap]);
+
   const loadCertificates = useCallback(async () => {
     try {
       const response = await fetch("/api/training/certificates", {
@@ -439,11 +458,27 @@ export default function CertificationsPage() {
               </div>
             </div>
 
-            <div className="flex w-full justify-center overflow-x-auto rounded-b-2xl border border-gray-200 bg-gray-100 p-8 print:flex print:min-h-screen print:items-center print:justify-center print:border-none print:bg-white print:p-0 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
-              <div
-                className="relative h-[565px] w-[800px] shrink-0 bg-white shadow-2xl print:h-auto print:w-[90%] print:max-w-[1000px] print:aspect-[800/565] print:shadow-none"
-                id="certificate-canvas"
-              >
+            <div className="w-full rounded-b-2xl border border-gray-200 bg-gray-100 p-3 sm:p-8 print:min-h-screen print:border-none print:bg-white print:p-0 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
+              {/* The certificate is a fixed 800×565 design. We measure this
+                  wrapper (certScale = width / 800) and scale the canvas with a
+                  plain inline transform, so the whole certificate always fits —
+                  no clipping, no sideways scroll — on any screen. Inline styles
+                  are used (not Tailwind arbitrary classes) so scaling can't be
+                  dropped by the browser. Print is reset via globals.css. */}
+              <div ref={setCertWrap} className="mx-auto w-full max-w-[800px]">
+                <div
+                  className="cert-print-box relative mx-auto overflow-hidden"
+                  style={{ width: "100%", height: 565 * certScale }}
+                >
+                  <div
+                    className="absolute left-0 top-0 origin-top-left bg-white shadow-2xl"
+                    id="certificate-canvas"
+                    style={{
+                      width: 800,
+                      height: 565,
+                      transform: `scale(${certScale})`,
+                    }}
+                  >
                 <div className="absolute inset-5 border-[3px] border-[#1a6b3c] p-2">
                   <div className="absolute inset-0 m-1 border border-[#1a6b3c]/30" />
                 </div>
@@ -498,7 +533,7 @@ export default function CertificationsPage() {
                     <div className="mb-8" />
                   )}
 
-                  <div className="mt-auto flex w-full justify-between px-16">
+                  <div className="mt-auto flex w-full items-end justify-between px-16">
                     <div className="flex w-48 flex-col items-center">
                       <div className="flex h-10 items-end">
                         <span className="font-serif text-xl italic text-gray-800">
@@ -531,6 +566,8 @@ export default function CertificationsPage() {
                           Authorized Signature
                         </p>
                       </div>
+                    </div>
+                  </div>
                     </div>
                   </div>
                 </div>

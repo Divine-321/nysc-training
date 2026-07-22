@@ -275,22 +275,35 @@ async function getJson(path: string) {
 }
 
 /**
- * Scopes a staff member's assessment attempts to one enrollment. The backend
- * stores attempts per staff+assessment with NO enrollment link, so when the
- * same course is delivered to a staff member again (a refresher), attempts and
- * passes from the previous run would leak into the new one — pre-passing its
- * post-tests and silently consuming its attempt allowance. Until the backend
- * tags attempts with their enrollment, treat only attempts submitted after
- * this enrollment began as belonging to it. (Attempts without a parseable
- * timestamp are kept, preserving the old behaviour rather than over-filtering;
- * a module shared by two *concurrent* trainings still cross-credits — only the
- * backend fix closes that.)
+ * Scopes a staff member's assessment attempts to one enrollment, so a course
+ * delivered to a staff member again (a refresher) doesn't inherit the previous
+ * run's attempts and passes — which would pre-pass its post-tests and silently
+ * consume its attempt allowance.
+ *
+ * The backend now tags each attempt with its `enrollment` (deployed
+ * 2026-07-22), so we match on it exactly. Older payloads serialized attempts
+ * with no enrollment link (0), so when none of the attempts carry a real
+ * enrollment we fall back to the previous heuristic: treat only attempts
+ * submitted at/after this enrollment began as belonging to it.
  */
 export function attemptsForEnrollment(
   attempts: AssessmentAttempt[],
-  enrollment: Pick<CourseEnrollment, "enrolled_at"> | null | undefined,
+  enrollment: Pick<CourseEnrollment, "id" | "enrolled_at"> | null | undefined,
 ): AssessmentAttempt[] {
-  const enrolledAt = enrollment?.enrolled_at
+  if (!enrollment) return attempts;
+
+  // Preferred path: exact match on the backend's enrollment link. Only trust
+  // it when at least one attempt actually carries a non-zero enrollment —
+  // otherwise an all-zero (older) payload would filter everything out.
+  const hasEnrollmentLink = attempts.some(
+    (attempt) => (attempt.enrollment ?? 0) > 0,
+  );
+  if (hasEnrollmentLink && enrollment.id) {
+    return attempts.filter((attempt) => attempt.enrollment === enrollment.id);
+  }
+
+  // Fallback for older payloads with no enrollment link.
+  const enrolledAt = enrollment.enrolled_at
     ? new Date(enrollment.enrolled_at).getTime()
     : NaN;
   if (!Number.isFinite(enrolledAt)) return attempts;

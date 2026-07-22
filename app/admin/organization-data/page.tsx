@@ -372,7 +372,8 @@ export default function OrganizationDataPage() {
         ) : items.length === 0 ? (
           <p className="p-6 text-sm text-gray-500">No entries yet.</p>
         ) : (
-          <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="bg-gray-50 text-gray-500">
               <tr>
                 <th className="p-4">Entry</th>
@@ -402,6 +403,7 @@ export default function OrganizationDataPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

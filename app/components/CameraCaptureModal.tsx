@@ -67,8 +67,8 @@ export default function CameraCaptureModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-3 sm:p-4">
+      <div className="my-auto max-h-[95vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-4 shadow-xl sm:p-6">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-bold text-gray-800">{title}</h3>
@@ -90,18 +90,18 @@ export default function CameraCaptureModal({
           <img
             src={capturedImage}
             alt="Captured"
-            className="aspect-video w-full -scale-x-100 rounded-xl bg-gray-900 object-cover"
+            className="aspect-video max-h-[50vh] w-full -scale-x-100 rounded-xl bg-gray-900 object-cover"
           />
         ) : (
           <CameraPreview
             videoRef={camera.videoRef}
             status={camera.status}
             error={camera.error}
-            className="aspect-video w-full"
+            className="aspect-video max-h-[50vh] w-full"
           />
         )}
 
-        <div className="mt-5 flex items-center justify-end gap-3">
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-2 sm:gap-3">
           {!capturedImage ? (
             <button
               type="button"
