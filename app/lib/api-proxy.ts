@@ -44,7 +44,17 @@ export function withPagination(basePath: string, request: Request): string {
   );
   const separator = basePath.includes("?") ? "&" : "?";
 
-  return `${basePath}${separator}page=${page}&page_size=${pageSize}`;
+  let query = `page=${page}&page_size=${pageSize}`;
+
+  // Forward the backend's sort filter when present. Only the two documented
+  // values are passed through; anything else is ignored so the backend keeps
+  // its own default ordering.
+  const sortBy = params.get("sortBy");
+  if (sortBy === "file_number" || sortBy === "surname") {
+    query += `&sortBy=${sortBy}`;
+  }
+
+  return `${basePath}${separator}${query}`;
 }
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -59,12 +69,6 @@ async function getAccessToken() {
 async function getRefreshToken() {
   const cookieStore = await cookies();
   return cookieStore.get("nysc_refresh_token")?.value ?? null;
-}
-
-async function clearAuthCookies() {
-  const cookieStore = await cookies();
-  cookieStore.delete("nysc_access_token");
-  cookieStore.delete("nysc_refresh_token");
 }
 
 function readRefreshedTokens(payload: unknown) {
@@ -99,11 +103,31 @@ function readRefreshedTokens(payload: unknown) {
   return { access, refresh };
 }
 
-async function refreshAccessToken() {
+// Concurrent proxied requests fired after the access token expires (dashboards
+// load several endpoints at once) would each start their own refresh with the
+// same refresh token. When the backend rotates refresh tokens, only the first
+// succeeds — the rest get a "blacklisted token" 401. De-duplicate by refresh
+// token so a single refresh serves every concurrent caller in this process.
+// Keyed by the token (not global) so two different users sharing a server
+// instance never receive each other's session.
+const inFlightRefreshes = new Map<string, Promise<string | null>>();
+
+async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = await getRefreshToken();
 
   if (!refreshToken) return null;
 
+  const existing = inFlightRefreshes.get(refreshToken);
+  if (existing) return existing;
+
+  const refreshPromise = performRefresh(refreshToken).finally(() => {
+    inFlightRefreshes.delete(refreshToken);
+  });
+  inFlightRefreshes.set(refreshToken, refreshPromise);
+  return refreshPromise;
+}
+
+async function performRefresh(refreshToken: string): Promise<string | null> {
   const response = await fetch(`${API_BASE_URL}/api/accounts/auth/refresh/`, {
     method: "POST",
     headers: JSON_HEADERS,
@@ -116,17 +140,16 @@ async function refreshAccessToken() {
     ? await response.json().catch(() => null)
     : null;
 
-  if (!response.ok) {
-    await clearAuthCookies();
-    return null;
-  }
+  // On failure, do NOT clear the auth cookies here. During a rotation race a
+  // concurrent refresh may have just written valid new cookies, and wiping them
+  // is exactly what bounced idle users to /login. Leaving the 401 to surface is
+  // safe: AuthGuard re-checks /api/accounts/me and only logs out (clearing
+  // cookies via /logout) when the session is genuinely dead.
+  if (!response.ok) return null;
 
   const tokens = readRefreshedTokens(payload);
 
-  if (!tokens) {
-    await clearAuthCookies();
-    return null;
-  }
+  if (!tokens) return null;
 
   const cookieStore = await cookies();
   cookieStore.set("nysc_access_token", tokens.access, {
@@ -216,10 +239,6 @@ export async function proxyApi(method: string, options: ProxyOptions) {
       };
 
       response = await fetch(`${API_BASE_URL}${options.path}`, retryInit);
-    }
-
-    if (response.status === 401) {
-      await clearAuthCookies();
     }
   }
 

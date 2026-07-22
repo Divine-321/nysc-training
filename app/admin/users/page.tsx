@@ -291,6 +291,14 @@ function formatCohortAssignmentError(message: string) {
   return message;
 }
 
+// Flip to `true` once the backend supports `?is_registered=false` on
+// /api/accounts/staff-records/ (see backend request). Then the unregistered
+// list fetches ONE page at a time (true server-side pagination) instead of
+// loading every record and paging in the browser. Until then it stays false
+// and the list loads all records, filters `!is_registered`, and pages client-
+// side. This is the only line to change to switch over.
+const UNREGISTERED_SERVER_PAGINATION = false;
+
 export default function AdminUsersPage() {
   const { confirm, dialog } = useConfirm();
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
@@ -308,6 +316,11 @@ export default function AdminUsersPage() {
   const [totalStaff, setTotalStaff] = useState(0);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [hasPreviousPage, setHasPreviousPage] = useState(false);
+  // Backend sort filter (?sortBy=). Default to file number per request — note
+  // the registered-staff endpoint otherwise defaults to surname server-side.
+  const [staffSort, setStaffSort] = useState<"file_number" | "surname">(
+    "file_number",
+  );
   const [orgOptions, setOrgOptions] =
     useState<OrgOptions>(emptyOrgOptions);
   const [loadingOrgOptions, setLoadingOrgOptions] = useState(true);
@@ -338,6 +351,14 @@ export default function AdminUsersPage() {
     number | null
   >(null);
   const [unregisteredSearch, setUnregisteredSearch] = useState("");
+  const [unregisteredSort, setUnregisteredSort] = useState<
+    "file_number" | "surname"
+  >("file_number");
+  const [unregisteredPage, setUnregisteredPage] = useState(1);
+  // Server-mode total (only used when UNREGISTERED_SERVER_PAGINATION is on).
+  const [unregisteredTotal, setUnregisteredTotal] = useState(0);
+  const [debouncedUnregisteredSearch, setDebouncedUnregisteredSearch] =
+    useState("");
   const [selectedUnregisteredIds, setSelectedUnregisteredIds] = useState<
     number[]
   >([]);
@@ -372,6 +393,16 @@ export default function AdminUsersPage() {
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const isSearching = debouncedSearch.length > 0;
 
+  // Unregistered-list mode helpers. `unregServerPaged` is true only when the
+  // server-pagination flag is on AND there's no active search (search always
+  // falls back to load-all + client filtering).
+  const isSearchingUnregistered = debouncedUnregisteredSearch.length > 0;
+  const unregServerPaged =
+    UNREGISTERED_SERVER_PAGINATION && !unregisteredSearch.trim();
+  const unregisteredHeaderCount = unregServerPaged
+    ? unregisteredTotal
+    : unregisteredStaff.length;
+
   const filteredStaff = staffList.filter((staff) =>
     [staff.surname, staff.otherNames, staff.fileNo].some((value) =>
       value.toLowerCase().includes(normalizedSearch),
@@ -395,7 +426,7 @@ export default function AdminUsersPage() {
   useEffect(() => {
     const fetchStaffPage = async (pageNumber: number, size: number) => {
       const response = await fetch(
-        `/api/accounts/staff?page=${pageNumber}&page_size=${size}`,
+        `/api/accounts/staff?page=${pageNumber}&page_size=${size}&sortBy=${staffSort}`,
         { cache: "no-store" },
       );
       const payload = (await response
@@ -600,7 +631,7 @@ export default function AdminUsersPage() {
     };
 
     void loadStaff();
-  }, [page, staffReloadKey, isSearching]);
+  }, [page, staffReloadKey, isSearching, staffSort]);
 
   useEffect(() => {
     const loadOrgOptions = async () => {
@@ -717,8 +748,22 @@ export default function AdminUsersPage() {
     void loadAssignmentTargets();
   }, []);
 
+  // Debounce the unregistered search so server-mode fetches don't fire on
+  // every keystroke.
   useEffect(() => {
+    const handle = setTimeout(() => {
+      setDebouncedUnregisteredSearch(unregisteredSearch.trim().toLowerCase());
+    }, 300);
+    return () => clearTimeout(handle);
+  }, [unregisteredSearch]);
+
+  // CLIENT MODE (flag off): load every record once, filter to unregistered, and
+  // page in the browser. Page changes re-slice locally without refetching.
+  useEffect(() => {
+    if (UNREGISTERED_SERVER_PAGINATION) return;
+
     const loadUnregisteredStaff = async () => {
+      setLoadingUnregistered(true);
       try {
         const allRecords: UnregisteredStaffRecord[] = [];
         let currentPage = 1;
@@ -726,7 +771,7 @@ export default function AdminUsersPage() {
 
         while (hasMore) {
           const response = await fetch(
-            `/api/accounts/staff-records?page=${currentPage}&page_size=100`,
+            `/api/accounts/staff-records?page=${currentPage}&page_size=100&sortBy=${unregisteredSort}`,
             { cache: "no-store" },
           );
 
@@ -774,7 +819,110 @@ export default function AdminUsersPage() {
     };
 
     void loadUnregisteredStaff();
-  }, [staffReloadKey]);
+  }, [staffReloadKey, unregisteredSort]);
+
+  // SERVER MODE (flag on): fetch just the current page via ?is_registered=false.
+  // While searching, load all matches and filter/paginate client-side (mirrors
+  // the registered-staff list). Dormant until the flag is flipped.
+  useEffect(() => {
+    if (!UNREGISTERED_SERVER_PAGINATION) return;
+
+    const parse = async (response: Response) =>
+      (await response.json().catch(() => null)) as {
+        data?: {
+          results?: UnregisteredStaffRecord[];
+          next?: string | null;
+          count?: number;
+        };
+      } | null;
+
+    const loadUnregisteredStaff = async () => {
+      setLoadingUnregistered(true);
+      try {
+        if (isSearchingUnregistered) {
+          const allRecords: UnregisteredStaffRecord[] = [];
+          let currentPage = 1;
+          let hasMore = true;
+
+          while (hasMore) {
+            const response = await fetch(
+              `/api/accounts/staff-records?page=${currentPage}&page_size=100&sortBy=${unregisteredSort}&is_registered=false`,
+              { cache: "no-store" },
+            );
+
+            if (response.status === 404 || response.status === 405) {
+              setUnregisteredSupported(false);
+              setUnregisteredStaff([]);
+              return;
+            }
+
+            const payload = await parse(response);
+
+            if (!response.ok) {
+              throw new Error(
+                extractErrorMessage(
+                  payload,
+                  "Could not load unregistered staff records.",
+                ),
+              );
+            }
+
+            allRecords.push(...(payload?.data?.results ?? []));
+            hasMore = Boolean(payload?.data?.next);
+            currentPage += 1;
+          }
+
+          setUnregisteredSupported(true);
+          setUnregisteredStaff(allRecords);
+          setUnregisteredError("");
+          return;
+        }
+
+        const response = await fetch(
+          `/api/accounts/staff-records?page=${unregisteredPage}&page_size=${pageSize}&sortBy=${unregisteredSort}&is_registered=false`,
+          { cache: "no-store" },
+        );
+
+        if (response.status === 404 || response.status === 405) {
+          setUnregisteredSupported(false);
+          setUnregisteredStaff([]);
+          return;
+        }
+
+        const payload = await parse(response);
+
+        if (!response.ok) {
+          throw new Error(
+            extractErrorMessage(
+              payload,
+              "Could not load unregistered staff records.",
+            ),
+          );
+        }
+
+        setUnregisteredSupported(true);
+        setUnregisteredStaff(payload?.data?.results ?? []);
+        setUnregisteredTotal(payload?.data?.count ?? 0);
+        setUnregisteredError("");
+      } catch (loadError) {
+        setUnregisteredError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Could not load unregistered staff records.",
+        );
+      } finally {
+        setLoadingUnregistered(false);
+      }
+    };
+
+    void loadUnregisteredStaff();
+  }, [
+    staffReloadKey,
+    unregisteredSort,
+    unregisteredPage,
+    isSearchingUnregistered,
+    pageSize,
+  ]);
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
@@ -1464,11 +1612,25 @@ export default function AdminUsersPage() {
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
             />
           </div>
-          {isSearching && loadingStaff && (
-            <p className="text-xs text-gray-500">
-              Searching across all staff...
-            </p>
-          )}
+          <div className="flex items-center gap-3">
+            {isSearching && loadingStaff && (
+              <p className="text-xs text-gray-500">
+                Searching across all staff...
+              </p>
+            )}
+            <select
+              aria-label="Sort staff by"
+              value={staffSort}
+              onChange={(event) => {
+                setStaffSort(event.target.value as "file_number" | "surname");
+                setPage(1);
+              }}
+              className="rounded-lg border border-gray-200 py-2 pl-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+            >
+              <option value="file_number">Sort by file number</option>
+              <option value="surname">Sort by surname</option>
+            </select>
+          </div>
         </div>
 
         {loadingStaff && (
@@ -1696,7 +1858,7 @@ export default function AdminUsersPage() {
                 Unregistered Staff{" "}
                 {unregisteredSupported && (
                   <span className="text-gray-400 font-normal">
-                    ({unregisteredStaff.length})
+                    ({unregisteredHeaderCount})
                   </span>
                 )}
               </h3>
@@ -1720,10 +1882,26 @@ export default function AdminUsersPage() {
                 onChange={(event) => {
                   setUnregisteredSearch(event.target.value);
                   setSelectedUnregisteredIds([]);
+                  setUnregisteredPage(1);
                 }}
                 className="w-full rounded-lg border border-gray-200 py-2 pl-8 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c] sm:w-64"
               />
             </div>
+
+            <select
+              aria-label="Sort unregistered staff by"
+              value={unregisteredSort}
+              onChange={(event) => {
+                setUnregisteredSort(
+                  event.target.value as "file_number" | "surname",
+                );
+                setUnregisteredPage(1);
+              }}
+              className="rounded-lg border border-gray-200 py-2 pl-3 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+            >
+              <option value="file_number">Sort by file number</option>
+              <option value="surname">Sort by surname</option>
+            </select>
 
             {selectedUnregisteredIds.length > 0 && (
               <button
@@ -1782,11 +1960,34 @@ export default function AdminUsersPage() {
               );
             }
 
-            const allFilteredSelected = filteredUnregistered.every((record) =>
+            // Client-side pagination: the staff-records endpoint has no
+            // "unregistered-only" filter, so the full set is loaded and filtered
+            // here; we page the result for display.
+            // In server mode the loaded rows ARE the current page, so use the
+            // backend total and don't slice. Otherwise page the filtered set.
+            const totalFiltered = unregServerPaged
+              ? unregisteredTotal
+              : filteredUnregistered.length;
+            const totalUnregPages = Math.max(
+              1,
+              Math.ceil(totalFiltered / pageSize),
+            );
+            const currentUnregPage = Math.min(unregisteredPage, totalUnregPages);
+            const unregStart = (currentUnregPage - 1) * pageSize;
+            const pagedUnregistered = unregServerPaged
+              ? filteredUnregistered
+              : filteredUnregistered.slice(unregStart, unregStart + pageSize);
+            const firstUnregNumber = totalFiltered === 0 ? 0 : unregStart + 1;
+            const lastUnregNumber = unregServerPaged
+              ? unregStart + pagedUnregistered.length
+              : Math.min(unregStart + pageSize, totalFiltered);
+
+            const allFilteredSelected = pagedUnregistered.every((record) =>
               selectedUnregisteredIds.includes(record.id),
             );
 
             return (
+              <>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm whitespace-nowrap">
                   <thead className="bg-gray-50 text-gray-500">
@@ -1801,7 +2002,7 @@ export default function AdminUsersPage() {
                               setSelectedUnregisteredIds((current) =>
                                 current.filter(
                                   (id) =>
-                                    !filteredUnregistered.some(
+                                    !pagedUnregistered.some(
                                       (record) => record.id === id,
                                     ),
                                 ),
@@ -1810,7 +2011,7 @@ export default function AdminUsersPage() {
                               setSelectedUnregisteredIds((current) => [
                                 ...new Set([
                                   ...current,
-                                  ...filteredUnregistered.map(
+                                  ...pagedUnregistered.map(
                                     (record) => record.id,
                                   ),
                                 ]),
@@ -1832,7 +2033,7 @@ export default function AdminUsersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {filteredUnregistered.map((record) => (
+                    {pagedUnregistered.map((record) => (
                       <tr
                         key={record.id}
                         className={`bg-amber-50/40 ${
@@ -1912,6 +2113,48 @@ export default function AdminUsersPage() {
                   </tbody>
                 </table>
               </div>
+
+              <div className="flex items-center justify-between border-t border-gray-100 p-5 text-sm text-gray-500">
+                <p>
+                  Showing {firstUnregNumber}–{lastUnregNumber} of{" "}
+                  {totalFiltered}
+                  {unregisteredSearch.trim() ? " matching" : ""} record
+                  {totalFiltered === 1 ? "" : "s"}
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={currentUnregPage <= 1}
+                    onClick={() =>
+                      setUnregisteredPage((current) =>
+                        Math.max(1, current - 1),
+                      )
+                    }
+                    className="px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Prev
+                  </button>
+
+                  <span className="px-3 py-1 font-medium text-gray-700">
+                    Page {currentUnregPage} of {totalUnregPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    disabled={currentUnregPage >= totalUnregPages}
+                    onClick={() =>
+                      setUnregisteredPage((current) =>
+                        Math.min(totalUnregPages, current + 1),
+                      )
+                    }
+                    className="px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+              </>
             );
           })()}
       </div>
