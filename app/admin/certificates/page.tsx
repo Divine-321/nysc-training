@@ -105,6 +105,8 @@ export default function AdminCertificatesPage() {
   const [courseName, setCourseName] = useState("Leadership Development");
   const [cohortName, setCohortName] = useState("Induction");
   const [fileNumber, setFileNumber] = useState("NYSC/STAFF/001");
+  const [trainingStartDate, setTrainingStartDate] = useState(today);
+  const [trainingEndDate, setTrainingEndDate] = useState(today);
   const [certificateId, setCertificateId] = useState("NYSC-CERT-2026-0001");
   const [issuedAt, setIssuedAt] = useState(today);
 
@@ -172,6 +174,14 @@ export default function AdminCertificatesPage() {
   const formattedDate = useMemo(
     () => formatCertificateDate(issuedAt),
     [issuedAt],
+  );
+  const formattedStartDate = useMemo(
+    () => formatCertificateDate(trainingStartDate),
+    [trainingStartDate],
+  );
+  const formattedEndDate = useMemo(
+    () => formatCertificateDate(trainingEndDate),
+    [trainingEndDate],
   );
 
   const handlePrint = () => {
@@ -346,6 +356,30 @@ export default function AdminCertificatesPage() {
 
             <label className="block">
               <span className="mb-1 block text-sm font-semibold text-gray-700">
+                Training held from
+              </span>
+              <input
+                type="date"
+                value={trainingStartDate}
+                onChange={(event) => setTrainingStartDate(event.target.value)}
+                className="w-full rounded-lg border border-gray-200 p-3 text-sm outline-none focus:border-[#1a6b3c]"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-gray-700">
+                Training held to
+              </span>
+              <input
+                type="date"
+                value={trainingEndDate}
+                onChange={(event) => setTrainingEndDate(event.target.value)}
+                className="w-full rounded-lg border border-gray-200 p-3 text-sm outline-none focus:border-[#1a6b3c]"
+              />
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-semibold text-gray-700">
                 Certificate ID
               </span>
               <input
@@ -378,6 +412,8 @@ export default function AdminCertificatesPage() {
               cohortName={cohortName}
               certificateId={certificateId}
               issuedDate={formattedDate}
+              periodFrom={formattedStartDate}
+              periodTo={formattedEndDate}
             />
           </div>
         </section>

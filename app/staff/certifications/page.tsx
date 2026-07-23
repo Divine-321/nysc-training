@@ -328,6 +328,22 @@ export default function CertificationsPage() {
     window.print();
   };
 
+  // The certificate payload carries no training dates, but the programme it
+  // belongs to does. Match the selected certificate back to its course/cohort
+  // and read the training window from there, so the certificate can show
+  // "held from … to …".
+  const selectedProgramme = selectedCert
+    ? (staffCourses.find((staffCourse) =>
+        certificateMatchesCourse(selectedCert, staffCourse),
+      )?.cohortCourse ?? null)
+    : null;
+  const periodFrom = selectedProgramme?.start_date
+    ? formatDate(selectedProgramme.start_date)
+    : undefined;
+  const periodTo = selectedProgramme?.end_date
+    ? formatDate(selectedProgramme.end_date)
+    : undefined;
+
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="print:hidden">
@@ -500,6 +516,8 @@ export default function CertificationsPage() {
                       cohortName={selectedCert.cohort ?? ""}
                       certificateId={selectedCert.certificate_id}
                       issuedDate={formatDate(selectedCert.issued_at)}
+                      periodFrom={periodFrom}
+                      periodTo={periodTo}
                     />
                   </div>
                 </div>

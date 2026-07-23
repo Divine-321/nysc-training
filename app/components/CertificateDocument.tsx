@@ -8,6 +8,10 @@ export type CertificateDocumentProps = {
   certificateId: string;
   /** Already-formatted issue date, e.g. "23 July 2026". */
   issuedDate: string;
+  /** Training start/end, already formatted. Both must be set for the
+   *  "held from … to …" line to show; otherwise it is omitted. */
+  periodFrom?: string;
+  periodTo?: string;
 };
 
 // Single source of truth for the certificate design. Rendered identically on
@@ -27,6 +31,8 @@ export default function CertificateDocument({
   cohortName,
   certificateId,
   issuedDate,
+  periodFrom,
+  periodTo,
 }: CertificateDocumentProps) {
   return (
     <>
@@ -59,7 +65,7 @@ export default function CertificateDocument({
         <h1 className="mb-1 max-w-full break-words font-serif text-2xl font-bold uppercase leading-tight tracking-wide text-[#1a6b3c]">
           National Youth Service Corps
         </h1>
-        <p className="mb-4 text-sm font-semibold uppercase tracking-widest text-gray-500">
+        <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-gray-500">
           Certificate of Training
         </p>
 
@@ -69,7 +75,7 @@ export default function CertificateDocument({
         <h2 className="mb-1 max-w-full break-words border-b-2 border-gray-300 px-6 pb-1 font-serif text-4xl font-bold leading-tight text-gray-900">
           {recipientName || "Staff Name"}
         </h2>
-        <p className="mb-4 text-sm font-semibold uppercase tracking-widest text-gray-600">
+        <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-gray-600">
           {fileNumber || "N/A"}
         </p>
 
@@ -82,8 +88,20 @@ export default function CertificateDocument({
         <p className="text-sm font-semibold text-gray-500">
           {cohortName ? `${cohortName} Cohort` : ""}
         </p>
+        {periodFrom && periodTo ? (
+          <p className="mt-1 text-sm italic leading-snug text-gray-600">
+            held from{" "}
+            <span className="font-semibold not-italic text-gray-700">
+              {periodFrom}
+            </span>{" "}
+            to{" "}
+            <span className="font-semibold not-italic text-gray-700">
+              {periodTo}
+            </span>
+          </p>
+        ) : null}
 
-        <div className="mt-auto grid w-full max-w-full grid-cols-3 items-end gap-4 pt-6">
+        <div className="mt-auto grid w-full max-w-full grid-cols-3 items-end gap-4 pt-4">
           <div className="flex flex-col items-center">
             <span className="pb-1 font-serif text-lg font-semibold italic leading-none text-gray-900">
               {issuedDate}
