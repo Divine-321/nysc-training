@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Award,
   Download,
   ExternalLink,
+  Info,
   PlayCircle,
   Printer,
   Target,
@@ -28,6 +28,7 @@ import {
 import RequirementChecklist, {
   type RequirementItem,
 } from "@/app/components/RequirementChecklist";
+import CertificateDocument from "@/app/components/CertificateDocument";
 import { formatDate as formatDateMedium } from "@/app/lib/format";
 
 type Certificate = {
@@ -432,33 +433,46 @@ export default function CertificationsPage() {
           </div>
 
           <div className="flex flex-col items-center lg:w-2/3 print:w-full">
-            <div className="flex w-full items-center justify-between rounded-t-2xl border border-b-0 border-gray-200 bg-white p-5 print:hidden">
-              <span className="text-sm font-bold text-gray-700">
-                Certificate Preview
-              </span>
-              <div className="flex gap-3">
-                <button
-                  onClick={handlePrint}
-                  className="flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-200"
-                >
-                  <Printer size={16} />
-                  Print
-                </button>
-                <button
-                  onClick={handleDownload}
-                  className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
-                >
-                  {selectedCert.pdf_url ? (
-                    <ExternalLink size={16} />
-                  ) : (
-                    <Download size={16} />
-                  )}
-                  {selectedCert.pdf_url ? "Open PDF" : "Download PDF"}
-                </button>
+            <div className="w-full rounded-t-2xl border border-b-0 border-gray-200 bg-white p-5 print:hidden">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-bold text-gray-700">
+                  Certificate Preview
+                </span>
+                <div className="flex gap-3">
+                  <button
+                    onClick={handlePrint}
+                    className="flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-200"
+                  >
+                    <Printer size={16} />
+                    Print
+                  </button>
+                  <button
+                    onClick={handleDownload}
+                    className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
+                  >
+                    {selectedCert.pdf_url ? (
+                      <ExternalLink size={16} />
+                    ) : (
+                      <Download size={16} />
+                    )}
+                    {selectedCert.pdf_url ? "Open PDF" : "Download PDF"}
+                  </button>
+                </div>
               </div>
+
+              {!selectedCert.pdf_url && (
+                <p className="mt-2.5 flex items-center gap-1.5 text-[11px] leading-snug text-gray-400">
+                  <Info size={13} className="shrink-0" />
+                  <span>
+                    Printing? Turn off &ldquo;Headers and footers&rdquo; in the
+                    print dialog&rsquo;s &ldquo;More settings&rdquo; for a clean
+                    certificate.
+                  </span>
+                </p>
+              )}
             </div>
 
-            <div className="w-full rounded-b-2xl border border-gray-200 bg-gray-100 p-3 sm:p-8 print:min-h-screen print:border-none print:bg-white print:p-0 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
+            <div className="w-full rounded-b-2xl border border-gray-200 bg-gray-100 p-3 sm:p-8 print:flex print:min-h-screen print:items-center print:justify-center print:border-none print:bg-white print:p-0 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]">
               {/* The certificate is a fixed 800×565 design. We measure this
                   wrapper (certScale = width / 800) and scale the canvas with a
                   plain inline transform, so the whole certificate always fits —
@@ -479,96 +493,14 @@ export default function CertificationsPage() {
                       transform: `scale(${certScale})`,
                     }}
                   >
-                <div className="absolute inset-5 border-[3px] border-[#1a6b3c] p-2">
-                  <div className="absolute inset-0 m-1 border border-[#1a6b3c]/30" />
-                </div>
-                <div className="absolute left-5 top-5 h-10 w-10 border-l-4 border-t-4 border-[#1a6b3c]" />
-                <div className="absolute right-5 top-5 h-10 w-10 border-r-4 border-t-4 border-[#1a6b3c]" />
-                <div className="absolute bottom-5 left-5 h-10 w-10 border-b-4 border-l-4 border-[#1a6b3c]" />
-                <div className="absolute bottom-5 right-5 h-10 w-10 border-b-4 border-r-4 border-[#1a6b3c]" />
-
-                <div className="absolute right-12 top-10 z-20 text-right">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-                    Certificate ID
-                  </p>
-                  <p className="font-serif text-sm font-semibold text-gray-700">
-                    {selectedCert.certificate_id}
-                  </p>
-                </div>
-
-                <div className="relative z-10 flex h-full flex-col items-center justify-center px-12 py-10 text-center">
-                  <Image
-                    src="/images/nysc-logo.png"
-                    alt="NYSC Logo"
-                    width={72}
-                    height={72}
-                    className="mb-4 opacity-90"
-                  />
-                  <h1 className="mb-2 font-serif text-3xl font-bold uppercase tracking-widest text-[#1a6b3c]">
-                    Certificate of Completion
-                  </h1>
-                  <p className="mb-6 text-sm font-medium uppercase tracking-widest text-gray-500">
-                    National Youth Service Corps E-Training
-                  </p>
-                  <p className="mb-3 text-lg italic text-gray-700">
-                    This is to proudly certify that
-                  </p>
-                  <h2 className="mb-2 inline-block max-w-full break-words border-b-2 border-gray-300 px-12 pb-2 font-serif text-4xl font-bold text-gray-900">
-                    {selectedCert.staff_name}
-                  </h2>
-                  <p className="mb-5 text-sm font-semibold uppercase tracking-widest text-gray-600">
-                    File Number: {selectedCert.file_number}
-                  </p>
-                  <p className="mb-2 text-lg italic text-gray-700">
-                    has successfully completed the training course
-                  </p>
-                  <h3 className="mb-2 max-w-xl text-2xl font-bold text-[#1a6b3c]">
-                    {selectedCert.course_title}
-                  </h3>
-                  {selectedCert.cohort ? (
-                    <p className="mb-8 text-sm font-semibold text-gray-500">
-                      {selectedCert.cohort} Cohort
-                    </p>
-                  ) : (
-                    <div className="mb-8" />
-                  )}
-
-                  <div className="mt-auto flex w-full items-end justify-between px-16">
-                    <div className="flex w-48 flex-col items-center">
-                      <div className="flex h-10 items-end">
-                        <span className="font-serif text-xl italic text-gray-800">
-                          {formatDate(selectedCert.issued_at)}
-                        </span>
-                      </div>
-                      <div className="mt-2 w-full border-t border-gray-400 pt-2">
-                        <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
-                          Date Issued
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex h-28 w-28 items-center justify-center rounded-full border-4 border-yellow-200 bg-gradient-to-br from-yellow-300 to-yellow-600 shadow-lg">
-                      <div className="flex h-24 w-24 items-center justify-center rounded-full border border-yellow-700">
-                        <span className="text-center text-[11px] font-bold uppercase leading-tight tracking-widest text-yellow-900">
-                          Official
-                          <br />
-                          NYSC
-                          <br />
-                          Seal
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex w-48 flex-col items-center">
-                      <div className="h-10" />
-                      <div className="mt-2 w-full border-t border-gray-400 pt-2">
-                        <p className="text-xs font-bold uppercase tracking-widest text-gray-500">
-                          Authorized Signature
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                    </div>
+                    <CertificateDocument
+                      recipientName={selectedCert.staff_name}
+                      fileNumber={selectedCert.file_number}
+                      courseName={selectedCert.course_title}
+                      cohortName={selectedCert.cohort ?? ""}
+                      certificateId={selectedCert.certificate_id}
+                      issuedDate={formatDate(selectedCert.issued_at)}
+                    />
                   </div>
                 </div>
               </div>

@@ -62,17 +62,20 @@ button:disabled,
      transform. Reset that for print and lay it out at full page size.
      !important is required so these rules override the inline styles. */
   .cert-print-box {
-    height: auto !important;
+    height: 565px !important;
     overflow: visible !important;
   }
 
+  /* Render at the exact 800×565 design size (no stretching) and keep
+     position: relative so the frame and footer stay anchored to the canvas —
+     otherwise the "Date of issue"/"Authorized signature" labels spill below
+     the border. */
   #certificate-canvas {
-    position: static !important;
+    position: relative !important;
     transform: none !important;
-    width: 100% !important;
-    max-width: 1000px !important;
-    height: auto !important;
-    aspect-ratio: 800 / 565 !important;
+    width: 800px !important;
+    height: 565px !important;
+    max-width: none !important;
     margin: 0 auto !important;
     box-shadow: none !important;
   }
