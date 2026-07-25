@@ -11,49 +11,142 @@ import {
 } from "lucide-react";
 import {
   loadAssessmentAttempts,
+  loadStaffCourses,
+  type Assessment,
   type AssessmentAttempt,
 } from "@/app/lib/staff-learning";
+import { readApiList } from "@/app/lib/portal-api";
 import AttemptStatusChip from "@/app/components/AttemptStatusChip";
 import { formatDateTime as formatDate } from "@/app/lib/format";
+
+function assessmentTypeLabel(type: string | undefined): string | null {
+  if (type === "PRE_TEST") return "Pre-test";
+  if (type === "POST_TEST") return "Post-assessment";
+  return null;
+}
 
 // Results come from the server only (no browser storage): every row is an
 // AssessmentAttempt returned by the attempts API. Until the backend ships
 // that endpoint this list is empty and the empty state explains why.
 export default function ResultPage() {
   const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [courseByEnrollment, setCourseByEnrollment] = useState<
+    Map<number, { title: string; cohort: string }>
+  >(new Map());
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchAttempts = async () => {
-      setAttempts(await loadAssessmentAttempts());
+    const fetchData = async () => {
+      const [attemptList, staffCourses, assessmentPayload] = await Promise.all([
+        loadAssessmentAttempts(),
+        loadStaffCourses().catch(() => []),
+        fetch("/api/training/assessments", { cache: "no-store" })
+          .then((response) => (response.ok ? response.json() : null))
+          .catch(() => null),
+      ]);
+
+      setAttempts(attemptList);
+      setAssessments(readApiList<Assessment>(assessmentPayload));
+
+      // Map each enrollment to its course title + cohort, so an attempt (which
+      // now carries its enrollment) shows which course AND cohort it belongs to
+      // — the same course can run in several cohorts.
+      const map = new Map<number, { title: string; cohort: string }>();
+      for (const staffCourse of staffCourses) {
+        if (staffCourse.enrollment.id) {
+          map.set(staffCourse.enrollment.id, {
+            title: staffCourse.enrollment.course_title || "",
+            cohort: staffCourse.enrollment.cohort_name || "",
+          });
+        }
+      }
+      setCourseByEnrollment(map);
       setLoading(false);
     };
 
-    void fetchAttempts();
+    void fetchData();
   }, []);
 
-  const filteredAttempts = useMemo(() => {
+  const assessmentById = useMemo(() => {
+    const map = new Map<number, Assessment>();
+    for (const assessment of assessments) map.set(assessment.id, assessment);
+    return map;
+  }, [assessments]);
+
+  // The backend returns attempt_number as null, so every row would show #1.
+  // Derive the real number: within each enrollment + assessment, order the
+  // attempts by time and count them 1, 2, 3…
+  const attemptNumberById = useMemo(() => {
+    const groups = new Map<string, AssessmentAttempt[]>();
+    for (const attempt of attempts) {
+      const key = `${attempt.enrollment}:${attempt.assessment}`;
+      const group = groups.get(key) ?? [];
+      group.push(attempt);
+      groups.set(key, group);
+    }
+
+    const numberById = new Map<number, number>();
+    for (const group of groups.values()) {
+      group
+        .slice()
+        .sort((first, second) =>
+          (first.submitted_at ?? first.submission_time ?? "").localeCompare(
+            second.submitted_at ?? second.submission_time ?? "",
+          ),
+        )
+        .forEach((attempt, index) => numberById.set(attempt.id, index + 1));
+    }
+    return numberById;
+  }, [attempts]);
+
+  // The attempts payload has no course/assessment names, so resolve them here:
+  // the course + cohort from the attempt's enrollment, and the assessment's
+  // name + type (pre-test vs post-assessment) from the assessment id.
+  const rows = useMemo(
+    () =>
+      attempts.map((attempt) => {
+        const assessment = assessmentById.get(attempt.assessment);
+        const typeLabel = assessmentTypeLabel(
+          assessment?.type ?? attempt.assessment_type,
+        );
+        const name =
+          assessment?.title ||
+          attempt.assessment_title ||
+          typeLabel ||
+          `Assessment #${attempt.assessment}`;
+        const course = courseByEnrollment.get(attempt.enrollment);
+        const courseTitle = course?.title || attempt.course_title || "";
+        const cohort = course?.cohort || "";
+        const attemptNumber =
+          attemptNumberById.get(attempt.id) ?? attempt.attempt_number;
+        return { attempt, typeLabel, name, courseTitle, cohort, attemptNumber };
+      }),
+    [attempts, assessmentById, courseByEnrollment, attemptNumberById],
+  );
+
+  const filteredRows = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    const sorted = attempts
-      .slice()
-      .sort((first, second) =>
-        (second.submitted_at ?? second.submission_time ?? "").localeCompare(
-          first.submitted_at ?? first.submission_time ?? "",
-        ),
-      );
+    const sorted = rows.slice().sort((first, second) =>
+      (
+        second.attempt.submitted_at ??
+        second.attempt.submission_time ??
+        ""
+      ).localeCompare(
+        first.attempt.submitted_at ?? first.attempt.submission_time ?? "",
+      ),
+    );
 
     if (!normalizedSearch) return sorted;
 
-    return sorted.filter((attempt) =>
-      `${attempt.course_title ?? ""} ${attempt.assessment_title ?? ""} ${
-        attempt.assessment_type ?? ""
-      }`
+    return sorted.filter(({ courseTitle, cohort, name, typeLabel }) =>
+      `${courseTitle} ${cohort} ${name} ${typeLabel ?? ""}`
         .toLowerCase()
         .includes(normalizedSearch),
     );
-  }, [attempts, search]);
+  }, [rows, search]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -89,7 +182,7 @@ export default function ResultPage() {
             <p className="p-8 text-center text-sm text-gray-500">
               Loading results...
             </p>
-          ) : filteredAttempts.length === 0 ? (
+          ) : filteredRows.length === 0 ? (
             <div className="p-8 text-center">
               <Award className="mx-auto mb-3 text-gray-300" size={42} />
               <p className="font-semibold text-gray-700">
@@ -119,32 +212,63 @@ export default function ResultPage() {
               </thead>
 
               <tbody className="divide-y divide-gray-100">
-                {filteredAttempts.map((attempt) => (
-                  <tr key={attempt.id} className="transition hover:bg-gray-50">
+                {filteredRows.map(
+                  ({
+                    attempt,
+                    typeLabel,
+                    name,
+                    courseTitle,
+                    cohort,
+                    attemptNumber,
+                  }) => (
+                    <tr key={attempt.id} className="transition hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-50 text-[#1a6b3c]">
                           <Award size={20} />
                         </div>
-                        <span
-                          className="max-w-xs truncate font-semibold text-gray-800"
-                          title={attempt.course_title}
-                        >
-                          {attempt.course_title || "—"}
-                        </span>
+                        <div className="min-w-0">
+                          <span
+                            className="block max-w-xs truncate font-semibold text-gray-800"
+                            title={courseTitle}
+                          >
+                            {courseTitle || "—"}
+                          </span>
+                          {cohort && (
+                            <span className="text-xs font-medium text-gray-400">
+                              {cohort} cohort
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-2 font-medium text-gray-600">
-                        <FileText size={16} className="text-gray-400" />
-                        {attempt.assessment_title ||
-                          attempt.assessment_type ||
-                          `Assessment #${attempt.assessment}`}
+                      <div className="flex items-center gap-2.5">
+                        <FileText
+                          size={16}
+                          className="shrink-0 text-gray-400"
+                        />
+                        <div className="flex flex-col gap-0.5">
+                          {typeLabel && (
+                            <span
+                              className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                typeLabel === "Pre-test"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-green-100 text-[#1a6b3c]"
+                              }`}
+                            >
+                              {typeLabel}
+                            </span>
+                          )}
+                          <span className="font-medium text-gray-700">
+                            {name}
+                          </span>
+                        </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <span className="flex items-center gap-1.5 font-medium text-gray-600">
-                        #{attempt.attempt_number}
+                        #{attemptNumber}
                         {attempt.is_official_result && (
                           <span title="Official result (best attempt)">
                             <Star
@@ -204,7 +328,7 @@ export default function ResultPage() {
         </div>
 
         <div className="flex items-center justify-between border-t border-gray-100 p-5 text-sm text-gray-500">
-          <p>Showing {filteredAttempts.length} attempt(s)</p>
+          <p>Showing {filteredRows.length} attempt(s)</p>
         </div>
       </div>
     </div>

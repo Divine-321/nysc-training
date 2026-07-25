@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Award, BarChart3, Printer } from "lucide-react";
+import {
+  Award,
+  BarChart3,
+  ExternalLink,
+  Eye,
+  Printer,
+  Search,
+} from "lucide-react";
 import { extractErrorMessage, readApiList } from "@/app/lib/portal-api";
 import CertificateDocument from "@/app/components/CertificateDocument";
 
@@ -11,6 +18,8 @@ type IssuedCertificate = {
   staff_name: string;
   file_number: string;
   course_title: string;
+  /** The training's cohort (e.g. "July"), when the backend supplies it. */
+  cohort?: string;
   issued_at: string;
   pdf_url: string | null;
 };
@@ -118,6 +127,7 @@ export default function AdminCertificatesPage() {
   >([]);
   const [loadingReport, setLoadingReport] = useState(true);
   const [reportError, setReportError] = useState("");
+  const [certSearch, setCertSearch] = useState("");
 
   useEffect(() => {
     const loadReport = async () => {
@@ -184,19 +194,52 @@ export default function AdminCertificatesPage() {
     [trainingEndDate],
   );
 
+  const filteredCertificates = useMemo(() => {
+    const query = certSearch.trim().toLowerCase();
+    if (!query) return issuedCertificates;
+
+    return issuedCertificates.filter((certificate) =>
+      [
+        certificate.staff_name,
+        certificate.file_number,
+        certificate.course_title,
+        certificate.certificate_id,
+        certificate.cohort ?? "",
+      ].some((value) => (value ?? "").toLowerCase().includes(query)),
+    );
+  }, [issuedCertificates, certSearch]);
+
   const handlePrint = () => {
     window.print();
+  };
+
+  // Loads a real issued certificate into the preview below so it can be viewed
+  // and printed. Certificates carry no training dates, so the "held from … to
+  // …" line is hidden (blank dates) rather than showing a placeholder.
+  const viewCertificate = (certificate: IssuedCertificate) => {
+    setStaffName(certificate.staff_name);
+    setFileNumber(certificate.file_number);
+    setCourseName(certificate.course_title);
+    setCohortName(certificate.cohort ?? "");
+    setCertificateId(certificate.certificate_id);
+    setIssuedAt(
+      certificate.issued_at ? certificate.issued_at.slice(0, 10) : today,
+    );
+    setTrainingStartDate("");
+    setTrainingEndDate("");
+
+    document
+      .getElementById("certificate-preview")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center print:hidden">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">
-            Certificate Design
-          </h2>
+          <h2 className="text-2xl font-bold text-gray-800">Certificates</h2>
           <p className="text-sm text-gray-500">
-            Preview what staff certificates will look like after completion.
+            View every certificate issued to staff, and preview the design.
           </p>
         </div>
 
@@ -205,9 +248,125 @@ export default function AdminCertificatesPage() {
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a6b3c] px-5 py-3 text-sm font-semibold text-white shadow-sm"
         >
           <Printer size={18} />
-          Print preview
+          Print certificate
         </button>
       </div>
+
+      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm print:hidden">
+        <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-green-50 p-3 text-[#1a6b3c]">
+              <Award size={22} />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800">Issued certificates</h3>
+              <p className="text-xs text-gray-500">
+                Every certificate generated for staff. Click View to open one in
+                the preview below.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="hidden shrink-0 rounded-full bg-[#f0f7f3] px-4 py-2 text-sm font-bold text-[#1a6b3c] sm:inline">
+              {issuedCertificates.length} total
+            </span>
+            <div className="relative w-full sm:w-64">
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                value={certSearch}
+                onChange={(event) => setCertSearch(event.target.value)}
+                placeholder="Search name, file no, course…"
+                className="w-full rounded-lg border border-gray-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#1a6b3c]"
+              />
+            </div>
+          </div>
+        </div>
+
+        {reportError && (
+          <div className="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">
+            {reportError}
+          </div>
+        )}
+
+        {loadingReport ? (
+          <p className="py-6 text-center text-sm text-gray-500">
+            Loading certificates…
+          </p>
+        ) : issuedCertificates.length === 0 ? (
+          <p className="py-6 text-center text-sm text-gray-500">
+            No certificates have been issued yet.
+          </p>
+        ) : filteredCertificates.length === 0 ? (
+          <p className="py-6 text-center text-sm text-gray-500">
+            No certificates match &ldquo;{certSearch}&rdquo;.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-gray-50 font-medium text-gray-500">
+                <tr>
+                  <th className="px-4 py-3">Staff</th>
+                  <th className="px-4 py-3">File No</th>
+                  <th className="px-4 py-3">Course</th>
+                  <th className="px-4 py-3">Cohort</th>
+                  <th className="px-4 py-3">Certificate ID</th>
+                  <th className="px-4 py-3">Issued</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredCertificates.map((certificate) => (
+                  <tr key={certificate.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-semibold text-gray-800">
+                      {certificate.staff_name}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {certificate.file_number}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {certificate.course_title}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {certificate.cohort || "—"}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                      {certificate.certificate_id}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {formatCertificateDate(
+                        certificate.issued_at?.slice(0, 10) ?? "",
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => viewCertificate(certificate)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-100"
+                        >
+                          <Eye size={14} /> View
+                        </button>
+                        {certificate.pdf_url && (
+                          <a
+                            href={certificate.pdf_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-[#1a6b3c] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#145530]"
+                          >
+                            <ExternalLink size={14} /> PDF
+                          </a>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm print:hidden">
         <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
@@ -295,7 +454,10 @@ export default function AdminCertificatesPage() {
         )}
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[360px_1fr] print:grid-cols-1 print:gap-0">
+      <div
+        id="certificate-preview"
+        className="grid gap-6 lg:grid-cols-[360px_1fr] print:grid-cols-1 print:gap-0 scroll-mt-20"
+      >
         <section className="rounded-2xl bg-white p-6 shadow-sm print:hidden">
           <div className="mb-5 flex items-center gap-3">
             <div className="rounded-xl bg-green-50 p-3 text-[#1a6b3c]">
@@ -412,8 +574,8 @@ export default function AdminCertificatesPage() {
               cohortName={cohortName}
               certificateId={certificateId}
               issuedDate={formattedDate}
-              periodFrom={formattedStartDate}
-              periodTo={formattedEndDate}
+              periodFrom={trainingStartDate ? formattedStartDate : undefined}
+              periodTo={trainingEndDate ? formattedEndDate : undefined}
             />
           </div>
         </section>

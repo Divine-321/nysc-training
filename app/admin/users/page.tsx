@@ -299,6 +299,102 @@ function formatCohortAssignmentError(message: string) {
 // side. This is the only line to change to switch over.
 const UNREGISTERED_SERVER_PAGINATION = true;
 
+// --- Full-list fetch + cache -------------------------------------------------
+// The staff lists have to be downloaded whole to search, because the backend
+// has no `?search=` yet (see backend request). Two optimisations make that
+// bearable: (1) fetch the pages in PARALLEL using the first page's `count`,
+// instead of one-at-a-time; (2) cache the assembled list for a short window so
+// re-entering search or revisiting the page doesn't re-download everything.
+// Cache keys include a caller-supplied token (the reload key), so any mutation
+// that bumps it transparently pulls fresh data.
+const FULL_LIST_TTL_MS = 60_000;
+const PAGE_SIZE_FOR_FULL = 100;
+
+class UnsupportedEndpointError extends Error {
+  constructor() {
+    super("UNSUPPORTED");
+    this.name = "UnsupportedEndpoint";
+  }
+}
+
+type PagePayload<T> = {
+  data?: { results?: T[]; next?: string | null; count?: number };
+} | null;
+
+// Fetches every page of a DRF-paginated endpoint. The first page's `count`
+// tells us the total, so pages 2..N are requested concurrently. Falls back to
+// sequential `next` paging when no count is present. Throws
+// UnsupportedEndpointError on 404/405 so callers can flag the feature off.
+async function fetchAllPages<T>(
+  buildUrl: (pageNumber: number) => string,
+): Promise<T[]> {
+  const fetchPage = async (pageNumber: number): Promise<PagePayload<T>> => {
+    const response = await fetch(buildUrl(pageNumber), { cache: "no-store" });
+
+    if (response.status === 404 || response.status === 405) {
+      throw new UnsupportedEndpointError();
+    }
+
+    const payload = (await response.json().catch(() => null)) as PagePayload<T>;
+
+    if (!response.ok) {
+      throw new Error(extractErrorMessage(payload, "Could not load records."));
+    }
+
+    return payload;
+  };
+
+  const first = await fetchPage(1);
+  const results: T[] = [...(first?.data?.results ?? [])];
+  const count = first?.data?.count;
+
+  if (typeof count === "number" && count > results.length) {
+    const totalPages = Math.ceil(count / PAGE_SIZE_FOR_FULL);
+    const rest = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, index) =>
+        fetchPage(index + 2),
+      ),
+    );
+    for (const page of rest) results.push(...(page?.data?.results ?? []));
+  } else if (first?.data?.next) {
+    // No usable count — page sequentially via `next` as a safety net.
+    let pageNumber = 2;
+    let hasMore = true;
+    while (hasMore) {
+      const page = await fetchPage(pageNumber);
+      results.push(...(page?.data?.results ?? []));
+      hasMore = Boolean(page?.data?.next);
+      pageNumber += 1;
+    }
+  }
+
+  return results;
+}
+
+const fullListCache = new Map<string, { at: number; data: unknown[] }>();
+
+async function cachedFetchAllPages<T>(
+  cacheKey: string,
+  buildUrl: (pageNumber: number) => string,
+): Promise<T[]> {
+  const now = Date.now();
+  const hit = fullListCache.get(cacheKey);
+  if (hit && now - hit.at < FULL_LIST_TTL_MS) {
+    return hit.data as T[];
+  }
+
+  const data = await fetchAllPages<T>(buildUrl);
+
+  // Prune expired snapshots so the cache doesn't accumulate old lists after
+  // mutations (which change the cache key).
+  for (const [key, entry] of fullListCache) {
+    if (now - entry.at >= FULL_LIST_TTL_MS) fullListCache.delete(key);
+  }
+
+  fullListCache.set(cacheKey, { at: now, data });
+  return data;
+}
+
 export default function AdminUsersPage() {
   const { confirm, dialog } = useConfirm();
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
@@ -441,18 +537,21 @@ export default function AdminUsersPage() {
     };
 
     const fetchAllStaff = async () => {
-      const allResults: AuthUser[] = [];
-      let currentPage = 1;
-      let hasMore = true;
+      // Pages fetched in parallel and cached (see cachedFetchAllPages). Keyed by
+      // the reload key so a mutation refreshes it; by sort so each order caches
+      // separately.
+      const users = await cachedFetchAllPages<AuthUser>(
+        `staff:${staffReloadKey}:${staffSort}`,
+        (pageNumber) =>
+          `/api/accounts/staff?page=${pageNumber}&page_size=${PAGE_SIZE_FOR_FULL}&sortBy=${staffSort}`,
+      );
 
-      while (hasMore) {
-        const payload = await fetchStaffPage(currentPage, 100);
-        allResults.push(...(payload?.data?.results ?? []));
-        hasMore = Boolean(payload?.data?.next);
-        currentPage += 1;
-      }
-
-      return { users: allResults, count: allResults.length, hasNext: false, hasPrevious: false };
+      return {
+        users,
+        count: users.length,
+        hasNext: false,
+        hasPrevious: false,
+      };
     };
 
     const fetchCurrentPage = async () => {
@@ -840,37 +939,14 @@ export default function AdminUsersPage() {
       setLoadingUnregistered(true);
       try {
         if (isSearchingUnregistered) {
-          const allRecords: UnregisteredStaffRecord[] = [];
-          let currentPage = 1;
-          let hasMore = true;
-
-          while (hasMore) {
-            const response = await fetch(
-              `/api/accounts/staff-records?page=${currentPage}&page_size=100&sortBy=${unregisteredSort}&is_registered=false`,
-              { cache: "no-store" },
+          // Pages fetched in parallel and cached (see cachedFetchAllPages),
+          // instead of one slow page at a time.
+          const allRecords =
+            await cachedFetchAllPages<UnregisteredStaffRecord>(
+              `records:${staffReloadKey}:${unregisteredSort}`,
+              (pageNumber) =>
+                `/api/accounts/staff-records?page=${pageNumber}&page_size=${PAGE_SIZE_FOR_FULL}&sortBy=${unregisteredSort}&is_registered=false`,
             );
-
-            if (response.status === 404 || response.status === 405) {
-              setUnregisteredSupported(false);
-              setUnregisteredStaff([]);
-              return;
-            }
-
-            const payload = await parse(response);
-
-            if (!response.ok) {
-              throw new Error(
-                extractErrorMessage(
-                  payload,
-                  "Could not load unregistered staff records.",
-                ),
-              );
-            }
-
-            allRecords.push(...(payload?.data?.results ?? []));
-            hasMore = Boolean(payload?.data?.next);
-            currentPage += 1;
-          }
 
           setUnregisteredSupported(true);
           // Defensive: keep only unregistered rows even though we asked the
@@ -914,11 +990,18 @@ export default function AdminUsersPage() {
         setUnregisteredTotal(payload?.data?.count ?? 0);
         setUnregisteredError("");
       } catch (loadError) {
-        setUnregisteredError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Could not load unregistered staff records.",
-        );
+        if (loadError instanceof UnsupportedEndpointError) {
+          // Endpoint not available on this backend — flag the feature off
+          // rather than showing an error.
+          setUnregisteredSupported(false);
+          setUnregisteredStaff([]);
+        } else {
+          setUnregisteredError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Could not load unregistered staff records.",
+          );
+        }
       } finally {
         setLoadingUnregistered(false);
       }
