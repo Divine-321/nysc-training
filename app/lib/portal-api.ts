@@ -1,7 +1,21 @@
-const DEFAULT_API_BASE_URL = "https://web-production-84896.up.railway.app";
+// Which backend this frontend talks to. Set it per environment:
+//   local dev  -> .env.local (copy .env.example)
+//   Vercel     -> the project's environment variables
+//
+// There is deliberately no fallback. A missing value has to fail loudly,
+// because the only sensible default would be production - and a test or
+// preview deploy silently reading and writing the production database is far
+// worse than a build that refuses to start.
+const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? DEFAULT_API_BASE_URL;
+if (!configuredApiBaseUrl) {
+  throw new Error(
+    "NEXT_PUBLIC_API_BASE_URL is not set. Copy .env.example to .env.local for " +
+      "local development, or set it in the Vercel project settings.",
+  );
+}
+
+export const API_BASE_URL = configuredApiBaseUrl;
 
 export function resolveMediaUrl(
   url: string | null | undefined,
