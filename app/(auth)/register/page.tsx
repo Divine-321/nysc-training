@@ -23,7 +23,16 @@ import { STAFF_MANUAL } from "@/app/lib/manuals";
 const LOOKUP_DEBOUNCE_MS = 500;
 
 type FieldErrors = Partial<
-  Record<"fileNo" | "email" | "phone" | "password" | "photo" | "otp", string>
+  Record<
+    | "fileNo"
+    | "email"
+    | "phone"
+    | "password"
+    | "confirmPassword"
+    | "photo"
+    | "otp",
+    string
+  >
 >;
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
@@ -37,6 +46,7 @@ const isValidPhone = (value: string) => {
 export default function RegisterPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formData, setFormData] = useState({
     surname: "",
     otherNames: "",
@@ -44,6 +54,7 @@ export default function RegisterPage() {
     email: "",
     phone: "",
     password: "",
+    confirmPassword: "",
     otp: "",
   });
   const [error, setError] = useState("");
@@ -208,6 +219,12 @@ export default function RegisterPage() {
       errors.password = "A password is required.";
     } else if (formData.password.length < 8) {
       errors.password = "Password must be at least 8 characters.";
+    }
+
+    if (!formData.confirmPassword) {
+      errors.confirmPassword = "Re-enter your password to confirm it.";
+    } else if (formData.confirmPassword !== formData.password) {
+      errors.confirmPassword = "Both passwords must match.";
     }
 
     return errors;
@@ -618,6 +635,52 @@ export default function RegisterPage() {
                 {fieldErrors.password && (
                   <p className="text-xs text-red-600 mt-1">
                     {fieldErrors.password}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label
+                  htmlFor="register-confirm-password"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Confirm password <span className="text-red-600">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    id="register-confirm-password"
+                    type={showConfirmPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    placeholder="Re-enter your password"
+                    value={formData.confirmPassword}
+                    onChange={(e) => {
+                      setFormData({
+                        ...formData,
+                        confirmPassword: e.target.value,
+                      });
+                      clearFieldError("confirmPassword");
+                    }}
+                    className={`${inputClass("confirmPassword")} pr-12`}
+                  />
+                  <button
+                    type="button"
+                    aria-label={
+                      showConfirmPassword ? "Hide password" : "Show password"
+                    }
+                    aria-pressed={showConfirmPassword}
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-nysc-green transition"
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff size={18} />
+                    ) : (
+                      <Eye size={18} />
+                    )}
+                  </button>
+                </div>
+                {fieldErrors.confirmPassword && (
+                  <p className="text-xs text-red-600 mt-1">
+                    {fieldErrors.confirmPassword}
                   </p>
                 )}
               </div>

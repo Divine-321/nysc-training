@@ -54,7 +54,7 @@ export default function ManageCohortPage() {
         await Promise.all([
           fetch(`/api/training/cohorts/${cohortId}`, { cache: "no-store" }),
           fetch("/api/training/courses", { cache: "no-store" }),
-          fetch("/api/training/cohort-courses", { cache: "no-store" }),
+          fetch("/api/training/programmes", { cache: "no-store" }),
           fetch("/api/training/live-sessions", { cache: "no-store" }),
         ]);
 
@@ -186,7 +186,7 @@ export default function ManageCohortPage() {
     const results = await Promise.all(
       fullSelection.map(async (courseId) => {
         try {
-          const response = await fetch("/api/training/cohort-courses", {
+          const response = await fetch("/api/training/programmes", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ cohort: cohortId, course: courseId }),
@@ -264,7 +264,7 @@ export default function ManageCohortPage() {
 
     try {
       const response = await fetch(
-        `/api/training/cohort-courses/${assignment.id}`,
+        `/api/training/programmes/${assignment.id}`,
         { method: "DELETE" },
       );
 
@@ -305,6 +305,9 @@ export default function ManageCohortPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // Backend FK renamed cohort_course -> programme; send both so this
+          // keeps working against either serializer version.
+          programme: Number(sessionForm.cohort_course),
           cohort_course: Number(sessionForm.cohort_course),
           title: sessionForm.title.trim(),
           description: sessionForm.description.trim() || null,

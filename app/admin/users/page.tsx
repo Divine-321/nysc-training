@@ -792,7 +792,7 @@ export default function AdminUsersPage() {
     // Cohorts (legacy).
     const loadAssignmentTargets = async () => {
       try {
-        const programmeResponse = await fetch("/api/training/cohort-courses", {
+        const programmeResponse = await fetch("/api/training/programmes", {
           cache: "no-store",
         });
         const programmePayload = await programmeResponse
@@ -1211,11 +1211,11 @@ export default function AdminUsersPage() {
     setAssignmentNotice("");
 
     try {
-      const response = await fetch("/api/training/cohort-courses/bulk-assign", {
+      const response = await fetch("/api/training/programmes/bulk-assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          cohort_course_id: Number(selectedCohort),
+          programme_id: Number(selectedCohort),
           department: Number(selectedDepartment),
           active_staff_only: true,
         }),
@@ -1265,7 +1265,7 @@ export default function AdminUsersPage() {
 
       const response = await fetch(
         programmeMode
-          ? `/api/training/cohort-courses/${selectedCohort}/bulk-enroll`
+          ? `/api/training/programmes/${selectedCohort}/bulk-enroll`
           : `/api/training/cohorts/${selectedCohort}/bulk-upload`,
         {
           method: "POST",
@@ -1644,6 +1644,19 @@ export default function AdminUsersPage() {
     setEditNotice("");
 
     try {
+      // Production masks profile.date_of_birth to null in staff LIST responses
+      // (it only comes back in full on a single-user fetch). The edit form is
+      // seeded from that list, so an untouched field is blank for a staff
+      // member who does have a date on file — sending it would wipe the real
+      // value on every unrelated edit. Only send a date the admin actually
+      // changed; clearing a populated one still works.
+      const dateChanged =
+        (editForm.profile.date_of_birth || "") !==
+        (editingStaff.dateOfBirth || "");
+      const employmentChanged =
+        (editForm.profile.employment_date || "") !==
+        (editingStaff.employmentDate || "");
+
       const payload = {
         first_name: editForm.first_name.trim(),
         middle_name: editForm.middle_name.trim(),
@@ -1652,8 +1665,12 @@ export default function AdminUsersPage() {
         profile: {
           phone_number: editForm.profile.phone_number.trim(),
           sex: editForm.profile.sex,
-          date_of_birth: editForm.profile.date_of_birth || null,
-          employment_date: editForm.profile.employment_date || null,
+          ...(dateChanged
+            ? { date_of_birth: editForm.profile.date_of_birth || null }
+            : {}),
+          ...(employmentChanged
+            ? { employment_date: editForm.profile.employment_date || null }
+            : {}),
         },
         ...(editingStaff.hasPosting
           ? {

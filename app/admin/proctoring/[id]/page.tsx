@@ -69,6 +69,10 @@ export default function ProctoringSessionDetailPage() {
   const [evidencePreview, setEvidencePreview] = useState<string | null>(null);
   const [reviewing, setReviewing] = useState(false);
   const [reviewNotice, setReviewNotice] = useState("");
+  // Optional reason stored with the decision. Worth recording for anything
+  // other than "clean" — an invalidated attempt that cost someone their
+  // certificate is hard to defend later with no stated reason.
+  const [reviewNote, setReviewNote] = useState("");
 
   const handleReview = async (status: "CLEAN" | "INVALIDATED" | "FLAGGED") => {
     if (status === "INVALIDATED") {
@@ -84,7 +88,8 @@ export default function ProctoringSessionDetailPage() {
     setError("");
 
     try {
-      await reviewProctoringSession(sessionId, status);
+      await reviewProctoringSession(sessionId, status, reviewNote);
+      setReviewNote("");
       setSession(await getProctoringSession(sessionId));
       setReviewNotice(
         status === "CLEAN"
@@ -355,6 +360,31 @@ export default function ProctoringSessionDetailPage() {
               {reviewNotice}
             </p>
           )}
+
+          <div className="mb-4">
+            <label
+              htmlFor="proctoring-review-note"
+              className="mb-1 block text-xs font-semibold text-gray-700"
+            >
+              Reason{" "}
+              <span className="font-normal text-gray-400">
+                (optional, recorded with your decision)
+              </span>
+            </label>
+            <textarea
+              id="proctoring-review-note"
+              rows={2}
+              value={reviewNote}
+              onChange={(event) => setReviewNote(event.target.value)}
+              placeholder="e.g. Face not visible for most of the attempt; 14 tab switches."
+              disabled={reviewing}
+              className="w-full rounded-lg border border-gray-200 p-3 text-sm outline-none focus:ring-2 focus:ring-[#1a6b3c] disabled:bg-gray-50"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Strongly recommended when flagging or invalidating — this is the
+              record if the decision is ever questioned.
+            </p>
+          </div>
 
           <div className="flex flex-wrap gap-3">
             <button

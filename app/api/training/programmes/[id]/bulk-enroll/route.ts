@@ -11,7 +11,7 @@ export async function POST(request: Request, { params }: Params) {
   const { id } = await params;
 
   return proxyApi("POST", {
-    path: `/api/training/cohort-courses/${id}/bulk-enroll/`,
+    path: `/api/training/programmes/${id}/bulk-enroll/`,
     request,
   });
 }

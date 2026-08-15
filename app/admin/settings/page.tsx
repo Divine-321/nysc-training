@@ -9,6 +9,7 @@ import {
 } from "@/app/lib/portal-api";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import { LOGIN_MANUAL_MARKER } from "@/app/lib/login-manual";
+import TrustedDevices from "./TrustedDevices";
 
 type ManualBook = {
   id: number;
@@ -317,6 +318,8 @@ export default function AdminSettingsPage() {
               </div>
             </div>
           </div>
+
+          <TrustedDevices />
         </div>
 
         {/* Sidebar info */}

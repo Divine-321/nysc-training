@@ -134,7 +134,7 @@ export default function AdminCertificatesPage() {
       try {
         const [certificateResponse, assignmentResponse] = await Promise.all([
           fetch("/api/training/certificates", { cache: "no-store" }),
-          fetch("/api/training/cohort-courses", { cache: "no-store" }),
+          fetch("/api/training/programmes", { cache: "no-store" }),
         ]);
 
         const certificatePayload = await certificateResponse

@@ -107,7 +107,7 @@ export default function AdminEvaluationsPage() {
           await Promise.all([
             fetch("/api/training/evaluations", { cache: "no-store" }),
             fetch("/api/training/enrollments", { cache: "no-store" }),
-            fetch("/api/training/cohort-courses", { cache: "no-store" }),
+            fetch("/api/training/programmes", { cache: "no-store" }),
             loadStaffDirectory(),
           ]);
 

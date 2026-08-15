@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
-import { API_BASE_URL } from "@/app/lib/portal-api";
+import { API_BASE_URL, readApiList } from "@/app/lib/portal-api";
 import { LOGIN_MANUAL_MARKER } from "@/app/lib/login-manual";
 
 // Public lookup of the portal user manual shown as a popup on the login page.
@@ -48,11 +48,9 @@ export async function GET() {
     }
 
     const payload = await response.json().catch(() => null);
-    const books: Book[] = Array.isArray(payload)
-      ? payload
-      : Array.isArray(payload?.data)
-        ? payload.data
-        : [];
+    // Books became paginated ({count, next, previous, results}) — readApiList
+    // unwraps that as well as the older bare-array and envelope shapes.
+    const books = readApiList<Book>(payload);
 
     const manual =
       books.find((book) => book.title?.startsWith(LOGIN_MANUAL_MARKER)) ?? null;

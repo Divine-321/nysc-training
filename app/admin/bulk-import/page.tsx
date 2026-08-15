@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readApiList } from "@/app/lib/portal-api";
 
 const ranks = [
   "ACCOUNTANT I", "ACCOUNTANT II", "ADMIN OFFICER I", "ADMIN OFFICER II",
@@ -117,15 +118,7 @@ const lastNames = [
 ];
 
 function readList(payload: unknown): Array<Record<string, unknown>> {
-  if (Array.isArray(payload)) return payload;
-  if (
-    payload &&
-    typeof payload === "object" &&
-    Array.isArray((payload as { data?: unknown }).data)
-  ) {
-    return (payload as { data: Array<Record<string, unknown>> }).data;
-  }
-  return [];
+  return readApiList<Record<string, unknown>>(payload);
 }
 
 const BATCH_SIZE = 10;

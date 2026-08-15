@@ -10,13 +10,14 @@ type CohortModel = "detecting" | "legacy" | "programmes";
 
 /**
  * The backend restructure replaces dynamic Cohorts with fixed-batch Training
- * Programmes on the SAME cohort-courses endpoint, so the two models can't
- * coexist. This page sniffs which model the deployed backend speaks and
- * renders the matching UI — no redeploy needed on switchover day.
+ * Programmes on the SAME endpoint (renamed cohort-courses -> programmes), so
+ * the two models can't coexist. This page sniffs which model the deployed
+ * backend speaks and renders the matching UI — no redeploy needed on
+ * switchover day.
  */
 async function detectCohortModel(): Promise<CohortModel> {
   try {
-    const response = await fetch("/api/training/cohort-courses", {
+    const response = await fetch("/api/training/programmes", {
       cache: "no-store",
     });
     const payload = await response.json().catch(() => null);

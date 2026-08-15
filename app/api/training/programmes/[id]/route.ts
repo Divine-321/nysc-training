@@ -8,6 +8,6 @@ export async function DELETE(_request: Request, { params }: Params) {
   const { id } = await params;
 
   return proxyApi("DELETE", {
-    path: `/api/training/cohort-courses/${id}/`,
+    path: `/api/training/programmes/${id}/`,
   });
 }

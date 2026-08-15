@@ -123,7 +123,7 @@ export function flagIsTrue(value: boolean | string | null | undefined) {
 }
 
 // CohortCourse is the backend "Programme" (the delivery of a Course to a cohort
-// in a year), served at /api/training/cohort-courses/. Deployed contract
+// in a year), served at /api/training/programmes/. Deployed contract
 // (verified 2026-07-11 from /api/schema/): `cohort` is one of the 12 MONTHS
 // ("January".."December") plus year/start_date/end_date, a single `course` FK,
 // unique on (course, cohort, year). Older Batch A/B/C values still parse.
@@ -410,7 +410,7 @@ export async function loadStaffCourses() {
   const [enrollmentPayload, cohortCoursePayload] =
     await Promise.all([
       getJson("/api/training/enrollments"),
-      getJson("/api/training/cohort-courses"),
+      getJson("/api/training/programmes"),
     ]);
 
   const enrollments = readEnrollments(enrollmentPayload);
@@ -523,7 +523,7 @@ export async function loadAssessments(courseId: number) {
   let moduleIds: Set<number> | null = null;
 
   try {
-    const cohortPayload = await getJson("/api/training/cohort-courses");
+    const cohortPayload = await getJson("/api/training/programmes");
     const match = readApiList<CohortCourse>(cohortPayload).find(
       (item) => Number(item.course) === courseId,
     );

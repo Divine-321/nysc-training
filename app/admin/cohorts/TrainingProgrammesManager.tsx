@@ -224,7 +224,7 @@ export default function TrainingProgrammesManager() {
     try {
       const [programmeResponse, courseResponse, sessionResponse] =
         await Promise.all([
-          fetch("/api/training/cohort-courses", { cache: "no-store" }),
+          fetch("/api/training/programmes", { cache: "no-store" }),
           fetch("/api/training/courses", { cache: "no-store" }),
           fetch("/api/training/live-sessions", { cache: "no-store" }),
         ]);
@@ -339,7 +339,7 @@ export default function TrainingProgrammesManager() {
     setNotice("");
 
     try {
-      const response = await fetch("/api/training/cohort-courses", {
+      const response = await fetch("/api/training/programmes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -359,7 +359,7 @@ export default function TrainingProgrammesManager() {
         let confirmedDuplicate = false;
 
         try {
-          const check = await fetch("/api/training/cohort-courses", {
+          const check = await fetch("/api/training/programmes", {
             cache: "no-store",
           });
 
@@ -426,7 +426,7 @@ export default function TrainingProgrammesManager() {
 
     try {
       const response = await fetch(
-        `/api/training/cohort-courses/${programme.id}`,
+        `/api/training/programmes/${programme.id}`,
         { method: "DELETE" },
       );
 

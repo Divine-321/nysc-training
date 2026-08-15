@@ -22,14 +22,14 @@ type CertificateReport = {
   year?: number;
   total: number;
   breakdown?: {
-    cohort_course_id: number;
+    programme_id: number;
     programme: string;
     count: number;
   }[];
 };
 
 type CompletionRateItem = {
-  cohort_course_id: number;
+  programme_id: number;
   programme: string;
   year: number;
   average_completion_rate: number;
@@ -93,7 +93,7 @@ function lastTwelveMonthKeys() {
 
 // Management reports, powered by the backend analytics service. Year-wide
 // figures come from ?year=; picking a Training Programme narrows every
-// section (and unlocks the per-staff lists) via ?cohort_course=.
+// section (and unlocks the per-staff lists) via ?programme=.
 export default function AdminReportsPage() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(String(currentYear));
@@ -118,7 +118,7 @@ export default function AdminReportsPage() {
   useEffect(() => {
     const loadStatic = async () => {
       const [programmeResponse, certificateResponse] = await Promise.all([
-        fetch("/api/training/cohort-courses", { cache: "no-store" }),
+        fetch("/api/training/programmes", { cache: "no-store" }),
         fetch("/api/training/certificates", { cache: "no-store" }),
       ]);
 
@@ -141,7 +141,7 @@ export default function AdminReportsPage() {
       setError("");
 
       const scope = selectedProgrammeId
-        ? `cohort_course=${selectedProgrammeId}`
+        ? `programme=${selectedProgrammeId}`
         : `year=${year}`;
 
       try {
@@ -177,11 +177,11 @@ export default function AdminReportsPage() {
         if (selectedProgrammeId) {
           const [completionResponse, performerResponse] = await Promise.all([
             fetch(
-              `/api/analytics/reports/completions/?cohort_course=${selectedProgrammeId}`,
+              `/api/analytics/reports/completions/?programme=${selectedProgrammeId}`,
               { cache: "no-store" },
             ),
             fetch(
-              `/api/analytics/reports/top-performers/?cohort_course=${selectedProgrammeId}`,
+              `/api/analytics/reports/top-performers/?programme=${selectedProgrammeId}`,
               { cache: "no-store" },
             ),
           ]);
@@ -368,7 +368,7 @@ export default function AdminReportsPage() {
                 <tbody>
                   {certificateReport?.breakdown?.map((row) => (
                     <tr
-                      key={row.cohort_course_id}
+                      key={row.programme_id}
                       className="border-b border-gray-50"
                     >
                       <td className="py-2.5 pr-4 font-medium text-gray-800">
@@ -408,7 +408,7 @@ export default function AdminReportsPage() {
               const rate = Math.round(row.average_completion_rate);
 
               return (
-                <div key={row.cohort_course_id}>
+                <div key={row.programme_id}>
                   <div className="mb-1 flex items-center justify-between text-sm">
                     <span className="font-semibold text-gray-800">
                       {row.programme}

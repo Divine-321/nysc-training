@@ -195,10 +195,14 @@ export async function listProctoringSessions(): Promise<
 export async function reviewProctoringSession(
   sessionId: number,
   status: "CLEAN" | "INVALIDATED" | "FLAGGED",
+  /** Optional reason recorded alongside the decision. */
+  reviewNote?: string,
 ): Promise<void> {
   const { response, payload } = await postJson(
     `/api/training/proctoring/sessions/${sessionId}/review`,
-    { status },
+    reviewNote?.trim()
+      ? { status, review_note: reviewNote.trim() }
+      : { status },
   );
 
   if (!response.ok) {

@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import { loginUser } from "@/app/lib/portal-api";
-
-const isProduction = process.env.NODE_ENV === "production";
-const ACCESS_TOKEN_MAX_AGE = 60 * 20;
-const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24;
+import { loginUser, requiresDeviceVerification } from "@/app/lib/portal-api";
+import { setSessionCookies } from "@/app/lib/session-cookies";
 
 export async function POST(request: Request) {
   try {
@@ -11,6 +8,7 @@ export async function POST(request: Request) {
       login?: string;
       password?: string;
       role?: "staff" | "admin";
+      device_id?: string;
     };
 
     if (!body.login || !body.password) {
@@ -20,32 +18,28 @@ export async function POST(request: Request) {
       );
     }
 
+    const role = body.role === "admin" ? "admin" : "staff";
+
     const response = await loginUser({
       login: body.login,
       password: body.password,
       // Backend requires a portal role; default to the staff portal.
-      role: body.role === "admin" ? "admin" : "staff",
+      role,
+      // Admin logins are device-gated; the backend ignores this for staff.
+      ...(body.device_id ? { device_id: body.device_id } : {}),
     });
 
-    const nextResponse = NextResponse.json(response, { status: 200 });
+    // An unrecognised admin device gets a 200 with no tokens — an OTP has been
+    // emailed instead. Pass it through untouched so the caller can show the
+    // verification step; there is no session to store yet.
+    if (requiresDeviceVerification(response.data)) {
+      return NextResponse.json(response, { status: 200 });
+    }
 
-    nextResponse.cookies.set("nysc_access_token", response.data.tokens.access, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: isProduction,
-      path: "/",
-      maxAge: ACCESS_TOKEN_MAX_AGE,
-    });
-
-    nextResponse.cookies.set("nysc_refresh_token", response.data.tokens.refresh, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: isProduction,
-      path: "/",
-      maxAge: REFRESH_TOKEN_MAX_AGE,
-    });
-
-    return nextResponse;
+    return setSessionCookies(
+      NextResponse.json(response, { status: 200 }),
+      response.data.tokens,
+    );
   } catch (error: unknown) {
     const message =
       error instanceof Error

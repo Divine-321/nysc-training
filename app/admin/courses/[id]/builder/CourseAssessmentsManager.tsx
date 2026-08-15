@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import {
   ClipboardList,
+  Eye,
   FileSpreadsheet,
   Layers,
   ListChecks,
@@ -32,8 +33,17 @@ import { useConfirm } from "@/app/components/useConfirm";
 type AssessmentType = "PRE_TEST" | "POST_TEST";
 type CorrectOption = "A" | "B" | "C" | "D" | "E";
 
+type AssessmentQuestionOption = {
+  id: number;
+  text: string;
+};
+
 type AssessmentQuestion = {
   id: number;
+  text?: string;
+  points?: number;
+  order?: number;
+  options?: AssessmentQuestionOption[];
 };
 
 // Reusable-modules backend (2026-07-12): assessments belong to a Module.
@@ -109,6 +119,10 @@ export default function CourseAssessmentsManager({
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  // Which assessment has its question list expanded. Admins upload questions by
+  // CSV and otherwise only see a count, so this is the one way to check what
+  // actually landed.
+  const [openQuestionsId, setOpenQuestionsId] = useState<number | null>(null);
   const [openQuestionFormId, setOpenQuestionFormId] = useState<number | null>(
     null,
   );
@@ -620,13 +634,17 @@ export default function CourseAssessmentsManager({
           <input
             required
             type="number"
-            min="1"
+            min="0"
             value={form.max_attempts}
             onChange={(event) =>
               setForm({ ...form, max_attempts: event.target.value })
             }
             className={field}
           />
+          <p className="mt-1 text-xs text-gray-500">
+            Enter <strong>0</strong> for unlimited retakes — commonly used for
+            pre-tests.
+          </p>
         </div>
 
         <div>
@@ -783,6 +801,27 @@ export default function CourseAssessmentsManager({
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
+                      onClick={() =>
+                        setOpenQuestionsId((current) =>
+                          current === assessment.id ? null : assessment.id,
+                        )
+                      }
+                      disabled={(assessment.questions?.length ?? 0) === 0}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      title={
+                        (assessment.questions?.length ?? 0) === 0
+                          ? "No questions to view yet"
+                          : "View the questions on this assessment"
+                      }
+                    >
+                      <Eye size={16} />
+                      {openQuestionsId === assessment.id
+                        ? "Hide questions"
+                        : "View questions"}
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={() => startEdit(assessment)}
                       className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
                     >
@@ -828,6 +867,75 @@ export default function CourseAssessmentsManager({
                     </button>
                   </div>
                 </div>
+
+                {openQuestionsId === assessment.id && (
+                  <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-4">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                      <ListChecks size={15} className="text-[#1a6b3c]" />
+                      {assessment.questions?.length ?? 0} question
+                      {(assessment.questions?.length ?? 0) === 1 ? "" : "s"} on
+                      this assessment
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Check that uploaded questions imported correctly. The
+                      backend does not return which option is correct, so
+                      answers are not shown here.
+                    </p>
+
+                    <ol className="mt-4 space-y-3">
+                      {[...(assessment.questions ?? [])]
+                        .sort(
+                          (first, second) =>
+                            (first.order ?? 0) - (second.order ?? 0),
+                        )
+                        .map((question, questionIndex) => (
+                          <li
+                            key={question.id}
+                            className="rounded-lg border border-gray-200 bg-white p-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="text-sm font-medium text-gray-800">
+                                <span className="text-gray-400">
+                                  {questionIndex + 1}.
+                                </span>{" "}
+                                {question.text || (
+                                  <span className="italic text-red-600">
+                                    No question text — check the upload
+                                  </span>
+                                )}
+                              </p>
+                              <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                                {question.points ?? 1} pt
+                                {(question.points ?? 1) === 1 ? "" : "s"}
+                              </span>
+                            </div>
+
+                            {question.options?.length ? (
+                              <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+                                {question.options.map(
+                                  (option, optionIndex) => (
+                                    <li
+                                      key={option.id}
+                                      className="flex gap-2 text-sm text-gray-600"
+                                    >
+                                      <span className="text-gray-400">
+                                        {String.fromCharCode(65 + optionIndex)}.
+                                      </span>
+                                      {option.text}
+                                    </li>
+                                  ),
+                                )}
+                              </ul>
+                            ) : (
+                              <p className="mt-2 text-sm italic text-red-600">
+                                No options — this question cannot be answered.
+                              </p>
+                            )}
+                          </li>
+                        ))}
+                    </ol>
+                  </div>
+                )}
 
                 {editingId === assessment.id && (
                   <form
@@ -892,7 +1000,7 @@ export default function CourseAssessmentsManager({
                       <input
                         required
                         type="number"
-                        min="1"
+                        min="0"
                         value={editForm.max_attempts}
                         onChange={(event) =>
                           setEditForm({
@@ -902,6 +1010,9 @@ export default function CourseAssessmentsManager({
                         }
                         className={field}
                       />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Enter <strong>0</strong> for unlimited retakes.
+                      </p>
                     </div>
 
                     <div>

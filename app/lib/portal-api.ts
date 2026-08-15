@@ -68,13 +68,41 @@ export type AuthData = {
   user: AuthUser;
 };
 
-export type LoginResponse = ApiEnvelope<AuthData>;
+/**
+ * An admin signing in from a browser the backend doesn't recognise gets a 200
+ * with this instead of tokens: no session yet, an OTP has been emailed, and the
+ * caller must finish via verify-device.
+ */
+export type DeviceVerificationRequired = {
+  requires_device_verification: true;
+  /** Masked address for display, e.g. "n***@gmail.com". */
+  email_hint?: string;
+};
+
+export type LoginResponse = ApiEnvelope<AuthData | DeviceVerificationRequired>;
+
+export function requiresDeviceVerification(
+  data: AuthData | DeviceVerificationRequired | null | undefined,
+): data is DeviceVerificationRequired {
+  return Boolean(
+    data && (data as DeviceVerificationRequired).requires_device_verification,
+  );
+}
 
 export type LoginCredentials = {
   login: string;
   password: string;
   /** Portal gate required by the backend: "staff" or "admin". */
   role: "staff" | "admin";
+  /** Required for role "admin"; ignored for staff. */
+  device_id?: string;
+};
+
+export type VerifyDeviceCredentials = {
+  /** The admin's full email — not the masked hint from the login response. */
+  email: string;
+  otp: string;
+  device_id: string;
 };
 
 export type Trainer = {
@@ -194,22 +222,45 @@ export async function loginUser(credentials: LoginCredentials) {
   });
 }
 
+/** Completes an admin login on a new device, using the OTP sent by email. */
+export async function verifyDevice(credentials: VerifyDeviceCredentials) {
+  return apiFetch<LoginResponse>("/api/accounts/auth/verify-device/", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+}
+
 export function clearSession() {
   if (typeof window === "undefined") return;
 
   window.localStorage.removeItem(SESSION_STORAGE_KEY);
 }
 
+/**
+ * Pulls the rows out of a list response, whichever shape the backend used.
+ *
+ * Four shapes are in play across the API and endpoints keep moving between
+ * them as pagination is rolled out, so unwrap them all rather than tracking
+ * which endpoint is on which:
+ *   [...]                                    bare array
+ *   { data: [...] }                          envelope
+ *   { count, next, previous, results: [] }   paginated, no envelope
+ *   { data: { count, ..., results: [] } }    paginated inside the envelope
+ */
 export function readApiList<T>(payload: unknown): T[] {
   if (Array.isArray(payload)) return payload as T[];
 
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in payload &&
-    Array.isArray((payload as { data: unknown }).data)
-  ) {
-    return (payload as { data: T[] }).data;
+  if (!payload || typeof payload !== "object") return [];
+
+  const record = payload as Record<string, unknown>;
+
+  if (Array.isArray(record.results)) return record.results as T[];
+
+  if (Array.isArray(record.data)) return record.data as T[];
+
+  if (record.data && typeof record.data === "object") {
+    const nested = (record.data as Record<string, unknown>).results;
+    if (Array.isArray(nested)) return nested as T[];
   }
 
   return [];

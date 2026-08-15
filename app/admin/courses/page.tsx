@@ -189,7 +189,7 @@ export default function AdminCoursesPage() {
 
     try {
       const [trainingRes, enrollmentRes] = await Promise.all([
-        fetch("/api/training/cohort-courses", { cache: "no-store" }),
+        fetch("/api/training/programmes", { cache: "no-store" }),
         fetch("/api/training/enrollments", { cache: "no-store" }),
       ]);
 
@@ -240,7 +240,7 @@ export default function AdminCoursesPage() {
     );
     const trainingResults = await Promise.allSettled(
       trainings.map((training) =>
-        fetch(`/api/training/cohort-courses/${training.id}`, {
+        fetch(`/api/training/programmes/${training.id}`, {
           method: "DELETE",
         }),
       ),

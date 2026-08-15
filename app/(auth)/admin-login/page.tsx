@@ -4,9 +4,10 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { AlertCircle, Eye, EyeOff, Loader2, X } from "lucide-react";
+import { AlertCircle, Eye, EyeOff, Loader2, ShieldCheck, X } from "lucide-react";
 import { ADMIN_MANUAL, STAFF_MANUAL } from "@/app/lib/manuals";
 import ManualLinks from "@/app/components/ManualLinks";
+import { getDeviceId } from "@/app/lib/device-id";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -16,7 +17,64 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  // Set when the backend doesn't recognise this browser: an OTP has been
+  // emailed and the password step is done, so the form swaps to the code entry.
+  const [awaitingDeviceOtp, setAwaitingDeviceOtp] = useState(false);
+  const [emailHint, setEmailHint] = useState("");
+  const [otp, setOtp] = useState("");
+
   const canSubmit = email.trim() !== "" && password !== "" && !isLoading;
+
+  const finishLogin = (payload: { data?: { user?: { role?: string } } }) => {
+    const role = payload.data?.user?.role;
+
+    if (role !== "admin" && role !== "superadmin") {
+      throw new Error("You do not have admin access.");
+    }
+
+    router.replace("/admin/dashboard");
+  };
+
+  const handleVerifyDevice = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setError("");
+
+    if (otp.trim().length !== 6) {
+      setError("Enter the 6-digit code sent to your email.");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/verify-device", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim(),
+          otp: otp.trim(),
+          device_id: getDeviceId(),
+        }),
+      });
+
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.message || "Verification failed. Please try again.",
+        );
+      }
+
+      finishLogin(payload);
+    } catch (verifyError: unknown) {
+      setError(
+        verifyError instanceof Error
+          ? verifyError.message
+          : "Verification failed. Please try again.",
+      );
+      setIsLoading(false);
+    }
+  };
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -38,7 +96,12 @@ export default function AdminLoginPage() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ login: email.trim(), password, role: "admin" }),
+        body: JSON.stringify({
+          login: email.trim(),
+          password,
+          role: "admin",
+          device_id: getDeviceId(),
+        }),
       });
 
       const payload = await response.json();
@@ -47,16 +110,16 @@ export default function AdminLoginPage() {
         throw new Error(payload?.message || "Login failed. Please try again.");
       }
 
-      const authData = payload.data;
-
-      if (
-        authData.user.role !== "admin" &&
-        authData.user.role !== "superadmin"
-      ) {
-        throw new Error("You do not have admin access.");
+      // Unrecognised device: no session yet, an OTP is on its way by email.
+      if (payload.data?.requires_device_verification) {
+        setEmailHint(payload.data.email_hint ?? "");
+        setAwaitingDeviceOtp(true);
+        setOtp("");
+        setIsLoading(false);
+        return;
       }
 
-      router.replace("/admin/dashboard");
+      finishLogin(payload);
     } catch (loginError: unknown) {
       setError(
         loginError instanceof Error
@@ -127,6 +190,76 @@ export default function AdminLoginPage() {
           </div>
         )}
 
+        {awaitingDeviceOtp ? (
+          <form
+            onSubmit={handleVerifyDevice}
+            className="w-full max-w-sm space-y-4"
+          >
+            <div className="rounded-2xl border border-nysc-green/30 bg-green-50/60 p-4">
+              <p className="flex items-center gap-2 text-sm font-semibold text-nysc-green">
+                <ShieldCheck size={16} />
+                New device detected
+              </p>
+              <p className="mt-1 text-sm text-gray-600">
+                We&apos;ve emailed a 6-digit code
+                {emailHint ? ` to ${emailHint}` : ""}. Enter it below to finish
+                signing in. You&apos;ll only need to do this once on this
+                browser.
+              </p>
+            </div>
+
+            <div>
+              <label
+                htmlFor="admin-device-otp"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Verification code
+              </label>
+              <input
+                id="admin-device-otp"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="Enter 6-digit code"
+                value={otp}
+                onChange={(event) =>
+                  setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))
+                }
+                className="w-full rounded-full border border-nysc-green px-4 py-3 text-center text-lg tracking-[0.4em] outline-none focus:ring-2 focus:ring-nysc-green"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                The code expires in 10 minutes.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={otp.length !== 6 || isLoading}
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-nysc-green py-3 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                "Verify device"
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setAwaitingDeviceOtp(false);
+                setOtp("");
+                setError("");
+              }}
+              className="w-full text-sm font-medium text-gray-500 hover:text-gray-700"
+            >
+              Back to sign in
+            </button>
+          </form>
+        ) : (
         <form onSubmit={handleLogin} className="w-full max-w-sm space-y-4">
           <div>
             <label
@@ -206,6 +339,7 @@ export default function AdminLoginPage() {
             className="pt-2"
           />
         </form>
+        )}
       </div>
     </div>
   );
