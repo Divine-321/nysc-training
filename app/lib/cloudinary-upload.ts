@@ -9,11 +9,30 @@ type CloudinarySignature = {
   upload_preset: string;
 };
 
+/**
+ * What is being uploaded, from the app's point of view. Finer-grained than what
+ * the backend signs, because book PDFs also decide the Cloudinary resource
+ * type ("raw" rather than "auto").
+ */
 export type CloudinaryUploadType =
-  | "module"
+  | "activity"
   | "course"
   | "book_pdf"
   | "book_cover";
+
+/**
+ * The backend signs uploads against a whitelist and rejects anything else with
+ * "Unknown upload type '<x>'", so these must match its list exactly. It
+ * accepts: activity, book_cover, book_pdf, course (admin) and profile_picture
+ * (any authenticated user). Each maps to its own Cloudinary folder, so keep
+ * them distinct rather than collapsing them onto one type.
+ */
+const SIGNATURE_TYPE: Record<CloudinaryUploadType, string> = {
+  activity: "activity",
+  course: "course",
+  book_pdf: "book_pdf",
+  book_cover: "book_cover",
+};
 
 export type CloudinaryUploadResult = {
   secure_url: string;
@@ -26,10 +45,11 @@ export type CloudinaryUploadResult = {
 const CHUNK_SIZE = 6 * 1024 * 1024;
 const CHUNK_THRESHOLD = 100 * 1024 * 1024;
 
-async function getUploadSignature(type: CloudinaryUploadType = "module") {
-  const response = await fetch(`/api/training/cloudinary-signature?type=${type}`, {
-    cache: "no-store",
-  });
+async function getUploadSignature(type: CloudinaryUploadType = "activity") {
+  const response = await fetch(
+    `/api/training/cloudinary-signature?type=${SIGNATURE_TYPE[type]}`,
+    { cache: "no-store" },
+  );
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -88,7 +108,7 @@ async function readCloudinaryResponse(response: Response) {
 export async function uploadFileToCloudinary(
   file: File,
   onProgress?: (percentage: number) => void,
-  type: CloudinaryUploadType = "module",
+  type: CloudinaryUploadType = "activity",
 ) {
   const signature = await getUploadSignature(type);
   const resourceType = type === "book_pdf" ? "raw" : "auto";

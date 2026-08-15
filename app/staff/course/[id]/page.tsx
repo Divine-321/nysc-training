@@ -41,6 +41,7 @@ import {
   loadAssessmentAttempts,
   loadAssessments,
   loadStaffCourse,
+  programmeWindow,
   toPercentage,
   type CourseModule,
   type CourseEnrollment,
@@ -364,6 +365,22 @@ export default function CourseModulesPage() {
     (contentModules.length > 0 && completedModules === contentModules.length);
   const evalLocked = !evaluationDone && !allModulesDone;
 
+  // The backend refuses modules, activities, assessments and live sessions
+  // outside the programme's dates, so say so plainly instead of letting the
+  // page look broken.
+  const trainingWindow = programmeWindow(staffCourse.cohortCourse);
+  const windowDate =
+    trainingWindow.state === "before"
+      ? trainingWindow.startDate
+      : trainingWindow.endDate;
+  const formattedWindowDate = windowDate
+    ? new Date(windowDate).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      })
+    : null;
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <Link
@@ -372,6 +389,31 @@ export default function CourseModulesPage() {
       >
         <ArrowLeft size={16} /> Back to My Courses
       </Link>
+
+      {trainingWindow.state !== "open" && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <CalendarDays
+            size={18}
+            className="mt-0.5 shrink-0 text-amber-700"
+          />
+          <div className="text-sm text-amber-800">
+            <p className="font-semibold">
+              {trainingWindow.state === "before"
+                ? formattedWindowDate
+                  ? `This training opens on ${formattedWindowDate}`
+                  : "This training has not opened yet"
+                : formattedWindowDate
+                  ? `This training closed on ${formattedWindowDate}`
+                  : "This training has closed"}
+            </p>
+            <p className="mt-1">
+              {trainingWindow.state === "before"
+                ? "The modules, assessments and live sessions become available on that date. Nothing to do until then."
+                : "Its modules, assessments and live sessions are no longer available. Any certificate you earned stays on your Certifications page."}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Course hero */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1a6b3c] via-[#177a41] to-[#0f5730] p-6 shadow-sm sm:p-8">

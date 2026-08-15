@@ -141,6 +141,44 @@ export type CohortCourse = {
   created_by?: number | null;
 };
 
+export type ProgrammeWindow = {
+  /** "open" when the content can be used; otherwise why it can't be. */
+  state: "before" | "open" | "after";
+  startDate: string | null;
+  endDate: string | null;
+};
+
+/**
+ * Whether a programme's training window is currently open.
+ *
+ * The backend enforces these dates — modules, activities, assessments and live
+ * sessions are all refused outside the window — so the UI checks the same
+ * dates up front and says what's happening, rather than letting staff walk
+ * into an empty page or a bare error.
+ *
+ * Dates are plain YYYY-MM-DD, so compare by calendar day: a programme ending
+ * today is open all day, and one starting today opens at midnight local time.
+ * A missing date means that end is unbounded.
+ */
+export function programmeWindow(
+  cohortCourse: CohortCourse | null | undefined,
+): ProgrammeWindow {
+  const startDate = cohortCourse?.start_date ?? null;
+  const endDate = cohortCourse?.end_date ?? null;
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  if (startDate && todayKey < startDate) {
+    return { state: "before", startDate, endDate };
+  }
+
+  if (endDate && todayKey > endDate) {
+    return { state: "after", startDate, endDate };
+  }
+
+  return { state: "open", startDate, endDate };
+}
+
 /** Human label for a programme's cohort across both backend models. */
 export function cohortCourseBatchLabel(
   cohortCourse: CohortCourse | null | undefined,
@@ -740,9 +778,22 @@ export async function submitAssessment(
  * score, percentage, passed, submitted_at}. Normalized onto the richer
  * AssessmentAttempt shape the screens already use.
  */
-export async function loadAssessmentAttempts(): Promise<AssessmentAttempt[]> {
+/**
+ * A staff member's own attempts, scoped to one enrolment when given.
+ *
+ * Scoping matters: attempts are tied to an enrolment, and the same course run
+ * in several programmes (Web Dev 2026, 2027, 2028) would otherwise all come
+ * back together, inflating the attempt count for whichever run the staff
+ * member is actually sitting. Callers still filter client-side, so this stays
+ * correct if the backend ignores the parameter.
+ */
+export async function loadAssessmentAttempts(
+  enrollmentId?: number | null,
+): Promise<AssessmentAttempt[]> {
   try {
-    const response = await fetch("/api/training/assessment-attempts", {
+    const query =
+      enrollmentId != null ? `?enrollment=${encodeURIComponent(enrollmentId)}` : "";
+    const response = await fetch(`/api/training/assessment-attempts${query}`, {
       cache: "no-store",
     });
 

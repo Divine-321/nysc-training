@@ -72,6 +72,53 @@ async function getAccessToken() {
   return cookieStore.get("nysc_access_token")?.value ?? null;
 }
 
+/**
+ * Streams a binary endpoint (file downloads) straight through, body and
+ * headers intact.
+ *
+ * proxyApi cannot be used for these: it only parses JSON bodies and returns
+ * null for anything else, which turns a downloaded file into an empty one.
+ */
+export async function proxyDownload(path: string) {
+  let accessToken = await getAccessToken();
+
+  if (!accessToken) accessToken = await refreshAccessToken();
+
+  if (!accessToken) {
+    return NextResponse.json(
+      { success: false, message: "Your session has expired.", data: null },
+      { status: 401 },
+    );
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    return NextResponse.json(
+      {
+        success: false,
+        message: detail?.slice(0, 300) || "Could not download this file.",
+        data: null,
+      },
+      { status: response.status },
+    );
+  }
+
+  const headers = new Headers();
+  const passThrough = ["content-type", "content-disposition", "content-length"];
+
+  for (const header of passThrough) {
+    const value = response.headers.get(header);
+    if (value) headers.set(header, value);
+  }
+
+  return new NextResponse(response.body, { status: 200, headers });
+}
+
 async function getRefreshToken() {
   const cookieStore = await cookies();
   return cookieStore.get("nysc_refresh_token")?.value ?? null;

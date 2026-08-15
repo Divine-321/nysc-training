@@ -126,7 +126,7 @@ export default function ModuleFormModal({
       const uploaded = await uploadFileToCloudinary(
         file,
         setProgress,
-        "module",
+        "activity",
       );
 
       setThumbnailUrl(uploaded.secure_url);

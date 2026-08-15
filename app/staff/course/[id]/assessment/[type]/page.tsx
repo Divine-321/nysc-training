@@ -152,8 +152,11 @@ export default function AssessmentPage() {
       assessmentId: number,
       enrollment: { id: number; enrolled_at: string } | null | undefined,
     ) => {
+    // Scope to this enrolment: the same course delivered in several programmes
+    // shares one assessment, so an unscoped fetch counts attempts from other
+    // runs against this one. attemptsForEnrollment still filters client-side.
     const all = attemptsForEnrollment(
-      await loadAssessmentAttempts().catch(() => []),
+      await loadAssessmentAttempts(enrollment?.id).catch(() => []),
       enrollment,
     );
     const chronological = all

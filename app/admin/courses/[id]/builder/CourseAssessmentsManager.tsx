@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import {
+  Check,
   ClipboardList,
+  Download,
   Eye,
   FileSpreadsheet,
   Layers,
@@ -36,6 +38,12 @@ type CorrectOption = "A" | "B" | "C" | "D" | "E";
 type AssessmentQuestionOption = {
   id: number;
   text: string;
+  /**
+   * Admin-only: which option is the answer. Absent on staff-facing responses,
+   * and absent entirely on backends predating the field — the UI just omits
+   * the answer key rather than guessing.
+   */
+  is_correct?: boolean;
 };
 
 type AssessmentQuestion = {
@@ -116,6 +124,7 @@ export default function CourseAssessmentsManager({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingId, setUploadingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -251,6 +260,57 @@ export default function CourseAssessmentsManager({
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  /**
+   * Blank question template with the exact headers the upload expects. Handed
+   * over as a file the browser saves, since mismatched column names are the
+   * usual reason a bulk upload fails.
+   */
+  const handleDownloadTemplate = async (assessment: Assessment) => {
+    setDownloadingId(assessment.id);
+    setError("");
+
+    try {
+      const response = await fetch(
+        `/api/training/assessments/${assessment.id}/download-template`,
+        { cache: "no-store" },
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          extractErrorMessage(payload, "Could not download the template."),
+        );
+      }
+
+      // Prefer the server's own filename — it knows whether it built a CSV or
+      // an .xlsx. Fall back to one derived from the assessment title.
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const serverName = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i
+        .exec(disposition)?.[1]
+        ?.trim();
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = objectUrl;
+      link.download =
+        serverName ||
+        `${assessment.title.replace(/[^\w\-]+/g, "-")}-questions-template.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (downloadError) {
+      setError(
+        downloadError instanceof Error
+          ? downloadError.message
+          : "Could not download the template.",
+      );
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -840,6 +900,19 @@ export default function CourseAssessmentsManager({
                         : "Add question"}
                     </button>
 
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadTemplate(assessment)}
+                      disabled={downloadingId === assessment.id}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      title="Download a blank file with the exact column headers the upload expects"
+                    >
+                      <Download size={16} />
+                      {downloadingId === assessment.id
+                        ? "Preparing..."
+                        : "Template"}
+                    </button>
+
                     <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-[#1a6b3c] px-4 py-2 text-sm font-semibold text-[#1a6b3c] hover:bg-green-50">
                       <Upload size={16} />
                       {uploadingId === assessment.id
@@ -877,9 +950,14 @@ export default function CourseAssessmentsManager({
                       this assessment
                     </p>
                     <p className="mt-1 text-xs text-gray-500">
-                      Check that uploaded questions imported correctly. The
-                      backend does not return which option is correct, so
-                      answers are not shown here.
+                      Check that uploaded questions imported correctly.
+                      {assessment.questions?.some((question) =>
+                        question.options?.some(
+                          (option) => option.is_correct !== undefined,
+                        ),
+                      )
+                        ? " The correct answer is ticked."
+                        : " This backend does not return the answer key, so correct answers are not shown."}
                     </p>
 
                     <ol className="mt-4 space-y-3">
@@ -916,12 +994,29 @@ export default function CourseAssessmentsManager({
                                   (option, optionIndex) => (
                                     <li
                                       key={option.id}
-                                      className="flex gap-2 text-sm text-gray-600"
+                                      className={`flex items-start gap-2 text-sm ${
+                                        option.is_correct
+                                          ? "font-semibold text-[#1a6b3c]"
+                                          : "text-gray-600"
+                                      }`}
                                     >
-                                      <span className="text-gray-400">
+                                      <span
+                                        className={
+                                          option.is_correct
+                                            ? "text-[#1a6b3c]"
+                                            : "text-gray-400"
+                                        }
+                                      >
                                         {String.fromCharCode(65 + optionIndex)}.
                                       </span>
-                                      {option.text}
+                                      <span>{option.text}</span>
+                                      {option.is_correct && (
+                                        <Check
+                                          size={15}
+                                          className="mt-0.5 shrink-0"
+                                          aria-label="Correct answer"
+                                        />
+                                      )}
                                     </li>
                                   ),
                                 )}
