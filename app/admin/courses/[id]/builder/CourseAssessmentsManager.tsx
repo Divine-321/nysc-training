@@ -125,6 +125,18 @@ export default function CourseAssessmentsManager({
   const [saving, setSaving] = useState(false);
   const [uploadingId, setUploadingId] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [editingQuestionId, setEditingQuestionId] = useState<number | null>(
+    null,
+  );
+  const [questionEditForm, setQuestionEditForm] = useState<{
+    text: string;
+    points: string;
+    options: AssessmentQuestionOption[];
+  }>({ text: "", points: "1", options: [] });
+  const [savingQuestion, setSavingQuestion] = useState(false);
+  const [deletingQuestionId, setDeletingQuestionId] = useState<number | null>(
+    null,
+  );
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -260,6 +272,144 @@ export default function CourseAssessmentsManager({
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const startEditingQuestion = (question: AssessmentQuestion) => {
+    setEditingQuestionId((current) =>
+      current === question.id ? null : question.id,
+    );
+    setQuestionEditForm({
+      text: question.text ?? "",
+      points: String(question.points ?? 1),
+      options: (question.options ?? []).map((option) => ({ ...option })),
+    });
+    setError("");
+    setNotice("");
+  };
+
+  /**
+   * Saves a question and its options.
+   *
+   * Question fields and option fields live on different endpoints, so this
+   * sends what actually changed: the question itself, any option whose text was
+   * edited, and the newly correct option. Marking one option correct clears the
+   * flag on its siblings server-side, so only that one needs sending.
+   */
+  const handleSaveQuestion = async (
+    event: FormEvent,
+    original: AssessmentQuestion,
+  ) => {
+    event.preventDefault();
+    setSavingQuestion(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const points = Number(questionEditForm.points) || 1;
+      const questionChanged =
+        questionEditForm.text.trim() !== (original.text ?? "") ||
+        points !== (original.points ?? 1);
+
+      if (questionChanged) {
+        const response = await fetch(
+          `/api/training/questions/${original.id}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: questionEditForm.text.trim(),
+              points,
+            }),
+          },
+        );
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(
+            extractErrorMessage(payload, "Could not update this question."),
+          );
+        }
+      }
+
+      for (const option of questionEditForm.options) {
+        const before = (original.options ?? []).find(
+          (item) => item.id === option.id,
+        );
+        const textChanged = before && option.text !== before.text;
+        const becameCorrect = option.is_correct && !before?.is_correct;
+
+        if (!textChanged && !becameCorrect) continue;
+
+        const response = await fetch(`/api/training/options/${option.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(textChanged ? { text: option.text } : {}),
+            ...(becameCorrect ? { is_correct: true } : {}),
+          }),
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(
+            extractErrorMessage(payload, "Could not update an option."),
+          );
+        }
+      }
+
+      setEditingQuestionId(null);
+      setNotice("Question updated.");
+      await loadAssessments();
+      await onChanged?.();
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Could not update this question.",
+      );
+    } finally {
+      setSavingQuestion(false);
+    }
+  };
+
+  const handleDeleteQuestion = async (
+    assessment: Assessment,
+    question: AssessmentQuestion,
+  ) => {
+    const confirmed = await confirm(
+      `Delete this question from "${assessment.title}"? Staff who already sat this assessment keep their recorded scores.`,
+      { danger: true },
+    );
+    if (!confirmed) return;
+
+    setDeletingQuestionId(question.id);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/training/questions/${question.id}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok && response.status !== 204) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          extractErrorMessage(payload, "Could not delete this question."),
+        );
+      }
+
+      setNotice("Question deleted.");
+      await loadAssessments();
+      await onChanged?.();
+    } catch (deleteError) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Could not delete this question.",
+      );
+    } finally {
+      setDeletingQuestionId(null);
     }
   };
 
@@ -982,11 +1132,153 @@ export default function CourseAssessmentsManager({
                                   </span>
                                 )}
                               </p>
-                              <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                                {question.points ?? 1} pt
-                                {(question.points ?? 1) === 1 ? "" : "s"}
-                              </span>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                                  {question.points ?? 1} pt
+                                  {(question.points ?? 1) === 1 ? "" : "s"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => startEditingQuestion(question)}
+                                  aria-label="Edit this question"
+                                  className="rounded-lg p-1.5 text-[#1a6b3c] transition hover:bg-green-50"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleDeleteQuestion(assessment, question)
+                                  }
+                                  disabled={deletingQuestionId === question.id}
+                                  aria-label="Delete this question"
+                                  className="rounded-lg p-1.5 text-red-500 transition hover:bg-red-50 disabled:opacity-40"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </div>
+
+                            {editingQuestionId === question.id && (
+                              <form
+                                onSubmit={(event) =>
+                                  handleSaveQuestion(event, question)
+                                }
+                                className="mt-3 space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3"
+                              >
+                                <div>
+                                  <label className={fieldLabel}>
+                                    Question text
+                                  </label>
+                                  <textarea
+                                    required
+                                    rows={2}
+                                    value={questionEditForm.text}
+                                    onChange={(event) =>
+                                      setQuestionEditForm((current) => ({
+                                        ...current,
+                                        text: event.target.value,
+                                      }))
+                                    }
+                                    className={field}
+                                  />
+                                </div>
+
+                                <div className="sm:w-32">
+                                  <label className={fieldLabel}>Points</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={questionEditForm.points}
+                                    onChange={(event) =>
+                                      setQuestionEditForm((current) => ({
+                                        ...current,
+                                        points: event.target.value,
+                                      }))
+                                    }
+                                    className={field}
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className={fieldLabel}>
+                                    Options — select the correct answer
+                                  </label>
+                                  <div className="space-y-2">
+                                    {questionEditForm.options.map(
+                                      (option, optionIndex) => (
+                                        <div
+                                          key={option.id}
+                                          className="flex items-center gap-2"
+                                        >
+                                          <input
+                                            type="radio"
+                                            name={`correct-${question.id}`}
+                                            checked={option.is_correct}
+                                            onChange={() =>
+                                              setQuestionEditForm((current) => ({
+                                                ...current,
+                                                options: current.options.map(
+                                                  (item) => ({
+                                                    ...item,
+                                                    is_correct:
+                                                      item.id === option.id,
+                                                  }),
+                                                ),
+                                              }))
+                                            }
+                                            className="accent-[#1a6b3c]"
+                                            aria-label={`Mark option ${String.fromCharCode(65 + optionIndex)} correct`}
+                                          />
+                                          <span className="w-4 text-xs text-gray-400">
+                                            {String.fromCharCode(
+                                              65 + optionIndex,
+                                            )}
+                                          </span>
+                                          <input
+                                            required
+                                            value={option.text}
+                                            onChange={(event) =>
+                                              setQuestionEditForm((current) => ({
+                                                ...current,
+                                                options: current.options.map(
+                                                  (item) =>
+                                                    item.id === option.id
+                                                      ? {
+                                                          ...item,
+                                                          text: event.target
+                                                            .value,
+                                                        }
+                                                      : item,
+                                                ),
+                                              }))
+                                            }
+                                            className={`${field} flex-1`}
+                                          />
+                                        </div>
+                                      ),
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="flex gap-2">
+                                  <button
+                                    type="submit"
+                                    disabled={savingQuestion}
+                                    className="rounded-lg bg-[#1a6b3c] px-4 py-2 text-sm font-semibold text-white hover:bg-[#145530] disabled:opacity-50"
+                                  >
+                                    {savingQuestion ? "Saving..." : "Save"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingQuestionId(null)}
+                                    className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </form>
+                            )}
 
                             {question.options?.length ? (
                               <ul className="mt-2 grid gap-1 sm:grid-cols-2">
