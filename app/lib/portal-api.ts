@@ -1,4 +1,5 @@
 import { invalidate } from "@/app/lib/data-cache";
+import { browserHeaders } from "@/app/lib/forwarded-headers";
 
 // Which backend this frontend talks to. Set it per environment:
 //   local dev  -> .env.local (copy .env.example)
@@ -196,6 +197,7 @@ async function apiFetch<T>(path: string, init?: RequestInit, token?: string) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
+      ...(await browserHeaders()),
       Accept: "application/json",
       ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { NextResponse } from "next/server";
+import { browserHeaders } from "@/app/lib/forwarded-headers";
 import { API_BASE_URL, readApiList } from "@/app/lib/portal-api";
 import { LOGIN_MANUAL_MARKER } from "@/app/lib/login-manual";
 
@@ -39,7 +40,7 @@ export async function GET() {
   // 2) Fallback: admin-attached book (requires public read on the backend).
   try {
     const response = await fetch(`${API_BASE_URL}/api/learning/books/`, {
-      headers: { Accept: "application/json" },
+      headers: { ...(await browserHeaders()), Accept: "application/json" },
       cache: "no-store",
     });
 

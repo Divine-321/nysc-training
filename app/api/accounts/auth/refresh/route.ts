@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { browserHeaders } from "@/app/lib/forwarded-headers";
 import { API_BASE_URL } from "@/app/lib/portal-api";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -52,6 +53,7 @@ export async function POST() {
   const response = await fetch(`${API_BASE_URL}/api/accounts/auth/refresh/`, {
     method: "POST",
     headers: {
+      ...(await browserHeaders()),
       Accept: "application/json",
       "Content-Type": "application/json",
     },
