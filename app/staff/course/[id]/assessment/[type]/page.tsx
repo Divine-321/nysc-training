@@ -17,6 +17,7 @@ import {
   Lock,
   PlayCircle,
   RotateCcw,
+  ShieldAlert,
   ShieldCheck,
   Timer,
   XCircle,
@@ -33,6 +34,7 @@ import {
   type AssessmentAttempt,
   type AssessmentQuestion,
   type AssessmentResult,
+  type ProctoringViolationOutcome,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
 import IdentityVerificationModal from "@/app/components/IdentityVerificationModal";
@@ -110,6 +112,8 @@ export default function AssessmentPage() {
     AssessmentQuestion[] | null
   >(null);
   const [result, setResult] = useState<AssessmentResult | null>(null);
+  const [violation, setViolation] =
+    useState<ProctoringViolationOutcome | null>(null);
   const [attempts, setAttempts] = useState<AssessmentAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -319,13 +323,22 @@ export default function AssessmentPage() {
             question: item.id,
             selected_option: answers[item.id],
           }));
-        const submissionResult = await submitAssessment(
-          assessment.id,
-          submission,
-          enrollmentId,
-        );
-        setResult(submissionResult);
+        const { result: submissionResult, violation: submissionViolation } =
+          await submitAssessment(assessment.id, submission, enrollmentId);
         clearPersistedProgress();
+
+        // A voided attempt has no score to show. Leave `result` null so the
+        // results screen does not render an empty scorecard, and hand the
+        // learner the explanation instead of leaving them on the question
+        // paper until the clock runs out.
+        if (submissionViolation) {
+          setViolation(submissionViolation);
+          setExamPhase("intro");
+          void refreshAttempts(assessment.id, staffCourse?.enrollment);
+          return;
+        }
+
+        setResult(submissionResult);
 
       // Passing the assessment completes its linked ASSESSMENT activity in
       // the module flow. The backend does not do this automatically yet, so
@@ -505,6 +518,7 @@ export default function AssessmentPage() {
     autoSubmittedRef.current = false;
     setDeadline(null);
     setResult(null);
+    setViolation(null);
     setAnswers({});
     setLiveQuestions(null);
     setCurrentQuestion(0);
@@ -788,6 +802,61 @@ export default function AssessmentPage() {
                       )}
                     </div>
                   </section>
+                </div>
+              ) : violation ? (
+                <div className="mx-auto max-w-xl py-8">
+                  <div className="rounded-2xl border border-red-100 bg-red-50/60 p-8 text-center">
+                    <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-red-600">
+                      <ShieldAlert size={32} />
+                    </div>
+                    <h3 className="mb-2 text-2xl font-bold text-red-600">
+                      Attempt not accepted
+                    </h3>
+                    <p className="mb-6 text-gray-600">
+                      {violation.message ||
+                        "This attempt was stopped because the proctoring session was invalidated."}
+                    </p>
+
+                    {violation.reasons.length > 0 && (
+                      <ul className="mb-8 space-y-2 text-left">
+                        {violation.reasons.map((reason, index) => (
+                          <li
+                            key={index}
+                            className="flex items-start gap-2 rounded-lg border border-red-100 bg-white p-3 text-sm text-gray-700"
+                          >
+                            <AlertCircle
+                              size={16}
+                              className="mt-0.5 shrink-0 text-red-500"
+                            />
+                            <span>{reason}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      {canAttempt ? (
+                        <button
+                          onClick={handleRetake}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-[#145530]"
+                        >
+                          <RotateCcw size={18} /> Try Again
+                        </button>
+                      ) : null}
+                      <button
+                        onClick={() => router.back()}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-xl border-2 border-[#1a6b3c] px-6 py-3 font-semibold text-[#1a6b3c] transition hover:bg-green-50"
+                      >
+                        Back to Module
+                      </button>
+                    </div>
+
+                    <p className="mt-4 text-xs text-gray-500">
+                      {canAttempt
+                        ? "Keep your camera on and stay on this tab for the whole assessment."
+                        : "You have no attempts left. Contact an administrator if you believe this is a mistake."}
+                    </p>
+                  </div>
                 </div>
               ) : result ? (
                 <div className="mx-auto max-w-xl py-8">

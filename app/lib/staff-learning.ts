@@ -746,11 +746,80 @@ export async function startAssessment(
   return { questions };
 }
 
+/** A submission the backend voided because proctoring was invalidated. */
+export type ProctoringViolationOutcome = {
+  message: string;
+  reasons: string[];
+};
+
+export type AssessmentSubmission = {
+  result: AssessmentResult | null;
+  violation: ProctoringViolationOutcome | null;
+};
+
+/**
+ * Pulls human-readable reasons out of a voided submission's `data`.
+ *
+ * Deliberately tolerant: the backend reports the detail here, and the exact
+ * shape is not pinned down, so accept a list of strings, a list of event
+ * objects, or an object wrapping either, and ignore anything unrecognised
+ * rather than showing the learner a blank screen or raw JSON.
+ */
+function readViolationReasons(data: unknown): string[] {
+  const fromEntry = (entry: unknown): string | null => {
+    if (typeof entry === "string") return entry.trim() || null;
+    if (!entry || typeof entry !== "object") return null;
+
+    const record = entry as Record<string, unknown>;
+    for (const key of [
+      "reason",
+      "description",
+      "message",
+      "detail",
+      "event_type",
+      "type",
+    ]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+    return null;
+  };
+
+  if (Array.isArray(data)) {
+    return data.map(fromEntry).filter((item): item is string => item !== null);
+  }
+
+  if (data && typeof data === "object") {
+    const record = data as Record<string, unknown>;
+    for (const key of ["reasons", "violations", "events", "details"]) {
+      const value = record[key];
+      if (Array.isArray(value)) {
+        return value
+          .map(fromEntry)
+          .filter((item): item is string => item !== null);
+      }
+    }
+
+    const single = fromEntry(record);
+    if (single) return [single];
+  }
+
+  return [];
+}
+
+const looksLikeResult = (data: unknown) =>
+  Boolean(
+    data &&
+      typeof data === "object" &&
+      !Array.isArray(data) &&
+      "percentage" in (data as Record<string, unknown>),
+  );
+
 export async function submitAssessment(
   assessmentId: number,
   answers: { question: number; selected_option: number }[],
   enrollmentId?: number | null,
-) {
+): Promise<AssessmentSubmission> {
   const response = await fetch(`/api/training/assessments/${assessmentId}/submit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -768,7 +837,24 @@ export async function submitAssessment(
     );
   }
 
-  return readApiItem<AssessmentResult>(payload);
+  // A voided attempt comes back as a success: HTTP 200, success true, with the
+  // refusal in `message` and the detail in `data`. Reading only `data` would
+  // render it as an ordinary result with a blank score, so the message is what
+  // distinguishes the two.
+  const message =
+    payload && typeof payload === "object" && "message" in payload
+      ? String((payload as { message?: unknown }).message ?? "")
+      : "";
+  const data = readApiItem<unknown>(payload);
+
+  if (/proctoring/i.test(message) && !looksLikeResult(data)) {
+    return {
+      result: null,
+      violation: { message: message.trim(), reasons: readViolationReasons(data) },
+    };
+  }
+
+  return { result: data as AssessmentResult | null, violation: null };
 }
 
 /**

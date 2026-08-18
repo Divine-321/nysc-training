@@ -671,10 +671,20 @@ function CoursePlayer() {
             (doc) => doc.id === requestedDocId,
           );
           const firstIncomplete = orderedDocs.find((doc) => !done.has(doc.id));
-          const landing = requested ?? firstIncomplete ?? orderedDocs[0];
+          const landing = requested ?? firstIncomplete;
 
           if (landing) {
             setCurrentKey(`doc-${landing.id}`);
+          } else if (!courseData.enrollment.evaluation) {
+            // Everything is read, so there is no "next incomplete" to resume
+            // at. Falling back to the first material here is what sent people
+            // back to the start of module one after an assessment, since
+            // finishing the content is exactly when that happens. The
+            // evaluation is what is actually left.
+            setCurrentKey("evaluation");
+          } else if (orderedDocs.length > 0) {
+            // Course fully finished: stay at the end rather than the start.
+            setCurrentKey(`doc-${orderedDocs[orderedDocs.length - 1].id}`);
           }
         }
       } catch (loadError) {
