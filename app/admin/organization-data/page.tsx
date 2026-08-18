@@ -4,6 +4,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Edit3, Plus, Trash2, Users, X } from "lucide-react";
 import { extractErrorMessage, readApiList } from "@/app/lib/portal-api";
 import { useConfirm } from "@/app/components/useConfirm";
+import { cachedFetch, LONG_TTL_MS } from "@/app/lib/data-cache";
 
 type ResourceKey = "ranks" | "grade-levels" | "states" | "departments";
 
@@ -173,7 +174,9 @@ export default function OrganizationDataPage() {
 
   const loadItems = useCallback(async (key: ResourceKey) => {
     try {
-      const response = await fetch(`/api/organization/${key}`, { cache: "no-store" });
+      const response = await cachedFetch(`/api/organization/${key}`, {
+        ttlMs: LONG_TTL_MS,
+      });
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {

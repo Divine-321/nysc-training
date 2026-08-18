@@ -23,6 +23,7 @@ import {
 import CameraCaptureModal, {
   dataUrlToFile,
 } from "@/app/components/CameraCaptureModal";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 const defaultProfileData = {
   photo: "/1-blank-profile.png",
@@ -50,7 +51,7 @@ export default function AdminProfilePage() {
 
   useEffect(() => {
     const loadProfile = async () => {
-      const response = await fetch("/api/accounts/me", { cache: "no-store" });
+      const response = await cachedFetch("/api/accounts/me");
 
       if (!response.ok) return;
 

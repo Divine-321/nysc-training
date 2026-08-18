@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { extractErrorMessage, readApiList } from "@/app/lib/portal-api";
 import CertificateDocument from "@/app/components/CertificateDocument";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type IssuedCertificate = {
   id: number;
@@ -134,7 +135,7 @@ export default function AdminCertificatesPage() {
       try {
         const [certificateResponse, assignmentResponse] = await Promise.all([
           fetch("/api/training/certificates", { cache: "no-store" }),
-          fetch("/api/training/programmes", { cache: "no-store" }),
+          cachedFetch("/api/training/programmes"),
         ]);
 
         const certificatePayload = await certificateResponse

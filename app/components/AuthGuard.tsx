@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearSession, type AuthUser } from "@/app/lib/portal-api";
+import { invalidate } from "@/app/lib/data-cache";
 
 type AuthGuardProps = {
   children: React.ReactNode;
@@ -27,6 +28,24 @@ export default function AuthGuard({
           : input instanceof URL
             ? input.toString()
             : input.url;
+
+      // Anything that writes empties the read cache. Clearing all of it
+      // rather than the one resource is deliberate: edits ripple across
+      // endpoints (a question changes its assessment, an enrolment changes
+      // a programme's counts), and this app reads far more than it writes,
+      // so the cost is one refetch where the alternative is stale screens
+      // whenever a dependency is missed.
+      const method = (
+        init?.method ??
+        (typeof input === "object" && "method" in input
+          ? input.method
+          : "GET")
+      ).toUpperCase();
+
+      if (response.ok && method !== "GET" && url.includes("/api/")) {
+        invalidate();
+      }
+
       const shouldLogout =
         response.status === 401 &&
         url.includes("/api/") &&

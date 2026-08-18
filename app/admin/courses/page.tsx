@@ -42,6 +42,7 @@ import {
   ToastViewport,
   useToasts,
 } from "@/app/components/ui-interactive";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 // Course status is not admin-manageable (everything saves as PUBLISHED),
 // so no status badge or filter is shown here.
@@ -189,7 +190,7 @@ export default function AdminCoursesPage() {
 
     try {
       const [trainingRes, enrollmentRes] = await Promise.all([
-        fetch("/api/training/programmes", { cache: "no-store" }),
+        cachedFetch("/api/training/programmes"),
         fetch("/api/training/enrollments", { cache: "no-store" }),
       ]);
 

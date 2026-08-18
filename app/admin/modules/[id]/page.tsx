@@ -42,6 +42,7 @@ import ModuleActivitiesManager, {
 } from "@/app/admin/courses/[id]/builder/ModuleDocumentsManager";
 import ModuleAssessmentsManager from "@/app/admin/courses/[id]/builder/CourseAssessmentsManager";
 import ModuleFormModal from "../ModuleFormModal";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type ModuleDetail = LibraryModule & { activities?: Activity[] };
 
@@ -76,9 +77,9 @@ export default function ModuleDetailPage() {
     try {
       const [moduleResponse, assessmentsResponse, coursesResponse] =
         await Promise.all([
-          fetch(`/api/training/modules/${moduleId}`, { cache: "no-store" }),
+          cachedFetch(`/api/training/modules/${moduleId}`),
           fetch("/api/training/assessments", { cache: "no-store" }),
-          fetch("/api/training/courses", { cache: "no-store" }),
+          cachedFetch("/api/training/courses"),
         ]);
 
       const modulePayload = await moduleResponse.json().catch(() => null);

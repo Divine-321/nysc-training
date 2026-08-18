@@ -13,6 +13,7 @@ import {
 import CameraCaptureModal, {
   dataUrlToFile,
 } from "@/app/components/CameraCaptureModal";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type CohortStaffAssignment = {
   id: number;
@@ -75,7 +76,7 @@ const [formData, setFormData] = useState(emptyProfileData);
 
   useEffect(() => {
     const loadProfile = async () => {
-      const response = await fetch("/api/accounts/me", { cache: "no-store" });
+      const response = await cachedFetch("/api/accounts/me");
       if (!response.ok) return;
       const payload = await response.json();
       const user = payload?.data as AuthUser | undefined;

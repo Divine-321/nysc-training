@@ -31,6 +31,7 @@ import {
   type Course,
 } from "@/app/lib/portal-api";
 import { useConfirm } from "@/app/components/useConfirm";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type AssessmentType = "PRE_TEST" | "POST_TEST";
 type CorrectOption = "A" | "B" | "C" | "D" | "E";
@@ -182,7 +183,7 @@ export default function CourseAssessmentsManager({
       // list to the modules currently assigned to this course.
       const [assessmentsResponse, courseResponse] = await Promise.all([
         fetch("/api/training/assessments", { cache: "no-store" }),
-        fetch(`/api/training/courses/${courseId}`, { cache: "no-store" }),
+        cachedFetch(`/api/training/courses/${courseId}`),
       ]);
       const payload = await assessmentsResponse.json().catch(() => null);
       const coursePayload = await courseResponse.json().catch(() => null);

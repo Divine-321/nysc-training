@@ -27,6 +27,7 @@ import {
   normalizeLiveSession,
   type LiveSession,
 } from "@/app/lib/staff-learning";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type DashboardAnalytics = {
   totalNumberOfStaff: number;
@@ -112,7 +113,7 @@ export default function AdminDashboardPage() {
     const loadSessionsAndModules = async () => {
       try {
         const [modulesResponse, sessionsResponse] = await Promise.all([
-          fetch("/api/training/modules", { cache: "no-store" }),
+          cachedFetch("/api/training/modules"),
           fetch("/api/training/live-sessions", { cache: "no-store" }),
         ]);
 

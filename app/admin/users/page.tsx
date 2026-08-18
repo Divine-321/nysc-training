@@ -31,6 +31,7 @@ import {
 } from "@/app/lib/staff-learning";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import { useConfirm } from "@/app/components/useConfirm";
+import { cachedFetch, LONG_TTL_MS } from "@/app/lib/data-cache";
 
 type StaffUser = {
   id: string;
@@ -622,11 +623,11 @@ export default function AdminUsersPage() {
           ranksResponse,
           postingReasonsResponse,
         ] = await Promise.all([
-          fetch("/api/organization/states", { cache: "no-store" }),
-          fetch("/api/organization/departments", { cache: "no-store" }),
-          fetch("/api/organization/grade-levels", { cache: "no-store" }),
-          fetch("/api/organization/ranks", { cache: "no-store" }),
-          fetch("/api/organization/posting-reasons", { cache: "no-store" }),
+          cachedFetch("/api/organization/states", { ttlMs: LONG_TTL_MS }),
+          cachedFetch("/api/organization/departments", { ttlMs: LONG_TTL_MS }),
+          cachedFetch("/api/organization/grade-levels", { ttlMs: LONG_TTL_MS }),
+          cachedFetch("/api/organization/ranks", { ttlMs: LONG_TTL_MS }),
+          cachedFetch("/api/organization/posting-reasons", { ttlMs: LONG_TTL_MS }),
         ]);
 
         const [

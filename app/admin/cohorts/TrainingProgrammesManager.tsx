@@ -40,6 +40,7 @@ import {
 } from "@/app/lib/staff-learning";
 import { formatDateTime } from "@/app/lib/format";
 import { useConfirm } from "@/app/components/useConfirm";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 // A Course = a set of Modules delivered to a Cohort (month) in a given year.
 // Each selected module becomes one cohort-course record on the backend,
@@ -233,8 +234,8 @@ export default function TrainingProgrammesManager() {
     try {
       const [programmeResponse, courseResponse, sessionResponse] =
         await Promise.all([
-          fetch("/api/training/programmes", { cache: "no-store" }),
-          fetch("/api/training/courses", { cache: "no-store" }),
+          cachedFetch("/api/training/programmes"),
+          cachedFetch("/api/training/courses"),
           fetch("/api/training/live-sessions", { cache: "no-store" }),
         ]);
 

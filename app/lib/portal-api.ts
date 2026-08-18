@@ -1,3 +1,5 @@
+import { invalidate } from "@/app/lib/data-cache";
+
 // Which backend this frontend talks to. Set it per environment:
 //   local dev  -> .env.local (copy .env.example)
 //   Vercel     -> the project's environment variables
@@ -234,6 +236,10 @@ export function clearSession() {
   if (typeof window === "undefined") return;
 
   window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  // Cached responses hold the previous account's data. Without this, signing
+  // in as someone else on the same browser could show their lists until the
+  // entries aged out.
+  invalidate();
 }
 
 /**

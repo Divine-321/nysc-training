@@ -23,6 +23,7 @@ import {
   type AuthUser,
 } from "@/app/lib/portal-api";
 import AuthGuard from "@/app/components/AuthGuard";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type Notification = {
   id: number;
@@ -176,7 +177,7 @@ export default function StaffLayout({
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const res = await fetch("/api/accounts/me", { cache: "no-store" });
+        const res = await cachedFetch("/api/accounts/me");
 
         if (!res.ok) {
           setUser(null);

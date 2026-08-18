@@ -26,6 +26,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 const navItems = [
   {
@@ -154,7 +155,7 @@ export default function AdminLayout({
 
     const loadUser = async () => {
       try {
-        const res = await fetch("/api/accounts/me", { cache: "no-store" });
+        const res = await cachedFetch("/api/accounts/me");
 
         if (!res.ok) {
           setUser(null);

@@ -13,6 +13,7 @@ import {
 import { type CohortCourse, type LiveSession } from "@/app/lib/staff-learning";
 import { formatDateTime } from "@/app/lib/format";
 import { useConfirm } from "@/app/components/useConfirm";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type Cohort = {
   id: number;
@@ -52,9 +53,9 @@ export default function ManageCohortPage() {
     try {
       const [cohortResponse, coursesResponse, assignmentResponse, sessionResponse] =
         await Promise.all([
-          fetch(`/api/training/cohorts/${cohortId}`, { cache: "no-store" }),
-          fetch("/api/training/courses", { cache: "no-store" }),
-          fetch("/api/training/programmes", { cache: "no-store" }),
+          cachedFetch(`/api/training/cohorts/${cohortId}`),
+          cachedFetch("/api/training/courses"),
+          cachedFetch("/api/training/programmes"),
           fetch("/api/training/live-sessions", { cache: "no-store" }),
         ]);
 
