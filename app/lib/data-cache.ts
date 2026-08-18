@@ -1,30 +1,36 @@
 /**
- * A short-lived cache for GET requests, so moving between admin pages does not
- * re-download the same reference data every time.
+ * A cache for GET requests, so moving between pages does not re-download data
+ * the browser already has.
  *
  * Nearly every page is a client component that fetches in an effect, so a
- * navigation used to mean: blank screen, mount, request, wait, render. Lists
- * like programmes, courses and departments are read on a dozen different
- * screens and change rarely, so most of that waiting was spent re-fetching
- * bytes the browser had seconds earlier.
+ * navigation means: blank screen, mount, request, wait, render. The backend is
+ * in Amsterdam and its users are in Nigeria, where a round trip costs roughly
+ * 600ms before Django does any work, so a page making four calls could not
+ * feel quick no matter how the requests were arranged. The cheapest request is
+ * the one that is never made.
  *
- * Two things are cached here:
- *   - completed responses, for TTL_MS after they arrive
- *   - in-flight requests, so parallel callers share one network round trip
- *     rather than firing the same request several times on one page load
+ * Three things happen here:
+ *   - fresh responses are served without touching the network
+ *   - stale ones are served immediately and refreshed in the background, so a
+ *     revisit is instant and the next visit shows the newer data
+ *   - concurrent callers of the same URL share one request, instead of each
+ *     component on a page firing its own
  *
- * Deliberately a plain TTL rather than stale-while-revalidate. Callers get a
- * Response back and are not subscribed to anything, so a background refresh
- * would land after the page had already rendered and be ignored. Freshness
- * comes from a short window plus explicit invalidation after mutations.
+ * Serving stale content is safe because freshness comes from invalidation
+ * rather than from a short window: every successful write clears this cache
+ * (see AuthGuard), so an entry can only lag behind if someone else changed the
+ * data on another machine.
  */
 
-// Long enough to cover moving between pages and back, short enough that
-// anything missed by an invalidate call corrects itself quickly.
-const DEFAULT_TTL_MS = 30_000;
+// How long a response is served with no network call at all.
+const DEFAULT_TTL_MS = 60_000;
 
-// Reference data that only changes when an admin edits it directly, which
-// always goes through invalidate().
+// Beyond the TTL an entry is still handed straight back, but a refresh starts
+// in the background. Past this it is too old to show and the caller waits.
+const DEFAULT_STALE_MS = 15 * 60_000;
+
+// Reference data - states, departments, ranks - which only changes when an
+// admin edits it directly, and that always invalidates.
 export const LONG_TTL_MS = 5 * 60_000;
 
 type CacheEntry = {
@@ -76,9 +82,10 @@ export function invalidate(match?: string) {
  */
 export async function cachedFetch(
   url: string,
-  options: { ttlMs?: number } = {},
+  options: { ttlMs?: number; staleMs?: number } = {},
 ): Promise<Response> {
   const ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
+  const staleMs = options.staleMs ?? Math.max(DEFAULT_STALE_MS, ttlMs);
 
   // No cache on the server: the map would be module-level state shared by
   // every visitor, which is one user seeing another user's data.
@@ -86,41 +93,58 @@ export async function cachedFetch(
     return fetch(url, { cache: "no-store" });
   }
 
-  const fresh = responseCache.get(url);
-  if (fresh && Date.now() - fresh.at < ttlMs) {
-    return buildResponse(fresh);
-  }
+  const load = () => {
+    const pending = inFlight.get(url);
+    if (pending) return pending;
 
-  const pending = inFlight.get(url);
-  if (pending) {
-    return buildResponse(await pending);
-  }
+    const request = (async (): Promise<CacheEntry> => {
+      const response = await fetch(url, { cache: "no-store" });
+      const entry: CacheEntry = {
+        at: Date.now(),
+        status: response.status,
+        statusText: response.statusText,
+        headers: [...response.headers.entries()],
+        body: await response.text(),
+      };
 
-  const request = (async (): Promise<CacheEntry> => {
-    const response = await fetch(url, { cache: "no-store" });
-    const entry: CacheEntry = {
-      at: Date.now(),
-      status: response.status,
-      statusText: response.statusText,
-      headers: [...response.headers.entries()],
-      body: await response.text(),
-    };
+      // Only successes are worth keeping. Caching a failure would pin an error
+      // on screen for the whole window even after the cause had cleared, and a
+      // 401 in particular must reach the network so the session can refresh.
+      if (response.ok) {
+        responseCache.set(url, entry);
+      } else {
+        responseCache.delete(url);
+      }
 
-    // Only successes are worth keeping. Caching a failure would pin an error
-    // on screen for the whole TTL even after the cause had cleared, and a 401
-    // in particular must reach the network again so the session can refresh.
-    if (response.ok) {
-      responseCache.set(url, entry);
+      return entry;
+    })().finally(() => {
+      inFlight.delete(url);
+    });
+
+    inFlight.set(url, request);
+    return request;
+  };
+
+  const cached = responseCache.get(url);
+
+  if (cached) {
+    const age = Date.now() - cached.at;
+
+    if (age < ttlMs) {
+      return buildResponse(cached);
     }
 
-    return entry;
-  })();
-
-  inFlight.set(url, request);
-
-  try {
-    return buildResponse(await request);
-  } finally {
-    inFlight.delete(url);
+    if (age < staleMs) {
+      // Hand back what we have and refresh behind it. The caller has already
+      // rendered by the time the new copy lands, so it is not shown until the
+      // next visit - which is the trade that keeps navigation instant.
+      void load().catch(() => {
+        // A failed background refresh leaves the existing entry in place; the
+        // next call retries.
+      });
+      return buildResponse(cached);
+    }
   }
+
+  return buildResponse(await load());
 }
