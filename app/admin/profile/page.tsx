@@ -147,9 +147,7 @@ export default function AdminProfilePage() {
         );
       }
 
-      const currentUserResponse = await fetch("/api/accounts/me", {
-        cache: "no-store",
-      });
+      const currentUserResponse = await cachedFetch("/api/accounts/me");
       const currentUserPayload = currentUserResponse.ok
         ? await currentUserResponse.json().catch(() => null)
         : null;

@@ -189,9 +189,7 @@ export default function StaffLayout({
         setUser(currentUser);
 
         if (currentUser) {
-          const cohortResponse = await fetch("/api/training/cohort-staff", {
-            cache: "no-store",
-          });
+          const cohortResponse = await cachedFetch("/api/training/cohort-staff");
 
           if (cohortResponse.ok) {
             const cohortPayload = await cohortResponse.json().catch(() => null);
@@ -204,9 +202,7 @@ export default function StaffLayout({
                 .map((assignment) => assignment.cohort_name),
             );
           } else {
-            const enrollmentResponse = await fetch("/api/training/enrollments", {
-              cache: "no-store",
-            });
+            const enrollmentResponse = await cachedFetch("/api/training/enrollments");
 
             if (enrollmentResponse.ok) {
               const enrollmentPayload = await enrollmentResponse
@@ -246,9 +242,7 @@ export default function StaffLayout({
   useEffect(() => {
     const loadUnreadCount = async () => {
       try {
-        const response = await fetch("/api/notifications/unread-count", {
-          cache: "no-store",
-        });
+        const response = await cachedFetch("/api/notifications/unread-count");
 
         if (!response.ok) return;
 
@@ -273,9 +267,7 @@ export default function StaffLayout({
     setLoadingNotifications(true);
 
     try {
-      const response = await fetch("/api/notifications", {
-        cache: "no-store",
-      });
+      const response = await cachedFetch("/api/notifications");
 
       if (!response.ok) return;
 

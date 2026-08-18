@@ -17,6 +17,7 @@ import {
   type StaffCourse,
 } from "@/app/lib/staff-learning";
 import { readApiList } from "@/app/lib/portal-api";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 export default function StaffDashboard() {
   const [courses, setCourses] = useState<StaffCourse[]>([]);
@@ -30,7 +31,7 @@ export default function StaffDashboard() {
       try {
         const [staffCourses, certificatesResponse] = await Promise.all([
           loadStaffCourses(),
-          fetch("/api/training/certificates", { cache: "no-store" }),
+          cachedFetch("/api/training/certificates"),
         ]);
         setCourses(staffCourses);
 

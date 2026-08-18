@@ -72,8 +72,8 @@ export default function AdminEvaluationsPage() {
       try {
         const [evaluationRes, enrollmentRes, cohortCourseRes] =
           await Promise.all([
-            fetch("/api/training/evaluations", { cache: "no-store" }),
-            fetch("/api/training/enrollments", { cache: "no-store" }),
+            cachedFetch("/api/training/evaluations"),
+            cachedFetch("/api/training/enrollments"),
             cachedFetch("/api/training/programmes"),
           ]);
 

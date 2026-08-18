@@ -10,6 +10,7 @@ import {
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import { LOGIN_MANUAL_MARKER } from "@/app/lib/login-manual";
 import TrustedDevices from "./TrustedDevices";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type ManualBook = {
   id: number;
@@ -37,9 +38,7 @@ export default function AdminSettingsPage() {
   useEffect(() => {
     const loadManual = async () => {
       try {
-        const response = await fetch("/api/learning/books", {
-          cache: "no-store",
-        });
+        const response = await cachedFetch("/api/learning/books");
 
         if (!response.ok) return;
 

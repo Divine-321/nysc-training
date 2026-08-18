@@ -133,10 +133,7 @@ async function loadStaffDirectory(): Promise<Map<number, StaffDirectoryEntry>> {
   let hasMore = true;
 
   while (hasMore && page <= 20) {
-    const response = await fetch(
-      `/api/accounts/staff?page=${page}&page_size=100`,
-      { cache: "no-store" },
-    );
+    const response = await cachedFetch(`/api/accounts/staff?page=${page}&page_size=100`);
 
     if (!response.ok) break;
 
@@ -236,7 +233,7 @@ export default function TrainingProgrammesManager() {
         await Promise.all([
           cachedFetch("/api/training/programmes"),
           cachedFetch("/api/training/courses"),
-          fetch("/api/training/live-sessions", { cache: "no-store" }),
+          cachedFetch("/api/training/live-sessions"),
         ]);
 
       const [programmePayload, coursePayload, sessionPayload] =
@@ -369,9 +366,7 @@ export default function TrainingProgrammesManager() {
         let confirmedDuplicate = false;
 
         try {
-          const check = await fetch("/api/training/programmes", {
-            cache: "no-store",
-          });
+          const check = await cachedFetch("/api/training/programmes");
 
           if (check.ok) {
             confirmedDuplicate = Boolean(
@@ -499,10 +494,7 @@ export default function TrainingProgrammesManager() {
     setLoadingAttendance(true);
 
     try {
-      const response = await fetch(
-        `/api/training/live-sessions/${sessionId}/attendance`,
-        { cache: "no-store" },
-      );
+      const response = await cachedFetch(`/api/training/live-sessions/${sessionId}/attendance`);
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
@@ -534,9 +526,7 @@ export default function TrainingProgrammesManager() {
       const [enrollmentResponse, directory] = await Promise.all([
         // Scoped server-side; this used to pull every enrolment in the system
         // and filter in the browser.
-        fetch(`/api/training/enrollments?programme=${programme.id}&page_size=100`, {
-          cache: "no-store",
-        }),
+        cachedFetch(`/api/training/enrollments?programme=${programme.id}&page_size=100`),
         staffDirectory.size > 0
           ? Promise.resolve(staffDirectory)
           : loadStaffDirectory(),
@@ -672,9 +662,7 @@ export default function TrainingProgrammesManager() {
     setModuleError("");
 
     try {
-      const response = await fetch("/api/training/modules", {
-        cache: "no-store",
-      });
+      const response = await cachedFetch("/api/training/modules");
       const payload = await response.json().catch(() => null);
 
       if (response.ok) {

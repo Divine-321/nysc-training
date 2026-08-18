@@ -22,6 +22,7 @@ import type {
   Batch,
   Month,
 } from "@/app/lib/training-types";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 export { BATCH_OPTIONS, MONTH_OPTIONS } from "@/app/lib/training-types";
 export type {
@@ -300,7 +301,7 @@ function readEnrollments(payload: unknown): CourseEnrollment[] {
 }
 
 async function getJson(path: string) {
-  const response = await fetch(path, { cache: "no-store" });
+  const response = await cachedFetch(path);
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -793,9 +794,7 @@ export async function loadAssessmentAttempts(
   try {
     const query =
       enrollmentId != null ? `?enrollment=${encodeURIComponent(enrollmentId)}` : "";
-    const response = await fetch(`/api/training/assessment-attempts${query}`, {
-      cache: "no-store",
-    });
+    const response = await cachedFetch(`/api/training/assessment-attempts${query}`);
 
     if (!response.ok) return [];
 

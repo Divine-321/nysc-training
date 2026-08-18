@@ -34,6 +34,7 @@ import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import ActivityViewer from "@/app/components/ActivityViewer";
 import RichTextEditor from "@/app/components/RichTextEditor";
 import { useConfirm } from "@/app/components/useConfirm";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 // Re-exported so CourseModulesManager can type the module payload.
 export type Activity = AdminActivity;
@@ -138,9 +139,7 @@ export default function ModuleActivitiesManager({
 
     const loadAssessmentOptions = async () => {
       try {
-        const response = await fetch("/api/training/assessments", {
-          cache: "no-store",
-        });
+        const response = await cachedFetch("/api/training/assessments");
         const payload = await response.json().catch(() => null);
         const list = response.ok
           ? readApiList<CourseAssessment>(payload).filter(

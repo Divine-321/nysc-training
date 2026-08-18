@@ -73,9 +73,7 @@ export default function AdminCoursesPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const coursesResponse = await fetch("/api/training/courses", {
-          cache: "no-store",
-        });
+        const coursesResponse = await cachedFetch("/api/training/courses");
         const coursesPayload = await readJsonResponse(coursesResponse);
 
         if (!coursesResponse.ok) {
@@ -191,7 +189,7 @@ export default function AdminCoursesPage() {
     try {
       const [trainingRes, enrollmentRes] = await Promise.all([
         cachedFetch("/api/training/programmes"),
-        fetch("/api/training/enrollments", { cache: "no-store" }),
+        cachedFetch("/api/training/enrollments"),
       ]);
 
       trainings = (

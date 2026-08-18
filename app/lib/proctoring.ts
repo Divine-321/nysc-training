@@ -11,6 +11,7 @@ import type {
   ProctoringStartResult,
   BrowserProctoringEventType,
 } from "@/app/lib/training-types";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 // Client for the live proctoring API (AWS Rekognition, backend-mediated).
 // All calls go through the local /api proxy routes so tokens stay in
@@ -172,9 +173,7 @@ const REVIEW_ACCESS_403_MESSAGE =
 export async function listProctoringSessions(): Promise<
   ProctoringSessionSummary[]
 > {
-  const response = await fetch("/api/training/proctoring/sessions", {
-    cache: "no-store",
-  });
+  const response = await cachedFetch("/api/training/proctoring/sessions");
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
@@ -216,10 +215,7 @@ export async function reviewProctoringSession(
 export async function getProctoringSession(
   sessionId: number,
 ): Promise<ProctoringSession | null> {
-  const response = await fetch(
-    `/api/training/proctoring/sessions/${sessionId}`,
-    { cache: "no-store" },
-  );
+  const response = await cachedFetch(`/api/training/proctoring/sessions/${sessionId}`);
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {

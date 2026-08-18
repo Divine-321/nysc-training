@@ -70,9 +70,7 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const loadAnalytics = async () => {
       try {
-        const response = await fetch("/api/analytics/dashboard", {
-          cache: "no-store",
-        });
+        const response = await cachedFetch("/api/analytics/dashboard");
 
         const payload = await response.json().catch(() => null);
 
@@ -114,7 +112,7 @@ export default function AdminDashboardPage() {
       try {
         const [modulesResponse, sessionsResponse] = await Promise.all([
           cachedFetch("/api/training/modules"),
-          fetch("/api/training/live-sessions", { cache: "no-store" }),
+          cachedFetch("/api/training/live-sessions"),
         ]);
 
         const modules = modulesResponse.ok

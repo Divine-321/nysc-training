@@ -89,7 +89,7 @@ export default function ModuleLibraryPage() {
         await Promise.all([
           cachedFetch("/api/training/modules"),
           cachedFetch("/api/training/courses"),
-          fetch("/api/training/assessments", { cache: "no-store" }),
+          cachedFetch("/api/training/assessments"),
         ]);
 
       const modulesPayload = await modulesResponse.json().catch(() => null);

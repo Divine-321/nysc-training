@@ -5,6 +5,7 @@ import { readApiList } from "@/app/lib/portal-api";
 import type { CohortCourse } from "@/app/lib/staff-learning";
 import LegacyCohortsManager from "./LegacyCohortsManager";
 import TrainingProgrammesManager from "./TrainingProgrammesManager";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type CohortModel = "detecting" | "legacy" | "programmes";
 
@@ -17,9 +18,7 @@ type CohortModel = "detecting" | "legacy" | "programmes";
  */
 async function detectCohortModel(): Promise<CohortModel> {
   try {
-    const response = await fetch("/api/training/programmes", {
-      cache: "no-store",
-    });
+    const response = await cachedFetch("/api/training/programmes");
     const payload = await response.json().catch(() => null);
 
     if (response.ok) {
@@ -39,9 +38,7 @@ async function detectCohortModel(): Promise<CohortModel> {
 
     // Empty list is ambiguous — the old Cohort endpoint existing (401/200)
     // vs gone (404) settles it.
-    const cohortsProbe = await fetch("/api/training/cohorts", {
-      cache: "no-store",
-    });
+    const cohortsProbe = await cachedFetch("/api/training/cohorts");
 
     return cohortsProbe.status === 404 ? "programmes" : "legacy";
   } catch {

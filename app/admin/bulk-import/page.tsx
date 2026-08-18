@@ -158,7 +158,7 @@ export default function BulkImportPage() {
     field: string,
     values: string[],
   ) => {
-    const existingRes = await fetch(path, { cache: "no-store" });
+    const existingRes = await cachedFetch(path);
     const existingPayload = await existingRes.json().catch(() => null);
     const existing = new Set(
       readList(existingPayload).map((item) =>
@@ -195,7 +195,7 @@ export default function BulkImportPage() {
   };
 
   const importLocations = async (path: string, values: string[]) => {
-    const existingRes = await fetch(path, { cache: "no-store" });
+    const existingRes = await cachedFetch(path);
     const existingPayload = await existingRes.json().catch(() => null);
     const existingList = readList(existingPayload);
     const existingNames = new Set(
@@ -244,7 +244,7 @@ export default function BulkImportPage() {
   };
 
   const fetchList = async (path: string) => {
-    const res = await fetch(path, { cache: "no-store" });
+    const res = await cachedFetch(path);
     const payload = await res.json().catch(() => null);
     return readList(payload);
   };

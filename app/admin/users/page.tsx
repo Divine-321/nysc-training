@@ -420,10 +420,7 @@ export default function AdminUsersPage() {
       const searchQuery = debouncedSearch
         ? `&search=${encodeURIComponent(debouncedSearch)}`
         : "";
-      const response = await fetch(
-        `/api/accounts/staff?page=${pageNumber}&page_size=${size}&sortBy=${staffSort}${searchQuery}`,
-        { cache: "no-store" },
-      );
+      const response = await cachedFetch(`/api/accounts/staff?page=${pageNumber}&page_size=${size}&sortBy=${staffSort}${searchQuery}`);
       const payload = (await response
         .json()
         .catch(() => null)) as StaffListResponse | null;
@@ -457,17 +454,11 @@ export default function AdminUsersPage() {
           enrollmentsResponse,
         ] = await Promise.all([
           fetchCurrentPage(),
-          fetch("/api/organization/postings", {
-            cache: "no-store",
-          }),
-          fetch("/api/training/cohort-staff", {
-            cache: "no-store",
-          }),
+          cachedFetch("/api/organization/postings"),
+          cachedFetch("/api/training/cohort-staff"),
           // Staff are assigned to trainings via enrollments now, so the cohort
           // and course counts must include those — not just legacy cohort-staff.
-          fetch("/api/training/enrollments", {
-            cache: "no-store",
-          }),
+          cachedFetch("/api/training/enrollments"),
         ]);
 
         const [postingsPayload, cohortStaffPayload, enrollmentsPayload] =
@@ -673,9 +664,7 @@ export default function AdminUsersPage() {
     // Cohorts (legacy).
     const loadAssignmentTargets = async () => {
       try {
-        const programmeResponse = await fetch("/api/training/programmes", {
-          cache: "no-store",
-        });
+        const programmeResponse = await cachedFetch("/api/training/programmes");
         const programmePayload = await programmeResponse
           .json()
           .catch(() => null);
@@ -694,9 +683,7 @@ export default function AdminUsersPage() {
           return;
         }
 
-        const response = await fetch("/api/training/cohorts", {
-          cache: "no-store",
-        });
+        const response = await cachedFetch("/api/training/cohorts");
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
@@ -756,10 +743,7 @@ export default function AdminUsersPage() {
         const searchQuery = debouncedUnregisteredSearch
           ? `&search=${encodeURIComponent(debouncedUnregisteredSearch)}`
           : "";
-        const response = await fetch(
-          `/api/accounts/staff-records?page=${unregisteredPage}&page_size=${pageSize}&sortBy=${unregisteredSort}&is_registered=false${searchQuery}`,
-          { cache: "no-store" },
-        );
+        const response = await cachedFetch(`/api/accounts/staff-records?page=${unregisteredPage}&page_size=${pageSize}&sortBy=${unregisteredSort}&is_registered=false${searchQuery}`);
 
         if (response.status === 404 || response.status === 405) {
           setUnregisteredSupported(false);
@@ -861,9 +845,7 @@ export default function AdminUsersPage() {
       const targetCourseId = targetProgramme?.course ?? null;
 
       if (targetCourseId != null) {
-        const enrollmentsPayload = await fetch("/api/training/enrollments", {
-          cache: "no-store",
-        })
+        const enrollmentsPayload = await cachedFetch("/api/training/enrollments")
           .then((response) => (response.ok ? response.json() : null))
           .catch(() => null);
         const courseByProgrammeId = new Map(

@@ -82,15 +82,9 @@ const [formData, setFormData] = useState(emptyProfileData);
       const user = payload?.data as AuthUser | undefined;
       if (!user) return;
 
-      const cohortResponse = await fetch("/api/training/cohort-staff", {
-        cache: "no-store",
-      });
-      const enrollmentResponse = await fetch("/api/training/enrollments", {
-        cache: "no-store",
-      });
-      const postingResponse = await fetch("/api/organization/postings/current", {
-        cache: "no-store",
-      });
+      const cohortResponse = await cachedFetch("/api/training/cohort-staff");
+      const enrollmentResponse = await cachedFetch("/api/training/enrollments");
+      const postingResponse = await cachedFetch("/api/organization/postings/current");
 
       const cohortPayload = cohortResponse.ok
         ? await cohortResponse.json().catch(() => null)
@@ -208,9 +202,7 @@ const [formData, setFormData] = useState(emptyProfileData);
         );
       }
 
-      const currentUserResponse = await fetch("/api/accounts/me", {
-        cache: "no-store",
-      });
+      const currentUserResponse = await cachedFetch("/api/accounts/me");
       const currentUserPayload = currentUserResponse.ok
         ? await currentUserResponse.json().catch(() => null)
         : null;

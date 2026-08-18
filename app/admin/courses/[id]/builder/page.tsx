@@ -33,6 +33,7 @@ import {
   Skeleton,
 } from "@/app/components/ui";
 import { ToastViewport, useToasts } from "@/app/components/ui-interactive";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 const TABS = [
   { id: "details", label: "Course Information", icon: Settings2 },
@@ -60,9 +61,7 @@ export default function CourseBuilderPage() {
   const [error, setError] = useState("");
 
   const loadCourse = useCallback(async () => {
-    const response = await fetch(`/api/training/courses/${courseId}`, {
-      cache: "no-store",
-    });
+    const response = await cachedFetch(`/api/training/courses/${courseId}`);
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {

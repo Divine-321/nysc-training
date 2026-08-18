@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, MonitorSmartphone, Trash2 } from "lucide-react";
 import { extractErrorMessage, readApiList } from "@/app/lib/portal-api";
 import { useConfirm } from "@/app/components/useConfirm";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type TrustedDevice = {
   id: number;
@@ -79,9 +80,7 @@ export default function TrustedDevices() {
 
     const fetchDevices = async () => {
       try {
-        const response = await fetch("/api/accounts/me/devices", {
-          cache: "no-store",
-        });
+        const response = await cachedFetch("/api/accounts/me/devices");
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {

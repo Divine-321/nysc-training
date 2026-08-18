@@ -78,7 +78,7 @@ export default function ModuleDetailPage() {
       const [moduleResponse, assessmentsResponse, coursesResponse] =
         await Promise.all([
           cachedFetch(`/api/training/modules/${moduleId}`),
-          fetch("/api/training/assessments", { cache: "no-store" }),
+          cachedFetch("/api/training/assessments"),
           cachedFetch("/api/training/courses"),
         ]);
 

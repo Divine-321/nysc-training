@@ -56,7 +56,7 @@ export default function ManageCohortPage() {
           cachedFetch(`/api/training/cohorts/${cohortId}`),
           cachedFetch("/api/training/courses"),
           cachedFetch("/api/training/programmes"),
-          fetch("/api/training/live-sessions", { cache: "no-store" }),
+          cachedFetch("/api/training/live-sessions"),
         ]);
 
       const [cohortPayload, coursesPayload, assignmentPayload, sessionPayload] =

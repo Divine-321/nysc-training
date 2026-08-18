@@ -158,9 +158,7 @@ export default function CourseAssessmentsManager({
     try {
       // Module-builder mode: just this module's assessments.
       if (moduleId !== undefined) {
-        const response = await fetch("/api/training/assessments", {
-          cache: "no-store",
-        });
+        const response = await cachedFetch("/api/training/assessments");
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
@@ -182,7 +180,7 @@ export default function CourseAssessmentsManager({
       // Course-builder mode: assessments belong to Modules, so scope the
       // list to the modules currently assigned to this course.
       const [assessmentsResponse, courseResponse] = await Promise.all([
-        fetch("/api/training/assessments", { cache: "no-store" }),
+        cachedFetch("/api/training/assessments"),
         cachedFetch(`/api/training/courses/${courseId}`),
       ]);
       const payload = await assessmentsResponse.json().catch(() => null);

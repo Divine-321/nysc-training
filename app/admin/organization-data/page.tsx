@@ -78,10 +78,7 @@ async function findStaffRecordIds(fileNumbers: string[]): Promise<Map<string, nu
 
   const lookups = await Promise.all(
     wanted.map(async (fileNumber) => {
-      const response = await fetch(
-        `/api/accounts/staff-records?search=${encodeURIComponent(fileNumber)}&page_size=100`,
-        { cache: "no-store" },
-      );
+      const response = await cachedFetch(`/api/accounts/staff-records?search=${encodeURIComponent(fileNumber)}&page_size=100`);
 
       if (!response.ok) return null;
 

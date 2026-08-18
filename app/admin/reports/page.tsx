@@ -120,7 +120,7 @@ export default function AdminReportsPage() {
     const loadStatic = async () => {
       const [programmeResponse, certificateResponse] = await Promise.all([
         cachedFetch("/api/training/programmes"),
-        fetch("/api/training/certificates", { cache: "no-store" }),
+        cachedFetch("/api/training/certificates"),
       ]);
 
       if (programmeResponse.ok) {
@@ -147,12 +147,8 @@ export default function AdminReportsPage() {
 
       try {
         const [certificateResponse, rateResponse] = await Promise.all([
-          fetch(`/api/analytics/reports/certificates/?${scope}`, {
-            cache: "no-store",
-          }),
-          fetch(`/api/analytics/reports/completion-rate/?${scope}`, {
-            cache: "no-store",
-          }),
+          cachedFetch(`/api/analytics/reports/certificates/?${scope}`),
+          cachedFetch(`/api/analytics/reports/completion-rate/?${scope}`),
         ]);
 
         const certificatePayload = await certificateResponse
@@ -177,14 +173,8 @@ export default function AdminReportsPage() {
         // Per-staff sections need a specific programme.
         if (selectedProgrammeId) {
           const [completionResponse, performerResponse] = await Promise.all([
-            fetch(
-              `/api/analytics/reports/completions/?programme=${selectedProgrammeId}`,
-              { cache: "no-store" },
-            ),
-            fetch(
-              `/api/analytics/reports/top-performers/?programme=${selectedProgrammeId}`,
-              { cache: "no-store" },
-            ),
+            cachedFetch(`/api/analytics/reports/completions/?programme=${selectedProgrammeId}`),
+            cachedFetch(`/api/analytics/reports/top-performers/?programme=${selectedProgrammeId}`),
           ]);
 
           const completionPayload = await completionResponse
