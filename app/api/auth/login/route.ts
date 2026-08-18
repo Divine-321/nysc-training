@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { loginUser, requiresDeviceVerification } from "@/app/lib/portal-api";
+import { requiresDeviceVerification } from "@/app/lib/portal-api";
+import { loginUser } from "@/app/lib/auth-api";
 import { setSessionCookies } from "@/app/lib/session-cookies";
 
 export async function POST(request: Request) {

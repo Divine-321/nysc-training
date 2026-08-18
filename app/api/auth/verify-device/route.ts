@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requiresDeviceVerification, verifyDevice } from "@/app/lib/portal-api";
+import { requiresDeviceVerification } from "@/app/lib/portal-api";
+import { verifyDevice } from "@/app/lib/auth-api";
 import { setSessionCookies } from "@/app/lib/session-cookies";
 
 /**
