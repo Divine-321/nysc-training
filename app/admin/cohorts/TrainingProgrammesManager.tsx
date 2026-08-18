@@ -117,6 +117,15 @@ type AttendanceRow = {
 
 type StaffDirectoryEntry = { name: string; fileNumber: string };
 
+/**
+ * Names and file numbers for every staff member, keyed by id.
+ *
+ * Enrolment payloads carry only a staff id, so the enrolled-staff modal has no
+ * other way to show who someone is. Loaded lazily when that modal is first
+ * opened and cached for the session, never on page load. Drop this entirely if
+ * the backend ever adds staff_name to the enrolment payload, as it already
+ * does on evaluations and certificates.
+ */
 async function loadStaffDirectory(): Promise<Map<number, StaffDirectoryEntry>> {
   const directory = new Map<number, StaffDirectoryEntry>();
   let page = 1;
@@ -522,7 +531,11 @@ export default function TrainingProgrammesManager() {
 
     try {
       const [enrollmentResponse, directory] = await Promise.all([
-        fetch("/api/training/enrollments", { cache: "no-store" }),
+        // Scoped server-side; this used to pull every enrolment in the system
+        // and filter in the browser.
+        fetch(`/api/training/enrollments?programme=${programme.id}&page_size=100`, {
+          cache: "no-store",
+        }),
         staffDirectory.size > 0
           ? Promise.resolve(staffDirectory)
           : loadStaffDirectory(),

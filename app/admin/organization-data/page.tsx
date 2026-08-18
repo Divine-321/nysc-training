@@ -63,29 +63,43 @@ const STAFF_RECORD_FIELD: Record<ResourceKey, string> = {
   departments: "department",
 };
 
+/**
+ * Resolves file numbers to staff-record ids.
+ *
+ * Asks the server for each one by ?search=, in parallel, rather than paging
+ * through the entire staff-records table until they turn up — the blocking
+ * list is normally a handful of people, so this is a few small requests
+ * instead of every row in the database.
+ */
 async function findStaffRecordIds(fileNumbers: string[]): Promise<Map<string, number>> {
-  const wanted = new Set(fileNumbers);
+  const wanted = [...new Set(fileNumbers)];
   const found = new Map<string, number>();
-  let page = 1;
-  let hasMore = true;
 
-  while (hasMore && found.size < wanted.size) {
-    const response = await fetch(
-      `/api/accounts/staff-records?page=${page}&page_size=100`,
-      { cache: "no-store" },
-    );
-    if (!response.ok) break;
+  const lookups = await Promise.all(
+    wanted.map(async (fileNumber) => {
+      const response = await fetch(
+        `/api/accounts/staff-records?search=${encodeURIComponent(fileNumber)}&page_size=100`,
+        { cache: "no-store" },
+      );
 
-    const payload = (await response.json().catch(() => null)) as {
-      data?: { results?: { id: number; file_number: string }[]; next?: string | null };
-    } | null;
+      if (!response.ok) return null;
 
-    for (const record of payload?.data?.results ?? []) {
-      if (wanted.has(record.file_number)) found.set(record.file_number, record.id);
-    }
+      const payload = (await response.json().catch(() => null)) as {
+        data?: { results?: { id: number; file_number: string }[] };
+      } | null;
 
-    hasMore = Boolean(payload?.data?.next);
-    page += 1;
+      // ?search= is a partial match, so pick the exact file number out of
+      // whatever came back.
+      const match = (payload?.data?.results ?? []).find(
+        (record) => record.file_number === fileNumber,
+      );
+
+      return match ? ([fileNumber, match.id] as const) : null;
+    }),
+  );
+
+  for (const entry of lookups) {
+    if (entry) found.set(entry[0], entry[1]);
   }
 
   return found;

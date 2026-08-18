@@ -291,109 +291,9 @@ function formatCohortAssignmentError(message: string) {
   return message;
 }
 
-// Flip to `true` once the backend supports `?is_registered=false` on
-// /api/accounts/staff-records/ (see backend request). Then the unregistered
-// list fetches ONE page at a time (true server-side pagination) instead of
-// loading every record and paging in the browser. Until then it stays false
-// and the list loads all records, filters `!is_registered`, and pages client-
-// side. This is the only line to change to switch over.
-const UNREGISTERED_SERVER_PAGINATION = true;
 
-// --- Full-list fetch + cache -------------------------------------------------
-// The staff lists have to be downloaded whole to search, because the backend
-// has no `?search=` yet (see backend request). Two optimisations make that
-// bearable: (1) fetch the pages in PARALLEL using the first page's `count`,
-// instead of one-at-a-time; (2) cache the assembled list for a short window so
-// re-entering search or revisiting the page doesn't re-download everything.
-// Cache keys include a caller-supplied token (the reload key), so any mutation
-// that bumps it transparently pulls fresh data.
-const FULL_LIST_TTL_MS = 60_000;
-const PAGE_SIZE_FOR_FULL = 100;
 
-class UnsupportedEndpointError extends Error {
-  constructor() {
-    super("UNSUPPORTED");
-    this.name = "UnsupportedEndpoint";
-  }
-}
 
-type PagePayload<T> = {
-  data?: { results?: T[]; next?: string | null; count?: number };
-} | null;
-
-// Fetches every page of a DRF-paginated endpoint. The first page's `count`
-// tells us the total, so pages 2..N are requested concurrently. Falls back to
-// sequential `next` paging when no count is present. Throws
-// UnsupportedEndpointError on 404/405 so callers can flag the feature off.
-async function fetchAllPages<T>(
-  buildUrl: (pageNumber: number) => string,
-): Promise<T[]> {
-  const fetchPage = async (pageNumber: number): Promise<PagePayload<T>> => {
-    const response = await fetch(buildUrl(pageNumber), { cache: "no-store" });
-
-    if (response.status === 404 || response.status === 405) {
-      throw new UnsupportedEndpointError();
-    }
-
-    const payload = (await response.json().catch(() => null)) as PagePayload<T>;
-
-    if (!response.ok) {
-      throw new Error(extractErrorMessage(payload, "Could not load records."));
-    }
-
-    return payload;
-  };
-
-  const first = await fetchPage(1);
-  const results: T[] = [...(first?.data?.results ?? [])];
-  const count = first?.data?.count;
-
-  if (typeof count === "number" && count > results.length) {
-    const totalPages = Math.ceil(count / PAGE_SIZE_FOR_FULL);
-    const rest = await Promise.all(
-      Array.from({ length: totalPages - 1 }, (_, index) =>
-        fetchPage(index + 2),
-      ),
-    );
-    for (const page of rest) results.push(...(page?.data?.results ?? []));
-  } else if (first?.data?.next) {
-    // No usable count — page sequentially via `next` as a safety net.
-    let pageNumber = 2;
-    let hasMore = true;
-    while (hasMore) {
-      const page = await fetchPage(pageNumber);
-      results.push(...(page?.data?.results ?? []));
-      hasMore = Boolean(page?.data?.next);
-      pageNumber += 1;
-    }
-  }
-
-  return results;
-}
-
-const fullListCache = new Map<string, { at: number; data: unknown[] }>();
-
-async function cachedFetchAllPages<T>(
-  cacheKey: string,
-  buildUrl: (pageNumber: number) => string,
-): Promise<T[]> {
-  const now = Date.now();
-  const hit = fullListCache.get(cacheKey);
-  if (hit && now - hit.at < FULL_LIST_TTL_MS) {
-    return hit.data as T[];
-  }
-
-  const data = await fetchAllPages<T>(buildUrl);
-
-  // Prune expired snapshots so the cache doesn't accumulate old lists after
-  // mutations (which change the cache key).
-  for (const [key, entry] of fullListCache) {
-    if (now - entry.at >= FULL_LIST_TTL_MS) fullListCache.delete(key);
-  }
-
-  fullListCache.set(cacheKey, { at: now, data });
-  return data;
-}
 
 export default function AdminUsersPage() {
   const { confirm, dialog } = useConfirm();
@@ -451,7 +351,7 @@ export default function AdminUsersPage() {
     "file_number" | "surname"
   >("file_number");
   const [unregisteredPage, setUnregisteredPage] = useState(1);
-  // Server-mode total (only used when UNREGISTERED_SERVER_PAGINATION is on).
+  // Total reported by the server for the unregistered list.
   const [unregisteredTotal, setUnregisteredTotal] = useState(0);
   const [debouncedUnregisteredSearch, setDebouncedUnregisteredSearch] =
     useState("");
@@ -489,21 +389,14 @@ export default function AdminUsersPage() {
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const isSearching = debouncedSearch.length > 0;
 
-  // Unregistered-list mode helpers. `unregServerPaged` is true only when the
-  // server-pagination flag is on AND there's no active search (search always
-  // falls back to load-all + client filtering).
-  const isSearchingUnregistered = debouncedUnregisteredSearch.length > 0;
-  const unregServerPaged =
-    UNREGISTERED_SERVER_PAGINATION && !unregisteredSearch.trim();
+  // Both browsing and searching are paginated server-side now.
+  const unregServerPaged = true;
   const unregisteredHeaderCount = unregServerPaged
     ? unregisteredTotal
     : unregisteredStaff.length;
 
-  const filteredStaff = staffList.filter((staff) =>
-    [staff.surname, staff.otherNames, staff.fileNo].some((value) =>
-      value.toLowerCase().includes(normalizedSearch),
-    ),
-  );
+  // The server applies ?search=, so this page already holds only matches.
+  const filteredStaff = staffList;
 
   const firstStaffNumber = totalStaff === 0 ? 0 : (page - 1) * pageSize + 1;
 
@@ -521,8 +414,13 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     const fetchStaffPage = async (pageNumber: number, size: number) => {
+      // Search runs server-side: ?search= matches name, file number and email.
+      // Filtering in the browser would mean downloading every staff row first.
+      const searchQuery = debouncedSearch
+        ? `&search=${encodeURIComponent(debouncedSearch)}`
+        : "";
       const response = await fetch(
-        `/api/accounts/staff?page=${pageNumber}&page_size=${size}&sortBy=${staffSort}`,
+        `/api/accounts/staff?page=${pageNumber}&page_size=${size}&sortBy=${staffSort}${searchQuery}`,
         { cache: "no-store" },
       );
       const payload = (await response
@@ -534,24 +432,6 @@ export default function AdminUsersPage() {
       }
 
       return payload;
-    };
-
-    const fetchAllStaff = async () => {
-      // Pages fetched in parallel and cached (see cachedFetchAllPages). Keyed by
-      // the reload key so a mutation refreshes it; by sort so each order caches
-      // separately.
-      const users = await cachedFetchAllPages<AuthUser>(
-        `staff:${staffReloadKey}:${staffSort}`,
-        (pageNumber) =>
-          `/api/accounts/staff?page=${pageNumber}&page_size=${PAGE_SIZE_FOR_FULL}&sortBy=${staffSort}`,
-      );
-
-      return {
-        users,
-        count: users.length,
-        hasNext: false,
-        hasPrevious: false,
-      };
     };
 
     const fetchCurrentPage = async () => {
@@ -575,7 +455,7 @@ export default function AdminUsersPage() {
           cohortStaffResponse,
           enrollmentsResponse,
         ] = await Promise.all([
-          isSearching ? fetchAllStaff() : fetchCurrentPage(),
+          fetchCurrentPage(),
           fetch("/api/organization/postings", {
             cache: "no-store",
           }),
@@ -730,7 +610,7 @@ export default function AdminUsersPage() {
     };
 
     void loadStaff();
-  }, [page, staffReloadKey, isSearching, staffSort]);
+  }, [page, staffReloadKey, debouncedSearch, staffSort]);
 
   useEffect(() => {
     const loadOrgOptions = async () => {
@@ -856,76 +736,10 @@ export default function AdminUsersPage() {
     return () => clearTimeout(handle);
   }, [unregisteredSearch]);
 
-  // CLIENT MODE (flag off): load every record once, filter to unregistered, and
-  // page in the browser. Page changes re-slice locally without refetching.
+  // Fetches just the current page via ?is_registered=false, with ?search=
+  // applied server-side too, so neither browsing nor searching downloads the
+  // whole staff-records table.
   useEffect(() => {
-    if (UNREGISTERED_SERVER_PAGINATION) return;
-
-    const loadUnregisteredStaff = async () => {
-      setLoadingUnregistered(true);
-      try {
-        const allRecords: UnregisteredStaffRecord[] = [];
-        let currentPage = 1;
-        let hasMore = true;
-
-        while (hasMore) {
-          const response = await fetch(
-            `/api/accounts/staff-records?page=${currentPage}&page_size=100&sortBy=${unregisteredSort}`,
-            { cache: "no-store" },
-          );
-
-          if (response.status === 404 || response.status === 405) {
-            setUnregisteredSupported(false);
-            setUnregisteredStaff([]);
-            return;
-          }
-
-          const payload = (await response.json().catch(() => null)) as {
-            data?: {
-              results?: UnregisteredStaffRecord[];
-              next?: string | null;
-            };
-          } | null;
-
-          if (!response.ok) {
-            throw new Error(
-              extractErrorMessage(
-                payload,
-                "Could not load unregistered staff records.",
-              ),
-            );
-          }
-
-          allRecords.push(...(payload?.data?.results ?? []));
-          hasMore = Boolean(payload?.data?.next);
-          currentPage += 1;
-        }
-
-        setUnregisteredSupported(true);
-        setUnregisteredStaff(
-          allRecords.filter((record) => !record.is_registered),
-        );
-        setUnregisteredError("");
-      } catch (loadError) {
-        setUnregisteredError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Could not load unregistered staff records.",
-        );
-      } finally {
-        setLoadingUnregistered(false);
-      }
-    };
-
-    void loadUnregisteredStaff();
-  }, [staffReloadKey, unregisteredSort]);
-
-  // SERVER MODE (flag on): fetch just the current page via ?is_registered=false.
-  // While searching, load all matches and filter/paginate client-side (mirrors
-  // the registered-staff list). Dormant until the flag is flipped.
-  useEffect(() => {
-    if (!UNREGISTERED_SERVER_PAGINATION) return;
-
     const parse = async (response: Response) =>
       (await response.json().catch(() => null)) as {
         data?: {
@@ -938,29 +752,11 @@ export default function AdminUsersPage() {
     const loadUnregisteredStaff = async () => {
       setLoadingUnregistered(true);
       try {
-        if (isSearchingUnregistered) {
-          // Pages fetched in parallel and cached (see cachedFetchAllPages),
-          // instead of one slow page at a time.
-          const allRecords =
-            await cachedFetchAllPages<UnregisteredStaffRecord>(
-              `records:${staffReloadKey}:${unregisteredSort}`,
-              (pageNumber) =>
-                `/api/accounts/staff-records?page=${pageNumber}&page_size=${PAGE_SIZE_FOR_FULL}&sortBy=${unregisteredSort}&is_registered=false`,
-            );
-
-          setUnregisteredSupported(true);
-          // Defensive: keep only unregistered rows even though we asked the
-          // backend to filter — harmless if the filter works, safe if it ever
-          // doesn't.
-          setUnregisteredStaff(
-            allRecords.filter((record) => !record.is_registered),
-          );
-          setUnregisteredError("");
-          return;
-        }
-
+        const searchQuery = debouncedUnregisteredSearch
+          ? `&search=${encodeURIComponent(debouncedUnregisteredSearch)}`
+          : "";
         const response = await fetch(
-          `/api/accounts/staff-records?page=${unregisteredPage}&page_size=${pageSize}&sortBy=${unregisteredSort}&is_registered=false`,
+          `/api/accounts/staff-records?page=${unregisteredPage}&page_size=${pageSize}&sortBy=${unregisteredSort}&is_registered=false${searchQuery}`,
           { cache: "no-store" },
         );
 
@@ -990,7 +786,7 @@ export default function AdminUsersPage() {
         setUnregisteredTotal(payload?.data?.count ?? 0);
         setUnregisteredError("");
       } catch (loadError) {
-        if (loadError instanceof UnsupportedEndpointError) {
+        if (loadError instanceof Error && loadError.message === "UNSUPPORTED") {
           // Endpoint not available on this backend — flag the feature off
           // rather than showing an error.
           setUnregisteredSupported(false);
@@ -1012,7 +808,7 @@ export default function AdminUsersPage() {
     staffReloadKey,
     unregisteredSort,
     unregisteredPage,
-    isSearchingUnregistered,
+    debouncedUnregisteredSearch,
     pageSize,
   ]);
 
@@ -1771,7 +1567,10 @@ export default function AdminUsersPage() {
               type="search"
               placeholder="Search all staff by name or file no..."
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(event) => {
+                setSearchTerm(event.target.value);
+                setPage(1);
+              }}
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
             />
           </div>
@@ -1975,34 +1774,28 @@ export default function AdminUsersPage() {
         <div className="p-5 border-t border-gray-100 flex items-center justify-between text-sm text-gray-500">
           <p>
             {isSearching
-              ? `${filteredStaff.length} matching staff across all records`
+              ? `Showing ${firstStaffNumber}–${lastStaffNumber} of ${totalStaff} matching staff`
               : `Showing ${firstStaffNumber}–${lastStaffNumber} of ${totalStaff} staff`}
           </p>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={isSearching || !hasPreviousPage || loadingStaff}
-              onClick={() => {
-                setSearchTerm("");
-                setPage((current) => Math.max(1, current - 1));
-              }}
+              disabled={!hasPreviousPage || loadingStaff}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
               className="px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-50"
             >
               Prev
             </button>
 
             <span className="px-3 py-1 font-medium text-gray-700">
-              {isSearching ? "Searching" : `Page ${page} of ${totalPages}`}
+              {`Page ${page} of ${totalPages}`}
             </span>
 
             <button
               type="button"
-              disabled={isSearching || !hasNextPage || loadingStaff}
-              onClick={() => {
-                setSearchTerm("");
-                setPage((current) => current + 1);
-              }}
+              disabled={!hasNextPage || loadingStaff}
+              onClick={() => setPage((current) => current + 1)}
               className="px-3 py-1 border border-gray-200 rounded hover:bg-gray-50 disabled:opacity-50"
             >
               Next

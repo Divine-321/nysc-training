@@ -8,7 +8,7 @@ import {
   Star,
   Users,
 } from "lucide-react";
-import { extractErrorMessage, readApiList, type AuthUser } from "@/app/lib/portal-api";
+import { extractErrorMessage, readApiList } from "@/app/lib/portal-api";
 import {
   cohortCourseBatchLabel,
   type CohortCourse,
@@ -25,41 +25,7 @@ import {
 } from "@/app/components/ui";
 import { SearchInput } from "@/app/components/ui-interactive";
 
-type StaffInfo = { name: string; fileNumber: string };
 
-// Staff records are paged; walk them into a lookup of id -> name/file number.
-async function loadStaffDirectory(): Promise<Map<number, StaffInfo>> {
-  const directory = new Map<number, StaffInfo>();
-  let page = 1;
-  let hasMore = true;
-
-  while (hasMore && page <= 30) {
-    const response = await fetch(
-      `/api/accounts/staff?page=${page}&page_size=100`,
-      { cache: "no-store" },
-    );
-
-    if (!response.ok) break;
-
-    const payload = (await response.json().catch(() => null)) as {
-      data?: { results?: AuthUser[]; next?: string | null };
-    } | null;
-
-    for (const user of payload?.data?.results ?? []) {
-      directory.set(user.id, {
-        name:
-          [user.first_name, user.last_name].filter(Boolean).join(" ") ||
-          user.email,
-        fileNumber: user.file_number || "—",
-      });
-    }
-
-    hasMore = Boolean(payload?.data?.next);
-    page += 1;
-  }
-
-  return directory;
-}
 
 type EvaluationRow = {
   id: number;
@@ -103,12 +69,11 @@ export default function AdminEvaluationsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [evaluationRes, enrollmentRes, cohortCourseRes, directory] =
+        const [evaluationRes, enrollmentRes, cohortCourseRes] =
           await Promise.all([
             fetch("/api/training/evaluations", { cache: "no-store" }),
             fetch("/api/training/enrollments", { cache: "no-store" }),
             fetch("/api/training/programmes", { cache: "no-store" }),
-            loadStaffDirectory(),
           ]);
 
         const evaluationPayload = await evaluationRes.json().catch(() => null);
@@ -142,8 +107,6 @@ export default function AdminEvaluationsPage() {
           .map((evaluation) => {
             const enrollment = enrollmentById.get(evaluation.enrollment);
             const staffId = enrollment?.staff;
-            const info =
-              staffId != null ? directory.get(staffId) : undefined;
             const programmeId =
               enrollment?.programme ?? enrollment?.cohort_course;
             const cohortCourse =
@@ -170,9 +133,11 @@ export default function AdminEvaluationsPage() {
               id: evaluation.id,
               staffName:
                 evaluation.staff_name?.trim() ||
-                info?.name ||
                 (staffId != null ? `Staff #${staffId}` : "—"),
-              fileNumber: info?.fileNumber ?? "—",
+              // The evaluation payload carries staff_name but not the file
+              // number. Fetching it meant downloading the whole staff table on
+              // every page load, which is not worth one column.
+              fileNumber: "—",
               course,
               cohort,
               rating: evaluation.rating,
