@@ -254,13 +254,34 @@ export default function CertificationsPage() {
   // title alone wrongly hides the checklist for the same course in a different
   // cohort, so also compare the cohort (falling back to title-only when either
   // side has no cohort label).
+  //
+  // The two sides do not name the course the same way. A certificate carries
+  // the Course's own title ("Test Course"), while the enrollment carries the
+  // programme's ("Test Course - August 2026"), so an exact comparison against
+  // the enrollment alone never matched and every certified course stayed on
+  // the outstanding list forever. Compare against the underlying Course title
+  // as well, and accept one title containing the other.
+  //
+  // All of this is guesswork on strings. It goes away the day the certificate
+  // payload carries the enrollment or course id (backend request).
   const certificateMatchesCourse = (
     certificate: Certificate,
     staffCourse: StaffCourse,
   ) => {
+    const certTitle = (certificate.course_title ?? "").trim().toLowerCase();
+    const candidateTitles = [
+      staffCourse.enrollment.course_title,
+      staffCourse.course?.title,
+      staffCourse.cohortCourse?.course_details?.title,
+    ]
+      .map((title) => (title ?? "").trim().toLowerCase())
+      .filter(Boolean);
+
     const titleMatches =
-      (certificate.course_title ?? "").trim().toLowerCase() ===
-      (staffCourse.enrollment.course_title ?? "").trim().toLowerCase();
+      certTitle.length > 0 &&
+      candidateTitles.some(
+        (title) => title === certTitle || title.includes(certTitle),
+      );
     if (!titleMatches) return false;
 
     const certCohort = (certificate.cohort ?? "").trim().toLowerCase();
@@ -373,10 +394,21 @@ export default function CertificationsPage() {
           // The poll gave up: don't keep promising an imminent certificate.
           // The backend hasn't issued it — that needs admin/backend attention,
           // not more waiting on this page.
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 print:hidden">
-            You&apos;ve completed every requirement, but your certificate is
-            taking longer than expected. Please check back later — if it still
-            doesn&apos;t appear, contact an administrator.
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 print:hidden">
+            <span>
+              Everything is complete and your certificate is being prepared. It
+              usually appears within a few minutes.
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setIssueRetries(0);
+                void loadCertificates();
+              }}
+              className="rounded-lg border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-900 transition hover:bg-amber-100"
+            >
+              Check again
+            </button>
           </div>
         ))}
 
@@ -572,7 +604,7 @@ export default function CertificationsPage() {
                       }`}
                     >
                       {metCount === items.length
-                        ? "Awaiting issue"
+                        ? "All requirements met"
                         : "In progress"}
                     </span>
                   </div>

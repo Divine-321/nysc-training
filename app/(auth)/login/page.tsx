@@ -219,7 +219,7 @@ export default function LoginPage() {
               id="login-username"
               type="text"
               autoComplete="username"
-              placeholder="NYSC/2024/001 or john.doe@example.com"
+              placeholder="1234 or john.doe@example.com"
               value={username}
               onChange={(e) => setUsernameInput(e.target.value)}
               className="w-full border border-nysc-green rounded-full px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-nysc-green"

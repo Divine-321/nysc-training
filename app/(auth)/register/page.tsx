@@ -414,7 +414,7 @@ export default function RegisterPage() {
                   <input
                     id="register-fileno"
                     type="text"
-                    placeholder="e.g. NYSC/STF/123"
+                    placeholder="e.g. 1234"
                     value={formData.fileNo}
                     onChange={(e) => handleFileNoChange(e.target.value)}
                     className={`${inputClass("fileNo")} pr-10`}

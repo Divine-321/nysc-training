@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   AlertCircle,
@@ -233,6 +234,39 @@ export default function AssessmentPage() {
     (best, attempt) => Math.max(best, Number(attempt.percentage ?? 0)),
     0,
   );
+
+  /**
+   * Where the learner goes after seeing their result.
+   *
+   * The results screen used to offer only "Back to Module", which sent people
+   * backwards and left them to work out for themselves that an evaluation was
+   * still outstanding. Point at whatever is genuinely next instead: learning
+   * after the pre-test, the evaluation after the post-test, and the
+   * certificate once the evaluation is in.
+   */
+  const nextStep = useMemo(() => {
+    if (assessmentType === "PRE_TEST") {
+      return {
+        href: `/staff/course/${courseId}/learn`,
+        label: "Start learning",
+        hint: "The pre-test is done — the course content is next.",
+      };
+    }
+
+    if (!staffCourse?.enrollment.evaluation) {
+      return {
+        href: `/staff/course/${courseId}/evaluation`,
+        label: "Continue to course evaluation",
+        hint: "The evaluation is the last requirement before your certificate is issued.",
+      };
+    }
+
+    return {
+      href: "/staff/certifications",
+      label: "View my certificate",
+      hint: "Every requirement is complete. Certificates are issued automatically.",
+    };
+  }, [assessmentType, courseId, staffCourse]);
 
   const sortedQuestions = useMemo(() => {
     // Server-shuffled attempt order wins; the legacy sort only applies when
@@ -825,6 +859,13 @@ export default function AssessmentPage() {
                         >
                           <RotateCcw size={18} /> Try Again
                         </button>
+                      ) : result.passed ? (
+                        <Link
+                          href={nextStep.href}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] px-6 py-3 font-semibold text-white shadow-sm transition hover:bg-[#145530]"
+                        >
+                          {nextStep.label} <ChevronRight size={18} />
+                        </Link>
                       ) : null}
                       <button
                         onClick={() => router.back()}
@@ -833,6 +874,11 @@ export default function AssessmentPage() {
                         Back to Module
                       </button>
                     </div>
+                    {result.passed && (
+                      <p className="mt-4 text-xs text-gray-500">
+                        {nextStep.hint}
+                      </p>
+                    )}
                     {!canAttempt && (
                       <p className="mt-4 text-xs text-gray-500">
                         Attempt {attemptsUsed} of {maxAttempts} — no attempts
