@@ -8,6 +8,8 @@ import { AlertCircle, Eye, EyeOff, Loader2, ShieldCheck, X } from "lucide-react"
 import { ADMIN_MANUAL, STAFF_MANUAL } from "@/app/lib/manuals";
 import ManualLinks from "@/app/components/ManualLinks";
 import { getDeviceId } from "@/app/lib/device-id";
+import { directLogin, directVerifyDevice, establishSession } from "@/app/lib/auth-client";
+import { requiresDeviceVerification } from "@/app/lib/portal-api";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -25,10 +27,8 @@ export default function AdminLoginPage() {
 
   const canSubmit = email.trim() !== "" && password !== "" && !isLoading;
 
-  const finishLogin = (payload: { data?: { user?: { role?: string } } }) => {
-    const role = payload.data?.user?.role;
-
-    if (role !== "admin" && role !== "superadmin") {
+  const finishLogin = (user: { role?: string }) => {
+    if (user.role !== "admin" && user.role !== "superadmin") {
       throw new Error("You do not have admin access.");
     }
 
@@ -47,25 +47,19 @@ export default function AdminLoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/auth/verify-device", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim(),
-          otp: otp.trim(),
-          device_id: getDeviceId(),
-        }),
+      const response = await directVerifyDevice({
+        email: email.trim(),
+        otp: otp.trim(),
+        device_id: getDeviceId(),
       });
 
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          payload?.message || "Verification failed. Please try again.",
-        );
+      if (requiresDeviceVerification(response.data)) {
+        throw new Error("Device verification did not complete. Please log in again.");
       }
 
-      finishLogin(payload);
+      await establishSession(response.data);
+
+      finishLogin(response.data.user);
     } catch (verifyError: unknown) {
       setError(
         verifyError instanceof Error
@@ -93,33 +87,25 @@ export default function AdminLoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          login: email.trim(),
-          password,
-          role: "admin",
-          device_id: getDeviceId(),
-        }),
+      const response = await directLogin({
+        login: email.trim(),
+        password,
+        role: "admin",
+        device_id: getDeviceId(),
       });
 
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload?.message || "Login failed. Please try again.");
-      }
-
       // Unrecognised device: no session yet, an OTP is on its way by email.
-      if (payload.data?.requires_device_verification) {
-        setEmailHint(payload.data.email_hint ?? "");
+      if (requiresDeviceVerification(response.data)) {
+        setEmailHint(response.data.email_hint ?? "");
         setAwaitingDeviceOtp(true);
         setOtp("");
         setIsLoading(false);
         return;
       }
 
-      finishLogin(payload);
+      await establishSession(response.data);
+
+      finishLogin(response.data.user);
     } catch (loginError: unknown) {
       setError(
         loginError instanceof Error

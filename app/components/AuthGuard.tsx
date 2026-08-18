@@ -46,12 +46,17 @@ export default function AuthGuard({
         invalidate();
       }
 
+      // Login and device verification now call Railway directly (see
+      // app/lib/auth-client.ts), so their URL is the backend's own path, not
+      // the old "/api/auth/login" proxy route — match on the trailing
+      // segment so both the (retired) proxy path and the direct one exempt.
       const shouldLogout =
         response.status === 401 &&
         url.includes("/api/") &&
-        !url.includes("/api/auth/login") &&
-        !url.includes("/api/accounts/auth/logout") &&
-        !url.includes("/api/accounts/auth/refresh");
+        !url.includes("/auth/login") &&
+        !url.includes("/auth/verify-device") &&
+        !url.includes("/auth/logout") &&
+        !url.includes("/auth/refresh");
 
       if (shouldLogout) {
         const sessionCheck = url.includes("/api/accounts/me")

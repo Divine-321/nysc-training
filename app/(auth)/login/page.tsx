@@ -8,6 +8,8 @@ import { AlertCircle, Eye, EyeOff, Loader2, X } from "lucide-react";
 import type { LoginManual } from "@/app/lib/login-manual";
 import { ADMIN_MANUAL, STAFF_MANUAL, type Manual } from "@/app/lib/manuals";
 import ManualLinks from "@/app/components/ManualLinks";
+import { directLogin, establishSession } from "@/app/lib/auth-client";
+import { requiresDeviceVerification } from "@/app/lib/portal-api";
 
 const REMEMBERED_LOGIN_KEY = "nysc-remembered-login";
 
@@ -87,21 +89,19 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          login: username.trim(),
-          password,
-          role: "staff",
-        }),
+      const response = await directLogin({
+        login: username.trim(),
+        password,
+        role: "staff",
       });
 
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload?.message || "Login failed. Please try again.");
+      // Staff logins aren't device-gated server-side, but guard anyway
+      // rather than assume the shape of response.data.
+      if (requiresDeviceVerification(response.data)) {
+        throw new Error("This account requires additional verification.");
       }
+
+      await establishSession(response.data);
 
       if (rememberMe) {
         window.localStorage.setItem(REMEMBERED_LOGIN_KEY, username.trim());
@@ -109,7 +109,7 @@ export default function LoginPage() {
         window.localStorage.removeItem(REMEMBERED_LOGIN_KEY);
       }
 
-      const role = payload.data.user.role;
+      const role = response.data.user.role;
 
       router.replace(
         role === "admin" || role === "superadmin"
