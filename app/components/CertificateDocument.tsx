@@ -57,9 +57,9 @@ export default function CertificateDocument({
         <Image
           src="/images/nysc-logo.png"
           alt="NYSC Logo"
-          width={48}
-          height={48}
-          className="mb-2 h-12 w-12 object-contain opacity-90"
+          width={64}
+          height={80}
+          className="mb-2 h-16 w-16 object-contain opacity-90"
         />
 
         <h1 className="mb-1 max-w-full break-words font-serif text-2xl font-bold uppercase leading-tight tracking-wide text-[#1a6b3c]">

@@ -152,8 +152,8 @@ export default function LoginPage() {
         <Image
           src="/images/nysc-logo.png"
           alt="NYSC Logo"
-          width={180}
-          height={180}
+          width={240}
+          height={299}
           priority
           className="mb-8"
         />
