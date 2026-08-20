@@ -53,8 +53,9 @@ backends.
 Type-check with `npx tsc --noEmit`. Both that and `pnpm lint` should pass
 before any commit.
 
-> `pnpm gen:types` still points at a retired backend URL and should not be
-> trusted until it is updated.
+> `pnpm gen:types` regenerates TypeScript types from the backend's OpenAPI
+> schema into `src/types/openapi.ts`. Nothing imports that file today, so the
+> script is a convenience for exploring the API rather than part of the build.
 
 ## Where things live
 

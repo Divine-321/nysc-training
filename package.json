@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "gen:types": "openapi-typescript https://web-production-84896.up.railway.app/api/schema/ -o src/types/openapi.ts"
+    "gen:types": "openapi-typescript https://web-test-1393.up.railway.app/api/schema/ -o src/types/openapi.ts"
   },
   "dependencies": {
     "@tiptap/extension-image": "^2.27.2",

@@ -19,9 +19,6 @@ Vercel's environment variables.
 > `NEXT_PUBLIC_*` variables are baked in **at build time**. Changing one has no
 > effect until the project is redeployed.
 
-A third backend, `web-production-84896`, is retired. Do not point anything at
-it. It is still referenced by the `gen:types` script, which should be updated.
-
 ## Function region
 
 Both projects should run their functions in **Frankfurt (`fra1`)**, set under
