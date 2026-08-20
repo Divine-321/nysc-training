@@ -15,13 +15,6 @@ import CameraCaptureModal, {
 } from "@/app/components/CameraCaptureModal";
 import { cachedFetch } from "@/app/lib/data-cache";
 
-type CohortStaffAssignment = {
-  id: number;
-  cohort: number;
-  cohort_name: string;
-  staff: number;
-};
-
 type CourseEnrollment = {
   id: number;
   cohort_name: string;
@@ -82,13 +75,9 @@ const [formData, setFormData] = useState(emptyProfileData);
       const user = payload?.data as AuthUser | undefined;
       if (!user) return;
 
-      const cohortResponse = await cachedFetch("/api/training/cohort-staff");
       const enrollmentResponse = await cachedFetch("/api/training/enrollments");
       const postingResponse = await cachedFetch("/api/organization/postings/current");
 
-      const cohortPayload = cohortResponse.ok
-        ? await cohortResponse.json().catch(() => null)
-        : null;
       const enrollmentPayload = enrollmentResponse.ok
         ? await enrollmentResponse.json().catch(() => null)
         : null;
@@ -98,15 +87,11 @@ const [formData, setFormData] = useState(emptyProfileData);
 
       const currentPosting = readApiItem<CurrentPosting>(postingPayload);
       const enrollments = readApiList<CourseEnrollment>(enrollmentPayload);
-      let cohortNames = readApiList<CohortStaffAssignment>(cohortPayload)
-        .filter((assignment) => assignment.staff === user.id)
-        .map((assignment) => assignment.cohort_name);
-
-      if (cohortNames.length === 0) {
-        cohortNames = enrollments
-          .map((enrollment) => enrollment.cohort_name)
-          .filter((name): name is string => Boolean(name));
-      }
+      // Cohort comes from the enrolment's programme now — the cohort-staff
+      // endpoint that used to be tried first is gone.
+      const cohortNames = enrollments
+        .map((enrollment) => enrollment.cohort_name)
+        .filter((name): name is string => Boolean(name));
 
       const locationParts = [
         currentPosting?.state?.name,

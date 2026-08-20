@@ -35,13 +35,6 @@ type Notification = {
   created_at: string;
 };
 
-type CohortStaffAssignment = {
-  id: number;
-  cohort: number;
-  cohort_name: string;
-  staff: number;
-};
-
 type CourseEnrollment = {
   id: number;
   cohort_name: string;
@@ -190,33 +183,23 @@ export default function StaffLayout({
         setUser(currentUser);
 
         if (currentUser) {
-          const cohortResponse = await cachedFetch("/api/training/cohort-staff");
+          // Cohort membership comes from enrolments: staff are enrolled on a
+          // programme, and the cohort is part of that programme. The old
+          // cohort-staff endpoint this used to try first no longer exists, so
+          // asking for it only bought a guaranteed 404 before this ran anyway.
+          const enrollmentResponse = await cachedFetch(
+            "/api/training/enrollments",
+          );
 
-          if (cohortResponse.ok) {
-            const cohortPayload = await cohortResponse.json().catch(() => null);
-            const assignments =
-              readApiList<CohortStaffAssignment>(cohortPayload);
+          if (enrollmentResponse.ok) {
+            const enrollmentPayload = await enrollmentResponse
+              .json()
+              .catch(() => null);
+            const cohortNames = readApiList<CourseEnrollment>(enrollmentPayload)
+              .map((enrollment) => enrollment.cohort_name)
+              .filter((name): name is string => Boolean(name));
 
-            setUserCohorts(
-              assignments
-                .filter((assignment) => assignment.staff === currentUser.id)
-                .map((assignment) => assignment.cohort_name),
-            );
-          } else {
-            const enrollmentResponse = await cachedFetch("/api/training/enrollments");
-
-            if (enrollmentResponse.ok) {
-              const enrollmentPayload = await enrollmentResponse
-                .json()
-                .catch(() => null);
-              const cohortNames = readApiList<CourseEnrollment>(
-                enrollmentPayload,
-              )
-                .map((enrollment) => enrollment.cohort_name)
-                .filter((name): name is string => Boolean(name));
-
-              setUserCohorts([...new Set(cohortNames)]);
-            }
+            setUserCohorts([...new Set(cohortNames)]);
           }
         }
       } catch {
