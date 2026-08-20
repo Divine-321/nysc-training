@@ -131,8 +131,8 @@ function statFor(
   post: PostGate,
   backend?: ModuleBreakdown,
 ): ModuleStat {
-  const docsTotal = module.documents.length;
-  const docsDone = module.documents.filter((doc) =>
+  const docsTotal = module.activities.length;
+  const docsDone = module.activities.filter((doc) =>
     documentIsComplete(enrollment, doc.id),
   ).length;
 
@@ -351,7 +351,7 @@ export default function CourseModulesPage() {
   // must not sit in the denominator, or the count could never reach the total.)
   const contentModules = orderedModules.filter(
     (module) =>
-      module.documents.length > 0 || postGateFor(module.id).required,
+      module.activities.length > 0 || postGateFor(module.id).required,
   );
   const moduleStats = contentModules.map((module) =>
     statFor(module, enrollment, postGateFor(module.id), breakdown.get(module.id)),

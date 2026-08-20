@@ -6,7 +6,7 @@
  * Old -> new mapping during the transition:
  *   old portal-api `Course`            -> new `Module`
  *   old staff-learning `CourseModule`  -> new `Module` grouping of activities
- *   old `ModuleDocument`               -> new `Activity` (content collapses onto the activity)
+ *   old `ModuleActivity`               -> new `Activity` (content collapses onto the activity)
  *
  * These types describe the *target* backend contract and back the new proxy routes
  * (activities, activity-completion, assessment-attempts, identity-verification,

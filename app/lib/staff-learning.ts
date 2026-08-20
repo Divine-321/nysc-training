@@ -9,7 +9,7 @@ import {
 
 // New target learning-model vocabulary (Course -> Module -> Activity). The full
 // types live in ./training-types and are re-exported here so screens can migrate
-// off the old ModuleDocument/DocumentProgress/AssessmentResult types incrementally.
+// off the old ModuleActivity/DocumentProgress/AssessmentResult types incrementally.
 // The top-level `Course` and mid-level `Module` types are intentionally NOT
 // re-exported here to avoid clashing with the old `Course` import above — import
 // those directly from "@/app/lib/training-types".
@@ -36,7 +36,7 @@ export type {
 };
 
 /** @deprecated Old model. Replaced by `Activity` in the Course -> Module -> Activity restructure. */
-export type ModuleDocument = {
+export type ModuleActivity = {
   id: number;
   module: number;
   title: string;
@@ -66,7 +66,7 @@ export type CourseModule = {
   thumbnail_url?: string | null;
   /** Module-level trainers — the single source of truth for who teaches. */
   trainers?: Trainer[];
-  documents: ModuleDocument[];
+  activities: ModuleActivity[];
 };
 
 /** @deprecated Old model. Replaced by `ActivityCompletion` (from ./training-types). */
@@ -415,14 +415,18 @@ export function documentIsComplete(
   );
 }
 
-// The restructured serializer nests the module's items as `activities`
-// instead of `documents`; accept either so nothing breaks on deploy day.
-type RawCourseModule = CourseModule & { activities?: ModuleDocument[] };
+// What the module endpoint returns. `documents` is the pre-restructure name
+// for the same list; it is read here, at the boundary, so nothing past this
+// point has to know the field was ever called that.
+type RawCourseModule = Omit<CourseModule, "activities"> & {
+  activities?: ModuleActivity[];
+  documents?: ModuleActivity[];
+};
 
 function normalizeModule(rawModule: RawCourseModule): CourseModule {
   return {
     ...rawModule,
-    documents: rawModule.activities ?? rawModule.documents ?? [],
+    activities: rawModule.activities ?? rawModule.documents ?? [],
   };
 }
 
@@ -450,8 +454,8 @@ function modulesFromAssignedModules(
       order: link.order,
       thumbnail_url: link.module_details?.thumbnail_url ?? null,
       trainers: link.module_details?.trainers ?? [],
-      documents:
-        (link.module_details?.activities as ModuleDocument[] | undefined) ??
+      activities:
+        (link.module_details?.activities as ModuleActivity[] | undefined) ??
         [],
     }));
 }

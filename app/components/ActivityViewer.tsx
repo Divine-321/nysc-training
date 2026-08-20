@@ -11,7 +11,7 @@ type ActivityViewerProps = {
 // Renders one Activity's learning content by its content type (PDF spec
 // section 5): Video, PDF, Text, Audio, External Link. This is the staff-side
 // viewer for the new Course -> Module -> Activity model; it will replace the
-// old ModuleDocument preview once the Activities API ships.
+// old ModuleActivity preview once the Activities API ships.
 export default function ActivityViewer({ activity }: ActivityViewerProps) {
   if (activity.content_type === "VIDEO") {
     return (

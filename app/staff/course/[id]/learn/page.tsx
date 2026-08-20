@@ -39,7 +39,7 @@ import {
   toPercentage,
   type Assessment,
   type LiveSession,
-  type ModuleDocument,
+  type ModuleActivity,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
 import { extractErrorMessage, readApiItem } from "@/app/lib/portal-api";
@@ -66,7 +66,7 @@ type DocItem = {
   kind: "doc";
   moduleId: number;
   moduleIndex: number;
-  doc: ModuleDocument;
+  doc: ModuleActivity;
 };
 
 type AssessmentItem = {
@@ -115,7 +115,7 @@ const OFFICE_URL_PATTERN = /\.(pptx?|ppsx?|potx?|docx?|xlsx?)(\?|#|$)/i;
  */
 const MEDIA_COMPLETE_FRACTION = 0.9;
 
-function documentUrl(doc: ModuleDocument) {
+function documentUrl(doc: ModuleActivity) {
   return doc.content_url ?? doc.file_url ?? "";
 }
 
@@ -129,7 +129,7 @@ type DocumentKind =
   | "ASSESSMENT"
   | "OTHER";
 
-function documentKind(doc: ModuleDocument): DocumentKind {
+function documentKind(doc: ModuleActivity): DocumentKind {
   switch (doc.content_type) {
     case "VIDEO":
       return "VIDEO";
@@ -165,7 +165,7 @@ function documentKind(doc: ModuleDocument): DocumentKind {
   }
 }
 
-function documentIcon(doc: ModuleDocument) {
+function documentIcon(doc: ModuleActivity) {
   switch (documentKind(doc)) {
     case "VIDEO":
       return PlayCircle;
@@ -207,7 +207,7 @@ function DocumentContent({
   doc,
   onPlayedFraction,
 }: {
-  doc: ModuleDocument;
+  doc: ModuleActivity;
   /** How much of a video or audio file has been played, 0-1. */
   onPlayedFraction?: (fraction: number) => void;
 }) {
@@ -420,7 +420,7 @@ function CoursePlayer() {
       }
 
       // 2. Activities in their configured order.
-      for (const doc of module.documents
+      for (const doc of module.activities
         .slice()
         .sort((first, second) => first.order - second.order)) {
         items.push({
@@ -659,7 +659,7 @@ function CoursePlayer() {
 
         const done = new Set<number>();
         for (const courseModule of courseData.modules) {
-          for (const doc of courseModule.documents) {
+          for (const doc of courseModule.activities) {
             if (documentIsComplete(courseData.enrollment, doc.id)) {
               done.add(doc.id);
             }
@@ -675,7 +675,7 @@ function CoursePlayer() {
           .slice()
           .sort((first, second) => first.order - second.order)
           .flatMap((module) =>
-            module.documents
+            module.activities
               .slice()
               .sort((first, second) => first.order - second.order),
           );
@@ -692,7 +692,7 @@ function CoursePlayer() {
         } else if (requestedModule) {
           // A fresh module opens on its overview (introduction); a module
           // already in progress resumes at its first incomplete material.
-          const moduleDocs = requestedModule.documents
+          const moduleDocs = requestedModule.activities
             .slice()
             .sort((first, second) => first.order - second.order);
           const hasProgress = moduleDocs.some((doc) => done.has(doc.id));
@@ -761,7 +761,7 @@ function CoursePlayer() {
     goTo((firstIncomplete ?? section.items[0]).key);
   };
 
-  const markComplete = async (doc: ModuleDocument) => {
+  const markComplete = async (doc: ModuleActivity) => {
     if (!staffCourse || completedIds.has(doc.id)) return;
 
     // Optimistic tick; reverted if the backend rejects it.

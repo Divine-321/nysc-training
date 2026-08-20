@@ -64,16 +64,16 @@ function buildRequirements(
 ): RequirementItem[] {
   const { enrollment, modules } = staffCourse;
 
-  const allDocs = modules.flatMap((courseModule) => courseModule.documents);
+  const allDocs = modules.flatMap((courseModule) => courseModule.activities);
   const completedDocs = allDocs.filter((doc) =>
     documentIsComplete(enrollment, doc.id),
   ).length;
 
   const modulesWithContent = modules.filter(
-    (courseModule) => courseModule.documents.length > 0,
+    (courseModule) => courseModule.activities.length > 0,
   );
   const completedModules = modulesWithContent.filter((courseModule) =>
-    courseModule.documents.every((doc) =>
+    courseModule.activities.every((doc) =>
       documentIsComplete(enrollment, doc.id),
     ),
   ).length;

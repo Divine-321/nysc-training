@@ -411,7 +411,7 @@ export default function AssessmentPage() {
       // stop-gap — harmless once the backend auto-completes server-side.
       if (submissionResult?.passed && staffCourse) {
         const linkedActivities = staffCourse.modules
-          .flatMap((courseModule) => courseModule.documents)
+          .flatMap((courseModule) => courseModule.activities)
           .filter(
             (doc) =>
               (doc.assessment_id ?? doc.assessment) === assessment.id,
