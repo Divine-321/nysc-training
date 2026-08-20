@@ -60,6 +60,10 @@ export default function StaffDashboard() {
     void fetchData();
   }, []);
 
+  // The first three courses, whatever state they are in — completed and
+  // closed ones included, so the dashboard answers "where do I stand" at a
+  // glance rather than only listing outstanding work. Each card says which it
+  // is, and "View All" leads to the full list with its filters.
   const activeCourses = useMemo(() => courses.slice(0, 3), [courses]);
 
   /**
@@ -168,7 +172,7 @@ export default function StaffDashboard() {
         <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm lg:col-span-2 lg:p-8">
           <div className="mb-6 flex items-center justify-between">
             <h3 className="text-lg font-bold text-gray-800">
-              My Active Courses
+              My Courses
             </h3>
             <Link
               href="/staff/training"

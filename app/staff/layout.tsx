@@ -342,7 +342,7 @@ export default function StaffLayout({
   return (
     <AuthGuard allowedRoles={STAFF_ROLES}>
       <div className="min-h-screen flex flex-col">
-        <header className="h-16 bg-white flex items-center justify-between px-4 sm:px-8 fixed top-0 left-0 lg:left-60 right-0 z-40 border-b border-gray-100 print:hidden">
+        <header className="h-16 bg-white flex items-center justify-between px-4 sm:px-8 fixed top-0 left-0 lg:left-72 right-0 z-40 border-b border-gray-100 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
             <button
               type="button"
@@ -523,7 +523,7 @@ export default function StaffLayout({
               nav is the only part allowed to grow and scroll while the
               branding and Sign out stay pinned and reachable. */}
           <aside
-            className={`w-64 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col py-6 px-4 z-50 shadow-xl transition-transform duration-300 ease-in-out lg:w-60 lg:translate-x-0 print:hidden ${
+            className={`w-72 bg-[#1a6b3c] fixed top-0 left-0 bottom-0 flex flex-col py-6 px-4 z-50 shadow-xl transition-transform duration-300 ease-in-out lg:w-72 lg:translate-x-0 print:hidden ${
               isSidebarOpen ? "translate-x-0" : "-translate-x-full"
             }`}
           >
@@ -604,7 +604,7 @@ export default function StaffLayout({
             </button>
           </aside>
 
-          <main className="ml-0 lg:ml-60 flex-1 bg-gray-100 min-h-screen p-4 sm:p-6 print:ml-0 print:min-h-0 print:bg-white print:p-0">
+          <main className="ml-0 lg:ml-72 flex-1 bg-gray-100 min-h-screen p-4 sm:p-6 print:ml-0 print:min-h-0 print:bg-white print:p-0">
             {children}
           </main>
         </div>

@@ -66,7 +66,7 @@ export default function SupportContacts({
             <div className="mt-1 flex items-center gap-2">
               <a
                 href={callLink(contact.phone)}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold transition ${
+                className={`flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-semibold transition ${
                   isSidebar
                     ? "border border-white/70 text-white hover:bg-white/10"
                     : "border border-[#1a6b3c] text-[#1a6b3c] hover:bg-green-50"
