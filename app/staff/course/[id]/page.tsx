@@ -40,11 +40,13 @@ import {
   attemptsForEnrollment,
   loadAssessmentAttempts,
   loadAssessments,
+  loadModulesBreakdown,
   loadStaffCourse,
   programmeWindow,
   toPercentage,
   type CourseModule,
   type CourseEnrollment,
+  type ModuleBreakdown,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
 
@@ -117,6 +119,7 @@ function statFor(
   module: CourseModule,
   enrollment: CourseEnrollment,
   post: PostGate,
+  backend?: ModuleBreakdown,
 ): ModuleStat {
   const docsTotal = module.documents.length;
   const docsDone = module.documents.filter((doc) =>
@@ -128,9 +131,18 @@ function statFor(
   const extraTotal = post.required ? 1 : 0;
   const extraDone = post.required && post.passed ? 1 : 0;
 
-  const total = docsTotal + extraTotal;
-  const completed = docsDone + extraDone;
-  const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
+  // Prefer the backend's counts where we have them. They include live sessions,
+  // which counting here never did, so without this a module could sit at 100%
+  // while the course percentage — which does count them — stayed short, and
+  // the two numbers on the same screen would contradict each other.
+  const total = backend?.total_steps ?? docsTotal + extraTotal;
+  const completed = backend?.completed_steps ?? docsDone + extraDone;
+  const percent =
+    backend != null
+      ? Math.round(backend.completion_percentage)
+      : total === 0
+        ? 0
+        : Math.round((completed / total) * 100);
   const status =
     total > 0 && completed >= total
       ? "completed"
@@ -169,6 +181,11 @@ export default function CourseModulesPage() {
   const [postByModule, setPostByModule] = useState<Map<number, number>>(
     new Map(),
   );
+  // Per-module progress as the backend counts it, keyed by module id. Empty
+  // until the detail call lands (or if it fails), and statFor covers that gap.
+  const [breakdown, setBreakdown] = useState<Map<number, ModuleBreakdown>>(
+    new Map(),
+  );
   const [passedAssessmentIds, setPassedAssessmentIds] = useState<Set<number>>(
     new Set(),
   );
@@ -203,6 +220,14 @@ export default function CourseModulesPage() {
           if (attempt.passed) passed.add(attempt.assessment);
         }
         setPassedAssessmentIds(passed);
+
+        // Separate call: modules_breakdown is only populated on the enrolment
+        // detail endpoint, never on the list loadStaffCourse reads. Fired
+        // after the page already has what it needs to render, so a slow or
+        // failed response refines the module cards rather than delaying them.
+        if (course?.enrollment.id != null) {
+          setBreakdown(await loadModulesBreakdown(course.enrollment.id));
+        }
 
         setError("");
       } catch (loadError) {
@@ -331,7 +356,7 @@ export default function CourseModulesPage() {
       module.documents.length > 0 || postGateFor(module.id).required,
   );
   const moduleStats = contentModules.map((module) =>
-    statFor(module, enrollment, postGateFor(module.id)),
+    statFor(module, enrollment, postGateFor(module.id), breakdown.get(module.id)),
   );
   const completedModules = moduleStats.filter(
     (stat) => stat.status === "completed",

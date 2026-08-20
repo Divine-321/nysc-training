@@ -539,6 +539,57 @@ export async function loadStaffCourses() {
   });
 }
 
+/**
+ * Per-module progress as the backend counts it.
+ *
+ * Only the enrollment *detail* endpoint fills this in — it is null on the
+ * list, which is why this needs its own call rather than coming along with
+ * loadStaffCourses().
+ *
+ * The activities here carry no content, just id/title/type/order, so this is
+ * for the syllabus view. The player still needs the full module payload.
+ */
+export type ModuleBreakdown = {
+  id: number;
+  title: string;
+  description: string | null;
+  thumbnail_url: string | null;
+  order: number;
+  total_steps: number;
+  completed_steps: number;
+  completion_percentage: number;
+  activities: {
+    id: number;
+    title: string;
+    content_type: string;
+    order: number;
+  }[];
+};
+
+/**
+ * Fetches one enrolment's module breakdown, keyed by module id.
+ *
+ * Returns an empty map on any failure. Callers fall back to counting locally,
+ * so an older backend, a slow response or a dropped request costs accuracy in
+ * the module cards rather than breaking the page.
+ */
+export async function loadModulesBreakdown(
+  enrollmentId: number,
+): Promise<Map<number, ModuleBreakdown>> {
+  try {
+    const payload = await getJson(`/api/training/enrollments/${enrollmentId}`);
+    const detail = readApiItem<{ modules_breakdown?: ModuleBreakdown[] }>(
+      payload,
+    );
+
+    return new Map(
+      (detail?.modules_breakdown ?? []).map((module) => [module.id, module]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
 export async function loadStaffCourse(courseId: number) {
   const courses = await loadStaffCourses();
 
