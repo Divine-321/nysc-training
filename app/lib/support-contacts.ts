@@ -19,14 +19,10 @@ export type SupportContact = {
 };
 
 export const SUPPORT_CONTACTS: SupportContact[] = [
-  // Deliberately empty until the real numbers are confirmed. The panels hide
-  // themselves while this is empty, which is the safe state: a number nobody
-  // answers is worse than no number, since someone locked out will trust it
-  // and wait. Fill in and the panels appear everywhere at once.
-  //
-  //   { id: "line-1", label: "Help Desk",     phone: "2348031234567" },
-  //   { id: "line-2", label: "Training Unit", phone: "2348039876543" },
-  //   { id: "line-3", label: "IT Support",    phone: "2347012345678" },
+  // TODO: replace with the real numbers before handover.
+  { id: "line-1", label: "Help Desk", phone: "2348000000001" },
+  { id: "line-2", label: "Training Unit", phone: "2348000000002" },
+  { id: "line-3", label: "IT Support", phone: "2348000000003" },
 ];
 
 /** 2348031234567 -> "+234 803 123 4567", for display only. */

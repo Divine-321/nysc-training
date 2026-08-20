@@ -459,7 +459,9 @@ export async function loadStaffCourses() {
   const [enrollmentPayload, cohortCoursePayload] =
     await Promise.all([
       getJson("/api/training/enrollments"),
-      getJson("/api/training/programmes"),
+      // page_size matters: the proxy defaults to 20, and a staff member
+      // enrolled on the 21st programme would not find theirs in the reply.
+      getJson("/api/training/programmes?page_size=100"),
     ]);
 
   const enrollments = readEnrollments(enrollmentPayload);
@@ -488,15 +490,17 @@ export async function loadStaffCourses() {
   ).flat();
 
   // Orphaned enrollments: when a training is deleted the backend keeps the
-  // enrollment for history with programme SET_NULL. There is no course behind
-  // them — nothing to open, learn, or certify — so staff screens never show
-  // them.
+  // enrollment for history with its programme SET_NULL. There is no course
+  // behind those — nothing to open, learn or certify — so they stay hidden.
+  //
+  // A null id is the only test. This used to also require the programme to
+  // appear in the list fetched above, which quietly deleted a staff member's
+  // course from every screen whenever it was missing from that reply — off
+  // the end of a page, filtered server-side, or absent for any other reason.
+  // The enrolment itself now carries programme_title and cohort_name, so a
+  // course can be named and shown without its programme being found here.
   const liveEnrollments = enrollments.filter(
-    (enrollment) =>
-      (enrollment.programme ?? enrollment.cohort_course) != null &&
-      cohortCourses.some(
-        (item) => item.id === (enrollment.programme ?? enrollment.cohort_course),
-      ),
+    (enrollment) => (enrollment.programme ?? enrollment.cohort_course) != null,
   );
 
   return liveEnrollments.map((enrollment) => {
@@ -505,10 +509,12 @@ export async function loadStaffCourses() {
       null;
     const course = cohortCourse?.course_details ?? null;
 
-    // The backend sends `programme_title` as an empty string for some
-    // enrollments (and no `course_title`), so the enrollment alone can't be
-    // trusted for the display name. Fall back to the course's canonical title.
+    // programme_title is generated server-side now and is the name staff are
+    // meant to see, so it leads. It still arrives empty on older records, and
+    // an enrolment whose programme was not in the list above has no course to
+    // fall back on, hence the chain rather than a single field.
     const resolvedTitle =
+      enrollment.programme_title?.trim() ||
       enrollment.course_title?.trim() ||
       course?.title?.trim() ||
       enrollment.cohort_name ||
