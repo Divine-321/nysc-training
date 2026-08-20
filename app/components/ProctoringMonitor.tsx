@@ -46,6 +46,36 @@ const EVENT_FRAME_MIN_GAP_MS = 15000;
 // (tab switch, window blur, fullscreen exit, camera loss), and warns the staff
 // member when monitoring conditions are not satisfied. Monitoring failures
 // never interrupt the exam itself.
+/**
+ * The learner's saved widget placement, or the defaults.
+ *
+ * Reads storage directly rather than through state so the first paint is
+ * already correct. Any failure — storage disabled, malformed JSON — falls
+ * back to the defaults, since a misplaced preview is a nuisance, not a fault
+ * worth surfacing mid-exam.
+ */
+function savedPreferences(): { collapsed: boolean; side: "left" | "right" } {
+  const defaults = { collapsed: false, side: "left" as const };
+
+  try {
+    const saved = window.localStorage.getItem("proctoring-widget");
+    if (!saved) return defaults;
+
+    const prefs = JSON.parse(saved) as {
+      collapsed?: boolean;
+      side?: "left" | "right";
+    };
+
+    return {
+      collapsed:
+        typeof prefs.collapsed === "boolean" ? prefs.collapsed : defaults.collapsed,
+      side: prefs.side === "left" || prefs.side === "right" ? prefs.side : defaults.side,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
 export default function ProctoringMonitor({
   sessionId,
   frameIntervalMs = DEFAULT_FRAME_INTERVAL_MS,
@@ -60,29 +90,21 @@ export default function ProctoringMonitor({
   // The learner can shrink the preview and dock it to either corner so it never
   // covers the questions. The camera keeps running the whole time — only the
   // on-screen preview changes — so monitoring is unaffected.
-  const [collapsed, setCollapsed] = useState(false);
-  // Default to the LEFT corner — the assessment's questions and navigator sit
+  //
+  // Both are seeded straight from storage rather than defaulted and then
+  // corrected in an effect, which rendered the widget in the wrong corner for
+  // a frame before moving it. Reading during render is safe here because this
+  // only mounts once an attempt is under way, so it is never server-rendered
+  // and there is no hydration pass to disagree with.
+  const [collapsed, setCollapsed] = useState(() => savedPreferences().collapsed);
+  // Defaults to the LEFT corner — the assessment's questions and navigator sit
   // on the right, so a right-docked preview would cover them.
-  const [side, setSide] = useState<"left" | "right">("left");
+  const [side, setSide] = useState<"left" | "right">(
+    () => savedPreferences().side,
+  );
   const warningTimerRef = useRef<number | null>(null);
   const wasFullscreenRef = useRef(false);
   const lastEventFrameAtRef = useRef(0);
-
-  // Remember the learner's placement between the pre- and post-assessment.
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem("proctoring-widget");
-      if (!saved) return;
-      const prefs = JSON.parse(saved) as {
-        collapsed?: boolean;
-        side?: "left" | "right";
-      };
-      if (typeof prefs.collapsed === "boolean") setCollapsed(prefs.collapsed);
-      if (prefs.side === "left" || prefs.side === "right") setSide(prefs.side);
-    } catch {
-      // Ignore malformed/unavailable storage — defaults are fine.
-    }
-  }, []);
 
   useEffect(() => {
     try {

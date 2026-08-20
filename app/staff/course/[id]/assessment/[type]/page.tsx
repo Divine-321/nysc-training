@@ -182,6 +182,42 @@ export default function AssessmentPage() {
     [],
   );
 
+  /**
+   * Resumes a cached attempt, if one is stored under this key.
+   *
+   * The saved deadline is an absolute timestamp, so a refresh carries on
+   * counting down from where the clock really is rather than restarting it —
+   * and if it has already passed, the countdown effect submits immediately.
+   *
+   * Called from the loader rather than its own effect: the key depends on the
+   * assessment id, so this is the earliest it can run, and doing it there
+   * keeps the intro screen from flashing before the restore takes hold.
+   */
+  const restoreAttempt = (key: string) => {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return;
+
+      const saved = JSON.parse(raw) as {
+        questions?: AssessmentQuestion[];
+        answers?: Record<number, number>;
+        currentQuestion?: number;
+        deadline?: number | null;
+        proctoring?: ProctoringStartResult | null;
+      };
+      if (!saved.questions?.length) return;
+
+      setLiveQuestions(saved.questions);
+      setAnswers(saved.answers ?? {});
+      setCurrentQuestion(saved.currentQuestion ?? 0);
+      setDeadline(saved.deadline ?? null);
+      if (saved.proctoring) setProctoring(saved.proctoring);
+      setExamPhase("in_progress");
+    } catch {
+      // Corrupt cache — start fresh.
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -207,6 +243,15 @@ export default function AssessmentPage() {
           null;
         setAssessment(selectedAssessment);
         setStaffCourse(course);
+
+        // Resume a cached attempt here rather than in an effect watching the
+        // assessment: the cache key is built from the assessment id, so this
+        // is the first moment it can be read, and doing it in the same pass
+        // avoids a render showing the intro screen before the restore lands.
+        if (selectedAssessment && !restoredRef.current) {
+          restoredRef.current = true;
+          restoreAttempt(`assessment-progress-${courseId}-${selectedAssessment.id}`);
+        }
 
         if (selectedAssessment) {
           await refreshAttempts(selectedAssessment.id, course?.enrollment);
@@ -289,7 +334,6 @@ export default function AssessmentPage() {
     (item) => answers[item.id] === undefined,
   ).length;
   const remainingMs = deadline !== null ? Math.max(0, deadline - nowTick) : null;
-  const timeUp = deadline !== null && nowTick >= deadline;
 
   const submitAttempt = useCallback(
     async (auto = false) => {
@@ -455,35 +499,6 @@ export default function AssessmentPage() {
     proctoring,
   ]);
 
-  // On first load, resume an in-progress attempt if one was cached. The saved
-  // deadline is an absolute time, so a refresh continues counting down from
-  // where it really is; if it has already elapsed, the countdown effect submits.
-  useEffect(() => {
-    if (!assessment || !progressKey || restoredRef.current) return;
-    restoredRef.current = true;
-
-    try {
-      const raw = window.localStorage.getItem(progressKey);
-      if (!raw) return;
-      const saved = JSON.parse(raw) as {
-        questions?: AssessmentQuestion[];
-        answers?: Record<number, number>;
-        currentQuestion?: number;
-        deadline?: number | null;
-        proctoring?: ProctoringStartResult | null;
-      };
-      if (!saved.questions?.length) return;
-
-      setLiveQuestions(saved.questions);
-      setAnswers(saved.answers ?? {});
-      setCurrentQuestion(saved.currentQuestion ?? 0);
-      setDeadline(saved.deadline ?? null);
-      if (saved.proctoring) setProctoring(saved.proctoring);
-      setExamPhase("in_progress");
-    } catch {
-      // Corrupt cache — start fresh.
-    }
-  }, [assessment, progressKey]);
 
 
   const handleStartExam = () => {
