@@ -103,7 +103,17 @@ export type CourseEnrollment = {
   course_title: string;
   cohort_name: string;
   status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+  /**
+   * Share of the programme finished, counting activities, live sessions and
+   * post-tests alike (backend formula change, 2026-08-18). It used to count
+   * activities only, which is why the course page recalculated it — that
+   * override is gone now this covers the same ground.
+   */
   completion_percentage: string;
+  /** Activities + live sessions + post-tests in the programme. */
+  total_steps?: number;
+  /** How many of those this staff member has finished. */
+  completed_steps?: number;
   /** @deprecated Legacy serializer name; the restructure renamed it activity_completions. */
   document_progress?: DocumentProgress[];
   /** New-model completion records (restructure, live 2026-07-10). */

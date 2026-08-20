@@ -337,18 +337,13 @@ export default function CourseModulesPage() {
     (stat) => stat.status === "completed",
   ).length;
 
-  // The hero % is built from the same per-module steps as the cards below it —
-  // including post-assessments — so it only reaches 100% when every module is
-  // truly done, not just its content. (The dashboard/training cards still show
-  // the backend's content-only % until B1/B3 land server-side.)
-  const totalSteps = moduleStats.reduce((sum, stat) => sum + stat.total, 0);
-  const doneSteps = moduleStats.reduce((sum, stat) => sum + stat.completed, 0);
-  const courseProgress =
-    totalSteps > 0
-      ? Math.round((doneSteps / totalSteps) * 100)
-      : toPercentage(enrollment.completion_percentage);
+  // The backend's percentage now counts activities, live sessions and
+  // post-tests, which is what this page used to recalculate for itself. Two
+  // formulas meant the same course read 13% on the dashboard and 10% here, so
+  // the local one is gone and there is a single number again.
+  const courseProgress = toPercentage(enrollment.completion_percentage);
   const isCompleted =
-    totalSteps > 0 ? doneSteps >= totalSteps : enrollment.status === "COMPLETED";
+    enrollment.status === "COMPLETED" || courseProgress >= 100;
 
   // The course evaluation is a mandatory closing "module" shown after all the
   // real modules. It links straight into the player's evaluation step; once

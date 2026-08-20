@@ -156,15 +156,21 @@ function courseView(item: StaffCourse) {
   const courseId = item.course?.id ?? item.cohortCourse?.course;
   const progress = toPercentage(item.enrollment.completion_percentage);
   const completed = isCourseCompleted(item);
-  const totalDocuments = item.modules.reduce(
-    (total, mod) => total + mod.documents.length,
-    0,
-  );
-  const completedDocuments = (
-    item.enrollment.activity_completions ??
-    item.enrollment.document_progress ??
-    []
-  ).filter((progressItem) => progressItem.is_completed).length;
+  // Prefer the backend's own counts: they cover live sessions and post-tests
+  // as well as materials, which is what the percentage beside them measures.
+  // Counting activity_completions ourselves only ever saw materials, so the
+  // caption could read "1 of 8" next to a percentage derived from ten things.
+  // The local count stays as a fallback for payloads without the new fields.
+  const totalDocuments =
+    item.enrollment.total_steps ??
+    item.modules.reduce((total, mod) => total + mod.documents.length, 0);
+  const completedDocuments =
+    item.enrollment.completed_steps ??
+    (
+      item.enrollment.activity_completions ??
+      item.enrollment.document_progress ??
+      []
+    ).filter((progressItem) => progressItem.is_completed).length;
 
   return {
     courseId,
@@ -258,7 +264,7 @@ function CourseGridCard({ item }: { item: StaffCourse }) {
         <div className="mb-5 rounded-xl bg-gray-50 p-3.5">
           <div className="mb-2 flex items-end justify-between">
             <span className="text-xs font-medium text-gray-500">
-              {completedDocuments} of {totalDocuments} material
+              {completedDocuments} of {totalDocuments} step
               {totalDocuments === 1 ? "" : "s"} completed
             </span>
             <span

@@ -59,13 +59,47 @@ export default function StaffDashboard() {
   }, []);
 
   const activeCourses = useMemo(() => courses.slice(0, 3), [courses]);
-  const overallProgress = Math.round(
-    courses.reduce(
-      (total, course) =>
-        total + toPercentage(course.enrollment.completion_percentage),
-      0,
-    ) / (courses.length || 1),
-  );
+
+  /**
+   * Two figures, because one cannot answer both questions honestly.
+   *
+   * The headline counts finished courses, since finishing one is what issues a
+   * certificate. Averaging the course percentages instead — which this used to
+   * do — gives someone half-way through two courses the same 50% as someone
+   * who has completed one and earned a certificate, and lets a two-step course
+   * outweigh a hundred-step one.
+   *
+   * The steps line underneath moves with every activity, live session and
+   * post-test, so progress still shows between certificates.
+   */
+  const progress = useMemo(() => {
+    const completedCourses = courses.filter(
+      (course) =>
+        course.enrollment.status === "COMPLETED" ||
+        toPercentage(course.enrollment.completion_percentage) >= 100,
+    ).length;
+
+    const totals = courses.reduce(
+      (sum, course) => ({
+        done: sum.done + (course.enrollment.completed_steps ?? 0),
+        total: sum.total + (course.enrollment.total_steps ?? 0),
+      }),
+      { done: 0, total: 0 },
+    );
+
+    return {
+      completedCourses,
+      totalCourses: courses.length,
+      percent:
+        courses.length > 0
+          ? Math.round((completedCourses / courses.length) * 100)
+          : 0,
+      stepsDone: totals.done,
+      stepsTotal: totals.total,
+    };
+  }, [courses]);
+
+  const overallProgress = progress.percent;
 
   const stats = [
     {
@@ -76,7 +110,8 @@ export default function StaffDashboard() {
       icon: <BookOpen size={24} />,
     },
     {
-      label: "Average Progress",
+      // Not an average any more - see the progress memo above.
+      label: "Overall Progress",
       value: `${overallProgress}%`,
       color: "bg-blue-50",
       text: "text-blue-700",
@@ -260,9 +295,16 @@ export default function StaffDashboard() {
             </div>
           </div>
 
-          <p className="text-center text-sm font-medium text-gray-500">
-            Material completion rate across all your assigned courses.
+          <p className="text-center text-sm font-semibold text-gray-700">
+            {progress.completedCourses} of {progress.totalCourses} course
+            {progress.totalCourses === 1 ? "" : "s"} completed
           </p>
+          {progress.stepsTotal > 0 && (
+            <p className="mt-1 text-center text-sm text-gray-500">
+              {progress.stepsDone} of {progress.stepsTotal} steps done across
+              all your courses
+            </p>
+          )}
         </div>
       </div>
 
