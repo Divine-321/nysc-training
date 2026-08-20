@@ -192,46 +192,6 @@ export function collectTrainerNames(
 
 const SESSION_STORAGE_KEY = "nysc-auth-session";
 
-async function apiFetch<T>(path: string, init?: RequestInit, token?: string) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-
-  const contentType = response.headers.get("content-type") ?? "";
-  const payload = contentType.includes("application/json")
-    ? await response.json()
-    : null;
-
-  if (!response.ok) {
-    const message = payload?.message || `Request failed with status ${response.status}`;
-    throw new Error(message);
-  }
-
-  return payload as T;
-}
-
-export async function loginUser(credentials: LoginCredentials) {
-  return apiFetch<LoginResponse>("/api/accounts/auth/login/", {
-    method: "POST",
-    body: JSON.stringify(credentials),
-  });
-}
-
-/** Completes an admin login on a new device, using the OTP sent by email. */
-export async function verifyDevice(credentials: VerifyDeviceCredentials) {
-  return apiFetch<LoginResponse>("/api/accounts/auth/verify-device/", {
-    method: "POST",
-    body: JSON.stringify(credentials),
-  });
-}
-
 export function clearSession() {
   if (typeof window === "undefined") return;
 

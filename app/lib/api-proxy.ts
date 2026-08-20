@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { browserHeaders } from "@/app/lib/forwarded-headers";
 import { API_BASE_URL } from "@/app/lib/portal-api";
 
 type ProxyOptions = {
@@ -92,7 +93,7 @@ export async function proxyDownload(path: string) {
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+    headers: { ...(await browserHeaders()), Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
 
@@ -183,7 +184,7 @@ async function refreshAccessToken(): Promise<string | null> {
 async function performRefresh(refreshToken: string): Promise<string | null> {
   const response = await fetch(`${API_BASE_URL}/api/accounts/auth/refresh/`, {
     method: "POST",
-    headers: JSON_HEADERS,
+    headers: { ...(await browserHeaders()), ...JSON_HEADERS },
     body: JSON.stringify({ refresh: refreshToken }),
     cache: "no-store",
   });
@@ -247,9 +248,12 @@ export async function proxyApi(method: string, options: ProxyOptions) {
     );
   }
 
+  const forwarded = await browserHeaders();
+
   const createInit = (token: string | null): RequestInit => ({
     method,
     headers: {
+      ...forwarded,
       ...JSON_HEADERS,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
