@@ -129,7 +129,17 @@ function statFor(
   module: CourseModule,
   enrollment: CourseEnrollment,
   post: PostGate,
-  backend?: ModuleBreakdown,
+  /**
+   * The backend's figures for this module.
+   *
+   * Required, not optional. It was optional, and four of the five callers
+   * quietly omitted it — including both card views, which are what the
+   * learner actually reads. They fell back to "unknown" while the hero, the
+   * one caller that passed it, showed real numbers. Undefined must be passed
+   * deliberately now, so a missing argument is a compile error rather than a
+   * card that says it knows nothing.
+   */
+  backend: ModuleBreakdown | undefined,
 ): ModuleStat {
   const docsTotal = module.activities.length;
   const docsDone = module.activities.filter((doc) =>
@@ -271,6 +281,7 @@ export default function CourseModulesPage() {
         module,
         staffCourse.enrollment,
         postGateFor(module.id),
+        breakdown.get(module.id),
       ).status;
       const matchesTab =
         tab === "all" ||
@@ -284,18 +295,23 @@ export default function CourseModulesPage() {
 
       return matchesTab && matchesSearch;
     });
-  }, [orderedModules, search, tab, staffCourse, postGateFor]);
+  }, [orderedModules, search, tab, staffCourse, postGateFor, breakdown]);
 
   // Resume target: first not-yet-complete module, else the first module.
   const resumeModuleId = useMemo(() => {
     if (!staffCourse) return null;
     const firstIncomplete = orderedModules.find(
       (module) =>
-        statFor(module, staffCourse.enrollment, postGateFor(module.id))
+        statFor(
+          module,
+          staffCourse.enrollment,
+          postGateFor(module.id),
+          breakdown.get(module.id),
+        )
           .status !== "completed",
     );
     return (firstIncomplete ?? orderedModules[0])?.id ?? null;
-  }, [orderedModules, staffCourse, postGateFor]);
+  }, [orderedModules, staffCourse, postGateFor, breakdown]);
 
   if (loading) {
     return (
@@ -356,6 +372,23 @@ export default function CourseModulesPage() {
   const moduleStats = contentModules.map((module) =>
     statFor(module, enrollment, postGateFor(module.id), breakdown.get(module.id)),
   );
+
+  // The breakdown is keyed by module id. If it arrived but a module is not in
+  // it, the two sides disagree about what a module's id is, and every card
+  // silently reads "Progress unavailable". Name both sets rather than leaving
+  // that to be guessed at.
+  if (breakdown.size > 0) {
+    const unmatched = contentModules
+      .filter((module) => !breakdown.has(module.id))
+      .map((module) => `${module.title} (id ${module.id})`);
+
+    if (unmatched.length > 0) {
+      console.warn(
+        "Module ids do not match modules_breakdown.",
+        { unmatched, breakdownIds: [...breakdown.keys()] },
+      );
+    }
+  }
   const completedModules = moduleStats.filter(
     (stat) => stat.status === "completed",
   ).length;
@@ -619,7 +652,12 @@ export default function CourseModulesPage() {
       ) : view === "grid" ? (
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {visibleModules.map((module) => {
-            const stat = statFor(module, enrollment, postGateFor(module.id));
+            const stat = statFor(
+              module,
+              enrollment,
+              postGateFor(module.id),
+              breakdown.get(module.id),
+            );
             const { gradient, glow, Icon } = bannerFor(module.title);
             const moduleNumber =
               orderedModules.findIndex((item) => item.id === module.id) + 1;
@@ -851,7 +889,12 @@ export default function CourseModulesPage() {
       ) : (
         <div className="space-y-3">
           {visibleModules.map((module) => {
-            const stat = statFor(module, enrollment, postGateFor(module.id));
+            const stat = statFor(
+              module,
+              enrollment,
+              postGateFor(module.id),
+              breakdown.get(module.id),
+            );
             const { gradient, Icon } = bannerFor(module.title);
             const moduleNumber =
               orderedModules.findIndex((item) => item.id === module.id) + 1;
