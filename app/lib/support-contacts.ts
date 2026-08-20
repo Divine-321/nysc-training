@@ -19,14 +19,16 @@ export type SupportContact = {
 };
 
 export const SUPPORT_CONTACTS: SupportContact[] = [
-  // Deliberately empty until the real numbers are confirmed. Every panel hides
-  // itself while this is empty, which is the safe state: a number nobody
-  // answers is worse than none at all, because someone locked out will trust
-  // it and wait. Uncomment and fill in, and they appear everywhere at once.
+  // Stored as full international digits with no +, spaces or leading zero,
+  // because that is the only form wa.me accepts. formatPhone puts the
+  // readable version back on screen.
   //
-  //   { id: "line-1", label: "Help Desk",     phone: "2348031234567" },
-  //   { id: "line-2", label: "Training Unit", phone: "2348039876543" },
-  //   { id: "line-3", label: "IT Support",    phone: "2347012345678" },
+  // The labels say which line, not who answers — rename them to the desk or
+  // person once that is settled, since "Training Unit" helps a stuck learner
+  // choose and "Help line 2" does not.
+  { id: "line-1", label: "Help line 1", phone: "2348065706356" },
+  { id: "line-2", label: "Help line 2", phone: "2349018415032" },
+  { id: "line-3", label: "Help line 3", phone: "2348168188533" },
 ];
 
 /** 2348031234567 -> "+234 803 123 4567", for display only. */
