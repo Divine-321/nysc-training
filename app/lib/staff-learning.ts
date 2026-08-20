@@ -746,74 +746,23 @@ export async function startAssessment(
   return { questions };
 }
 
-/** A submission the backend voided because proctoring was invalidated. */
+/**
+ * A submission the backend voided because proctoring was invalidated.
+ *
+ * The attempt is a normal attempt record, but with `score` and `percentage`
+ * null — there is no grade because the answers were never marked. That is why
+ * this is kept separate from a pass/fail result: rendering it as an ordinary
+ * result shows an empty scorecard and a bare "%" with nothing explaining why.
+ */
 export type ProctoringViolationOutcome = {
   message: string;
-  reasons: string[];
+  attempt: AssessmentResult | null;
 };
 
 export type AssessmentSubmission = {
   result: AssessmentResult | null;
   violation: ProctoringViolationOutcome | null;
 };
-
-/**
- * Pulls human-readable reasons out of a voided submission's `data`.
- *
- * Deliberately tolerant: the backend reports the detail here, and the exact
- * shape is not pinned down, so accept a list of strings, a list of event
- * objects, or an object wrapping either, and ignore anything unrecognised
- * rather than showing the learner a blank screen or raw JSON.
- */
-function readViolationReasons(data: unknown): string[] {
-  const fromEntry = (entry: unknown): string | null => {
-    if (typeof entry === "string") return entry.trim() || null;
-    if (!entry || typeof entry !== "object") return null;
-
-    const record = entry as Record<string, unknown>;
-    for (const key of [
-      "reason",
-      "description",
-      "message",
-      "detail",
-      "event_type",
-      "type",
-    ]) {
-      const value = record[key];
-      if (typeof value === "string" && value.trim()) return value.trim();
-    }
-    return null;
-  };
-
-  if (Array.isArray(data)) {
-    return data.map(fromEntry).filter((item): item is string => item !== null);
-  }
-
-  if (data && typeof data === "object") {
-    const record = data as Record<string, unknown>;
-    for (const key of ["reasons", "violations", "events", "details"]) {
-      const value = record[key];
-      if (Array.isArray(value)) {
-        return value
-          .map(fromEntry)
-          .filter((item): item is string => item !== null);
-      }
-    }
-
-    const single = fromEntry(record);
-    if (single) return [single];
-  }
-
-  return [];
-}
-
-const looksLikeResult = (data: unknown) =>
-  Boolean(
-    data &&
-      typeof data === "object" &&
-      !Array.isArray(data) &&
-      "percentage" in (data as Record<string, unknown>),
-  );
 
 export async function submitAssessment(
   assessmentId: number,
@@ -847,10 +796,18 @@ export async function submitAssessment(
       : "";
   const data = readApiItem<unknown>(payload);
 
-  if (/proctoring/i.test(message) && !looksLikeResult(data)) {
+  // A voided attempt arrives as a success: HTTP 200, success true, and an
+  // attempt record whose score and percentage are null. Only the message
+  // distinguishes it, so match on that rather than on the payload shape — an
+  // earlier version tested for a `percentage` field, which is always present
+  // (just null), so this never matched.
+  if (/proctoring/i.test(message)) {
     return {
       result: null,
-      violation: { message: message.trim(), reasons: readViolationReasons(data) },
+      violation: {
+        message: message.trim(),
+        attempt: (data as AssessmentResult | null) ?? null,
+      },
     };
   }
 

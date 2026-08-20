@@ -817,22 +817,18 @@ export default function AssessmentPage() {
                         "This attempt was stopped because the proctoring session was invalidated."}
                     </p>
 
-                    {violation.reasons.length > 0 && (
-                      <ul className="mb-8 space-y-2 text-left">
-                        {violation.reasons.map((reason, index) => (
-                          <li
-                            key={index}
-                            className="flex items-start gap-2 rounded-lg border border-red-100 bg-white p-3 text-sm text-gray-700"
-                          >
-                            <AlertCircle
-                              size={16}
-                              className="mt-0.5 shrink-0 text-red-500"
-                            />
-                            <span>{reason}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                    <div className="mb-8 flex items-start gap-2 rounded-lg border border-red-100 bg-white p-3 text-left text-sm text-gray-700">
+                      <AlertCircle
+                        size={16}
+                        className="mt-0.5 shrink-0 text-red-500"
+                      />
+                      <span>
+                        This attempt was not marked, so it has no score.
+                        {violation.attempt?.attempt_number
+                          ? ` It is recorded as attempt ${violation.attempt.attempt_number}.`
+                          : ""}
+                      </span>
+                    </div>
 
                     <div className="flex flex-col gap-3 sm:flex-row">
                       {canAttempt ? (
