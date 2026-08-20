@@ -10,6 +10,7 @@ import { ADMIN_MANUAL, STAFF_MANUAL, type Manual } from "@/app/lib/manuals";
 import ManualLinks from "@/app/components/ManualLinks";
 import { directLogin, establishSession } from "@/app/lib/auth-client";
 import { requiresDeviceVerification } from "@/app/lib/portal-api";
+import SupportContacts from "@/app/components/SupportContacts";
 
 const REMEMBERED_LOGIN_KEY = "nysc-remembered-login";
 
@@ -298,6 +299,7 @@ export default function LoginPage() {
             </Link>
           </p>
 
+          <SupportContacts className="pt-6" />
           <ManualLinks
             manuals={
               uploadedManual

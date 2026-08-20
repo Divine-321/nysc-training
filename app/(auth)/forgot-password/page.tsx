@@ -8,6 +8,7 @@ import { CheckCircle2, Eye, EyeOff, Loader2, MailCheck } from "lucide-react";
 import { extractErrorMessage } from "@/app/lib/portal-api";
 import ManualLinks from "@/app/components/ManualLinks";
 import { STAFF_MANUAL } from "@/app/lib/manuals";
+import SupportContacts from "@/app/components/SupportContacts";
 
 // Two-step reset flow backed by the real backend endpoints:
 //   1. POST /api/accounts/auth/forgot-password/  { login } -> emails a 6-digit
@@ -355,6 +356,7 @@ export default function ForgotPasswordPage() {
             )}
           </form>
 
+          <SupportContacts className="pt-6" />
           <ManualLinks manuals={[STAFF_MANUAL]} className="pt-6" />
         </div>
       </div>

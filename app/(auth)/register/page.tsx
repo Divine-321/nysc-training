@@ -19,6 +19,7 @@ import CameraCaptureModal, {
 } from "@/app/components/CameraCaptureModal";
 import ManualLinks from "@/app/components/ManualLinks";
 import { STAFF_MANUAL } from "@/app/lib/manuals";
+import SupportContacts from "@/app/components/SupportContacts";
 
 const LOOKUP_DEBOUNCE_MS = 500;
 
@@ -746,6 +747,7 @@ export default function RegisterPage() {
                 : "Create Account"}
           </button>
 
+          <SupportContacts className="pt-4" />
           <ManualLinks manuals={[STAFF_MANUAL]} className="pt-2" />
         </form>
       </div>

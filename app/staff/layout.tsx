@@ -24,6 +24,7 @@ import {
 } from "@/app/lib/portal-api";
 import AuthGuard from "@/app/components/AuthGuard";
 import { cachedFetch } from "@/app/lib/data-cache";
+import SupportContacts from "@/app/components/SupportContacts";
 
 type Notification = {
   id: number;
@@ -607,18 +608,7 @@ export default function StaffLayout({
                   there is room, then collapses to 0 once the nav overflows —
                   pt-4 keeps a gap above it either way. */}
               <div className="mt-auto shrink-0 pt-4">
-                <div className="rounded-2xl bg-black/20 p-4 text-sm text-white">
-                  <div className="w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center mb-2 text-[#1a6b3c] font-bold">
-                    ?
-                  </div>
-                  <p className="font-semibold mb-1">Need help?</p>
-                  <p className="text-xs text-green-200 mb-3">
-                    Please contact us for more questions
-                  </p>
-                  <button className="w-full border border-white rounded-full py-1.5 text-xs font-medium">
-                    +234 800 0000 000
-                  </button>
-                </div>
+                <SupportContacts variant="sidebar" />
               </div>
             </div>
 
