@@ -691,13 +691,15 @@ export default function CourseModulesPage() {
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold text-gray-700 shadow-sm">
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          stat.known ? STATUS_DOT[stat.status] : "bg-gray-300"
+                          isClosed || !stat.known
+                            ? "bg-gray-300"
+                            : STATUS_DOT[stat.status]
                         }`}
                       />
-                      {stat.known
-                        ? STATUS_LABEL[stat.status]
-                        : isClosed
-                          ? "Closed"
+                      {isClosed
+                        ? "Closed"
+                        : stat.known
+                          ? STATUS_LABEL[stat.status]
                           : "Status unknown"}
                     </span>
                   </div>
@@ -712,9 +714,15 @@ export default function CourseModulesPage() {
                   </p>
 
                   <div className="mb-4">
-                    {!stat.known ? (
-                      // The breakdown has not arrived. Zeros here would read as
-                      // "nothing done", which is a claim we cannot make.
+                    {isClosed || !stat.known ? (
+                      // No bar on a closed training. Its post-test is withdrawn
+                      // but still counted, so the bar is capped below 100% and
+                      // invites the one question it cannot answer: what is the
+                      // step I am missing? The materials stay open below.
+                      //
+                      // Without a breakdown the reasoning differs but the answer
+                      // is the same: zeros would claim nothing had been done,
+                      // which is not something we know.
                       <p className="text-xs font-medium text-gray-400">
                         {isClosed
                           ? "This training has ended"
@@ -925,9 +933,17 @@ export default function CourseModulesPage() {
                     </h3>
                     <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-0.5 text-[11px] font-bold text-gray-600">
                       <span
-                        className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[stat.status]}`}
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          isClosed || !stat.known
+                            ? "bg-gray-300"
+                            : STATUS_DOT[stat.status]
+                        }`}
                       />
-                      {STATUS_LABEL[stat.status]}
+                      {isClosed
+                        ? "Closed"
+                        : stat.known
+                          ? STATUS_LABEL[stat.status]
+                          : "Status unknown"}
                     </span>
                     {stat.awaitingPost ? (
                       <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
@@ -939,6 +955,14 @@ export default function CourseModulesPage() {
                     {module.description || "Open this module to begin."}
                   </p>
                   <div className="mt-2 flex items-center gap-3">
+                    {isClosed || !stat.known ? (
+                      <span className="text-xs font-medium text-gray-400">
+                        {isClosed
+                          ? "This training has ended"
+                          : "Progress unavailable"}
+                      </span>
+                    ) : (
+                      <>
                     <div className="h-1.5 max-w-xs flex-1 overflow-hidden rounded-full bg-gray-100">
                       <div
                         className={`h-full rounded-full transition-all duration-700 ${
@@ -952,6 +976,8 @@ export default function CourseModulesPage() {
                     <span className="shrink-0 text-xs font-medium text-gray-400">
                       {stat.completed}/{stat.total}
                     </span>
+                      </>
+                    )}
                   </div>
                 </div>
 
