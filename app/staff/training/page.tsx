@@ -25,7 +25,7 @@ import {
 import { Skeleton } from "@/app/components/ui";
 import {
   loadStaffCourses,
-  programmeWindow,
+  isCourseClosed,
   toPercentage,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
@@ -36,21 +36,6 @@ function isCourseCompleted(item: StaffCourse) {
   return (
     item.enrollment.status === "COMPLETED" ||
     toPercentage(item.enrollment.completion_percentage) >= 100
-  );
-}
-
-/**
- * A course whose training window has passed and was never finished.
- *
- * The backend stops serving its modules, activities and assessments once the
- * end date goes by, so there is genuinely nothing left the learner can do. It
- * used to keep reading "In progress", which invited people to open a course
- * and find every button gone.
- */
-function isCourseClosed(item: StaffCourse) {
-  return (
-    !isCourseCompleted(item) &&
-    programmeWindow(item.cohortCourse).state === "after"
   );
 }
 

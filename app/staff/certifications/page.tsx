@@ -20,6 +20,7 @@ import {
   documentIsComplete,
   flagIsTrue,
   loadAssessmentAttempts,
+  isCourseClosed,
   loadStaffCourses,
   type Assessment,
   type AssessmentAttempt,
@@ -304,6 +305,10 @@ export default function CertificationsPage() {
   const pendingCourses = staffCourses.filter(
     (staffCourse) =>
       (staffCourse.cohortCourse != null || staffCourse.course != null) &&
+      // A course past its end date can no longer be worked on, so no
+      // certificate will ever follow. Listing what is still outstanding would
+      // read as a to-do list for something that cannot be done.
+      !isCourseClosed(staffCourse) &&
       !certificates.some((certificate) =>
         certificateMatchesCourse(certificate, staffCourse),
       ),

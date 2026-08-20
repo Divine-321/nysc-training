@@ -190,6 +190,28 @@ export function programmeWindow(
   return { state: "open", startDate, endDate };
 }
 
+/**
+ * True when a course can no longer be worked on: its programme's end date has
+ * passed and it was not finished in time.
+ *
+ * Past that date the backend stops serving the course's modules, activities
+ * and assessments, so there is nothing left to do and no certificate to earn.
+ * Screens must say so rather than offering to continue — the work is not
+ * merely unfinished, it is closed.
+ *
+ * A course finished before the deadline is unaffected and stays completed.
+ */
+export function isCourseClosed(item: {
+  enrollment: Pick<CourseEnrollment, "status" | "completion_percentage">;
+  cohortCourse: CohortCourse | null;
+}) {
+  const finished =
+    item.enrollment.status === "COMPLETED" ||
+    toPercentage(item.enrollment.completion_percentage) >= 100;
+
+  return !finished && programmeWindow(item.cohortCourse).state === "after";
+}
+
 /** Human label for a programme's cohort across both backend models. */
 export function cohortCourseBatchLabel(
   cohortCourse: CohortCourse | null | undefined,

@@ -6,12 +6,14 @@ import {
   ArrowRight,
   Award,
   BookOpen,
+  CalendarX,
   Lock,
   PlayCircle,
   Target,
   X,
 } from "lucide-react";
 import {
+  isCourseClosed,
   loadStaffCourses,
   toPercentage,
   type StaffCourse,
@@ -193,6 +195,8 @@ export default function StaffDashboard() {
                   item.enrollment.completion_percentage,
                 );
 
+                const isClosed = isCourseClosed(item);
+
                 return (
                   <div
                     key={item.enrollment.id}
@@ -223,12 +227,28 @@ export default function StaffDashboard() {
                         </button>
                       )}
 
+                      {/* A closed course still opens — the detail page explains
+                          when it closed and that any certificate is kept — but it
+                          must not say "Continue", which promises work that can no
+                          longer be done or certified. */}
                       {courseId && !isLocked && (
                         <Link
                           href={`/staff/course/${courseId}`}
-                          className="flex shrink-0 items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:border-[#1a6b3c] hover:text-[#1a6b3c]"
+                          className={`flex shrink-0 items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-medium shadow-sm transition ${
+                            isClosed
+                              ? "border-gray-200 bg-gray-50 text-gray-500 hover:border-gray-300"
+                              : "border-gray-200 bg-white text-gray-700 hover:border-[#1a6b3c] hover:text-[#1a6b3c]"
+                          }`}
                         >
-                          <PlayCircle size={16} /> Continue
+                          {isClosed ? (
+                            <>
+                              <CalendarX size={16} /> Training closed
+                            </>
+                          ) : (
+                            <>
+                              <PlayCircle size={16} /> Continue
+                            </>
+                          )}
                         </Link>
                       )}
                     </div>
