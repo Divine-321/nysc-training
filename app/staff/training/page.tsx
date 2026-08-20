@@ -25,6 +25,7 @@ import {
 import { Skeleton } from "@/app/components/ui";
 import {
   loadStaffCourses,
+  programmeWindow,
   toPercentage,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
@@ -38,8 +39,24 @@ function isCourseCompleted(item: StaffCourse) {
   );
 }
 
+/**
+ * A course whose training window has passed and was never finished.
+ *
+ * The backend stops serving its modules, activities and assessments once the
+ * end date goes by, so there is genuinely nothing left the learner can do. It
+ * used to keep reading "In progress", which invited people to open a course
+ * and find every button gone.
+ */
+function isCourseClosed(item: StaffCourse) {
+  return (
+    !isCourseCompleted(item) &&
+    programmeWindow(item.cohortCourse).state === "after"
+  );
+}
+
 function statusLabel(item: StaffCourse) {
   if (isCourseCompleted(item)) return "Completed";
+  if (isCourseClosed(item)) return "Closed";
   if (item.enrollment.status === "IN_PROGRESS") return "In progress";
   return "Not started";
 }
@@ -48,6 +65,8 @@ function statusLabel(item: StaffCourse) {
 // stays legible on top of any gradient.
 function statusDotClass(item: StaffCourse) {
   if (isCourseCompleted(item)) return "bg-emerald-500";
+  // Grey, and deliberately not pulsing: nothing is happening here any more.
+  if (isCourseClosed(item)) return "bg-gray-400";
   if (item.enrollment.status === "IN_PROGRESS")
     return "bg-blue-500 animate-pulse";
   return "bg-amber-500";
