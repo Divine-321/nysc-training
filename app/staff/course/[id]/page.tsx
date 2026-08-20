@@ -387,6 +387,9 @@ export default function CourseModulesPage() {
   // outside the programme's dates, so say so plainly instead of letting the
   // page look broken.
   const trainingWindow = programmeWindow(staffCourse.programme);
+  // Past the end date and unfinished: the backend has withdrawn the modules,
+  // activities and assessments, so nothing here can be started or completed.
+  const isClosed = trainingWindow.state === "after" && !isCompleted;
   const windowDate =
     trainingWindow.state === "before"
       ? trainingWindow.startDate
@@ -489,16 +492,18 @@ export default function CourseModulesPage() {
                   href={`/staff/course/${courseId}/learn?module=${resumeModuleId}`}
                   className="group mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-sm font-bold text-[#1a6b3c] shadow-sm transition hover:bg-green-50"
                 >
-                  {isCompleted ? (
+                  {isCompleted || isClosed ? (
                     <RotateCcw size={16} />
                   ) : (
                     <PlayCircle size={16} />
                   )}
                   {isCompleted
                     ? "Review Course"
-                    : courseProgress > 0
-                      ? "Resume Learning"
-                      : "Start Learning"}
+                    : isClosed
+                      ? "View Materials"
+                      : courseProgress > 0
+                        ? "Resume Learning"
+                        : "Start Learning"}
                   <ArrowRight
                     size={16}
                     className="transition-transform group-hover:translate-x-1"
@@ -651,7 +656,11 @@ export default function CourseModulesPage() {
                           stat.known ? STATUS_DOT[stat.status] : "bg-gray-300"
                         }`}
                       />
-                      {stat.known ? STATUS_LABEL[stat.status] : "Status unknown"}
+                      {stat.known
+                        ? STATUS_LABEL[stat.status]
+                        : isClosed
+                          ? "Closed"
+                          : "Status unknown"}
                     </span>
                   </div>
                 </div>
@@ -669,7 +678,9 @@ export default function CourseModulesPage() {
                       // The breakdown has not arrived. Zeros here would read as
                       // "nothing done", which is a claim we cannot make.
                       <p className="text-xs font-medium text-gray-400">
-                        Progress unavailable
+                        {isClosed
+                          ? "This training has ended"
+                          : "Progress unavailable"}
                       </p>
                     ) : (
                     <>
@@ -723,9 +734,11 @@ export default function CourseModulesPage() {
                       </>
                     ) : (
                       <>
-                        {stat.status === "inprogress"
-                          ? "Continue Module"
-                          : "Start Module"}
+                        {isClosed
+                          ? "View Module"
+                          : stat.status === "inprogress"
+                            ? "Continue Module"
+                            : "Start Module"}
                         <ArrowRight
                           size={16}
                           className="transition-transform group-hover/btn:translate-x-1"
