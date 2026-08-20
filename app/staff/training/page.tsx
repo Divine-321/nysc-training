@@ -180,6 +180,7 @@ function courseView(item: StaffCourse) {
     courseId,
     progress,
     completed,
+    closed: isCourseClosed(item),
     totalDocuments,
     completedDocuments,
     isLocked: item.course?.is_locked ?? false,
@@ -195,6 +196,7 @@ function CourseGridCard({ item }: { item: StaffCourse }) {
     completed,
     totalDocuments,
     completedDocuments,
+    closed: isClosed,
     isLocked,
     lockReason,
     gradient,
@@ -320,7 +322,11 @@ function CourseGridCard({ item }: { item: StaffCourse }) {
               href={`/staff/course/${courseId}`}
               className="group/btn mt-auto flex w-full items-center justify-center gap-2 rounded-xl bg-[#1a6b3c] py-3 text-sm font-bold text-white shadow-sm transition-all hover:bg-[#155831] hover:shadow-md"
             >
-              {progress > 0 ? "Resume Course" : "Start Course"}
+              {isClosed
+                ? "View Course"
+                : progress > 0
+                  ? "Resume Course"
+                  : "Start Course"}
               <ArrowRight
                 size={16}
                 className="transition-transform group-hover/btn:translate-x-1"
@@ -418,7 +424,9 @@ function CourseListRow({ item }: { item: StaffCourse }) {
 }
 
 export default function StaffTraining() {
-  const [tab, setTab] = useState<"all" | "inprogress" | "completed">("all");
+  const [tab, setTab] = useState<
+    "all" | "inprogress" | "completed" | "closed"
+  >("all");
   const [search, setSearch] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [courses, setCourses] = useState<StaffCourse[]>([]);
@@ -452,12 +460,17 @@ export default function StaffTraining() {
       const completed = isCourseCompleted(item);
       // "In progress" means genuinely started but not finished — a not-started
       // course belongs only under "All".
+      // A closed course is not "in progress" however far it got — there is no
+      // progress to be made on it any more.
+      const closed = isCourseClosed(item);
       const inProgress =
         !completed &&
+        !closed &&
         (progress > 0 || item.enrollment.status === "IN_PROGRESS");
       const matchesTab =
         tab === "all" ||
         (tab === "completed" && completed) ||
+        (tab === "closed" && closed) ||
         (tab === "inprogress" && inProgress);
       const matchesSearch =
         !normalizedSearch ||
@@ -499,7 +512,7 @@ export default function StaffTraining() {
 
         <div className="mb-6 flex items-center justify-between gap-4 border-b border-gray-100">
           <div className="flex gap-6 sm:gap-8">
-            {(["all", "inprogress", "completed"] as const).map((item) => (
+            {(["all", "inprogress", "completed", "closed"] as const).map((item) => (
               <button
                 key={item}
                 onClick={() => setTab(item)}
@@ -513,7 +526,9 @@ export default function StaffTraining() {
                   ? "Completed"
                   : item === "inprogress"
                     ? "In progress"
-                    : item}
+                    : item === "closed"
+                      ? "Closed"
+                      : item}
               </button>
             ))}
           </div>
