@@ -623,10 +623,23 @@ export async function loadModulesBreakdown(
       payload,
     );
 
-    return new Map(
-      (detail?.modules_breakdown ?? []).map((module) => [module.id, module]),
+    const breakdown = detail?.modules_breakdown ?? [];
+
+    if (breakdown.length === 0) {
+      // Not an error, so it would otherwise pass unnoticed — and the screens
+      // then show "Progress unavailable" with no clue why. Says which
+      // enrolment, so it can be checked against the endpoint directly.
+      console.warn(
+        `No modules_breakdown for enrolment ${enrollmentId}. Per-module progress will be unavailable.`,
+      );
+    }
+
+    return new Map(breakdown.map((module) => [module.id, module]));
+  } catch (error) {
+    console.warn(
+      `Could not load modules_breakdown for enrolment ${enrollmentId}.`,
+      error,
     );
-  } catch {
     return new Map();
   }
 }
