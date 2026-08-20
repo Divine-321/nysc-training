@@ -110,6 +110,16 @@ type ModuleStat = {
   status: "completed" | "inprogress" | "notstarted";
   /** True when every content item is done but the post-assessment isn't. */
   awaitingPost: boolean;
+  /**
+   * False when the backend's breakdown for this module has not arrived.
+   *
+   * The figures are then meaningless and must not be shown. Counting
+   * activities locally instead used to fill the gap, but that count cannot
+   * see live sessions, so it produced a plausible number that quietly
+   * disagreed with the course total — worse than an empty space, because
+   * nobody reports a number that merely looks wrong.
+   */
+  known: boolean;
 };
 
 /** A module's post-assessment gate (the pre-assessment never gates progress). */
@@ -126,23 +136,11 @@ function statFor(
     documentIsComplete(enrollment, doc.id),
   ).length;
 
-  // The post-assessment counts as one required step, so a module cannot reach
-  // 100%/Completed until it is passed. The pre-assessment is never counted.
-  const extraTotal = post.required ? 1 : 0;
-  const extraDone = post.required && post.passed ? 1 : 0;
-
-  // Prefer the backend's counts where we have them. They include live sessions,
-  // which counting here never did, so without this a module could sit at 100%
-  // while the course percentage — which does count them — stayed short, and
-  // the two numbers on the same screen would contradict each other.
-  const total = backend?.total_steps ?? docsTotal + extraTotal;
-  const completed = backend?.completed_steps ?? docsDone + extraDone;
-  const percent =
-    backend != null
-      ? Math.round(backend.completion_percentage)
-      : total === 0
-        ? 0
-        : Math.round((completed / total) * 100);
+  // Every figure here is the backend's. Without its breakdown there is
+  // nothing to show, which `known` says explicitly.
+  const total = backend?.total_steps ?? 0;
+  const completed = backend?.completed_steps ?? 0;
+  const percent = backend ? Math.round(backend.completion_percentage) : 0;
   const status =
     total > 0 && completed >= total
       ? "completed"
@@ -151,7 +149,7 @@ function statFor(
         : "notstarted";
   const awaitingPost = post.required && !post.passed && docsDone === docsTotal;
 
-  return { total, completed, percent, status, awaitingPost };
+  return { total, completed, percent, status, awaitingPost, known: backend != null };
 }
 
 const STATUS_LABEL: Record<ModuleStat["status"], string> = {
@@ -649,9 +647,11 @@ export default function CourseModulesPage() {
                     </span>
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold text-gray-700 shadow-sm">
                       <span
-                        className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[stat.status]}`}
+                        className={`h-1.5 w-1.5 rounded-full ${
+                          stat.known ? STATUS_DOT[stat.status] : "bg-gray-300"
+                        }`}
                       />
-                      {STATUS_LABEL[stat.status]}
+                      {stat.known ? STATUS_LABEL[stat.status] : "Status unknown"}
                     </span>
                   </div>
                 </div>
@@ -665,6 +665,14 @@ export default function CourseModulesPage() {
                   </p>
 
                   <div className="mb-4">
+                    {!stat.known ? (
+                      // The breakdown has not arrived. Zeros here would read as
+                      // "nothing done", which is a claim we cannot make.
+                      <p className="text-xs font-medium text-gray-400">
+                        Progress unavailable
+                      </p>
+                    ) : (
+                    <>
                     <div className="mb-1.5 flex items-center justify-between text-xs font-medium">
                       <span className="text-gray-500">
                         {stat.completed} of {stat.total} step
@@ -690,6 +698,8 @@ export default function CourseModulesPage() {
                         style={{ width: `${Math.max(stat.percent, 2)}%` }}
                       />
                     </div>
+                    </>
+                    )}
                   </div>
 
                   {stat.awaitingPost ? (
