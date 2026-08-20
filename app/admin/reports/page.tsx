@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 import { extractErrorMessage, readApiList } from "@/app/lib/portal-api";
 import {
-  cohortCourseBatchLabel,
-  type CohortCourse,
+  programmeBatchLabel,
+  type Programme,
 } from "@/app/lib/staff-learning";
 import { cachedFetch } from "@/app/lib/data-cache";
 
@@ -98,7 +98,7 @@ function lastTwelveMonthKeys() {
 export default function AdminReportsPage() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(String(currentYear));
-  const [programmes, setProgrammes] = useState<CohortCourse[]>([]);
+  const [programmes, setProgrammes] = useState<Programme[]>([]);
   const [selectedProgrammeId, setSelectedProgrammeId] = useState("");
 
   const [certificateReport, setCertificateReport] =
@@ -125,7 +125,7 @@ export default function AdminReportsPage() {
 
       if (programmeResponse.ok) {
         const payload = await programmeResponse.json().catch(() => null);
-        setProgrammes(readApiList<CohortCourse>(payload));
+        setProgrammes(readApiList<Programme>(payload));
       }
       if (certificateResponse.ok) {
         const payload = await certificateResponse.json().catch(() => null);
@@ -293,7 +293,7 @@ export default function AdminReportsPage() {
                 <option key={programme.id} value={String(programme.id)}>
                   {programme.course_details?.title ??
                     `Course #${programme.course}`}{" "}
-                  — {cohortCourseBatchLabel(programme)}
+                  — {programmeBatchLabel(programme)}
                   {programme.year ? ` ${programme.year}` : ""}
                 </option>
               ))}

@@ -25,8 +25,8 @@ import {
   type AuthUser,
 } from "@/app/lib/portal-api";
 import {
-  cohortCourseBatchLabel,
-  type CohortCourse,
+  programmeBatchLabel,
+  type Programme,
   type CourseEnrollment,
 } from "@/app/lib/staff-learning";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
@@ -369,10 +369,10 @@ export default function AdminUsersPage() {
   const [selectedCohort, setSelectedCohort] = useState("");
   const [cohorts, setCohorts] = useState<CohortOption[]>([]);
   // New-model (Training Programme) assignment targets. When the restructured
-  // backend is live, staff are assigned via Enrollment into a CohortCourse
+  // backend is live, staff are assigned via Enrollment into a Programme
   // instead of CohortStaff into a Cohort.
   const [programmeMode, setProgrammeMode] = useState(false);
-  const [programmes, setProgrammes] = useState<CohortCourse[]>([]);
+  const [programmes, setProgrammes] = useState<Programme[]>([]);
   const [loadingCohorts, setLoadingCohorts] = useState(true);
   const [cohortError, setCohortError] = useState("");
   const [assigningStaff, setAssigningStaff] = useState(false);
@@ -669,7 +669,7 @@ export default function AdminUsersPage() {
           .json()
           .catch(() => null);
         const programmeList = programmeResponse.ok
-          ? readApiList<CohortCourse>(programmePayload)
+          ? readApiList<Programme>(programmePayload)
           : [];
 
         const isNewModel = programmeList.some(
@@ -811,7 +811,7 @@ export default function AdminUsersPage() {
         id: programme.id,
         label: `${
           programme.course_details?.title ?? `Course #${programme.course}`
-        } — ${cohortCourseBatchLabel(programme)}${
+        } — ${programmeBatchLabel(programme)}${
           programme.year ? ` ${programme.year}` : ""
         }`,
       }))

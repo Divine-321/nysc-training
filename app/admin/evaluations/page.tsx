@@ -10,8 +10,8 @@ import {
 } from "lucide-react";
 import { extractErrorMessage, readApiList } from "@/app/lib/portal-api";
 import {
-  cohortCourseBatchLabel,
-  type CohortCourse,
+  programmeBatchLabel,
+  type Programme,
   type CourseEnrollment,
   type CourseEvaluation,
 } from "@/app/lib/staff-learning";
@@ -92,7 +92,7 @@ export default function AdminEvaluationsPage() {
             )
           : [];
         const cohortCourses = cohortCourseRes.ok
-          ? readApiList<CohortCourse>(
+          ? readApiList<Programme>(
               await cohortCourseRes.json().catch(() => null),
             )
           : [];
@@ -101,7 +101,7 @@ export default function AdminEvaluationsPage() {
           enrollments.map((enrollment) => [enrollment.id, enrollment]),
         );
         const cohortCourseById = new Map(
-          cohortCourses.map((cohortCourse) => [cohortCourse.id, cohortCourse]),
+          cohortCourses.map((programme) => [programme.id, programme]),
         );
 
         const built: EvaluationRow[] = evaluations
@@ -110,11 +110,11 @@ export default function AdminEvaluationsPage() {
             const staffId = enrollment?.staff;
             const programmeId =
               enrollment?.programme ?? enrollment?.cohort_course;
-            const cohortCourse =
+            const programme =
               programmeId != null ? cohortCourseById.get(programmeId) : undefined;
 
             const course =
-              cohortCourse?.course_details?.title?.trim() ||
+              programme?.course_details?.title?.trim() ||
               enrollment?.course_title?.trim() ||
               enrollment?.programme_title?.trim() ||
               "—";
@@ -123,11 +123,11 @@ export default function AdminEvaluationsPage() {
             // there is no module dimension.
             const cohortLabel =
               enrollment?.cohort_name?.trim() ||
-              cohortCourseBatchLabel(cohortCourse) ||
+              programmeBatchLabel(programme) ||
               "—";
             const cohort =
-              cohortCourse?.year && cohortLabel !== "—"
-                ? `${cohortLabel} ${cohortCourse.year}`
+              programme?.year && cohortLabel !== "—"
+                ? `${cohortLabel} ${programme.year}`
                 : cohortLabel;
 
             return {

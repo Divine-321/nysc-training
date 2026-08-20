@@ -31,10 +31,10 @@ import {
   type LibraryModule,
 } from "@/app/lib/portal-api";
 import {
-  cohortCourseBatchLabel,
+  programmeBatchLabel,
   normalizeLiveSession,
   toPercentage,
-  type CohortCourse,
+  type Programme,
   type CourseEnrollment,
   type LiveSession,
 } from "@/app/lib/staff-learning";
@@ -174,7 +174,7 @@ function friendlyCreateError(
 export default function TrainingProgrammesManager() {
   const router = useRouter();
   const { confirm, dialog } = useConfirm();
-  const [programmes, setProgrammes] = useState<CohortCourse[]>([]);
+  const [programmes, setProgrammes] = useState<Programme[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [allSessions, setAllSessions] = useState<LiveSession[]>([]);
   const [form, setForm] = useState(emptyForm);
@@ -187,7 +187,7 @@ export default function TrainingProgrammesManager() {
   const [notice, setNotice] = useState("");
 
   // Live-session management for one programme (modal).
-  const [sessionsFor, setSessionsFor] = useState<CohortCourse | null>(null);
+  const [sessionsFor, setSessionsFor] = useState<Programme | null>(null);
   const [sessionForm, setSessionForm] = useState(emptySessionForm);
   const [savingSession, setSavingSession] = useState(false);
   const [sessionError, setSessionError] = useState("");
@@ -205,7 +205,7 @@ export default function TrainingProgrammesManager() {
 
   // Module viewer/attacher for one training's course (modal). Modules
   // belong to the course TEMPLATE, so changes apply to every training of it.
-  const [modulesFor, setModulesFor] = useState<CohortCourse | null>(null);
+  const [modulesFor, setModulesFor] = useState<Programme | null>(null);
   const [libraryModules, setLibraryModules] = useState<LibraryModule[]>([]);
   const [moduleAttachId, setModuleAttachId] = useState("");
   const [moduleForm, setModuleForm] = useState({ title: "", description: "" });
@@ -213,7 +213,7 @@ export default function TrainingProgrammesManager() {
   const [moduleError, setModuleError] = useState("");
 
   // Enrolled-staff management for one programme (modal).
-  const [staffFor, setStaffFor] = useState<CohortCourse | null>(null);
+  const [staffFor, setStaffFor] = useState<Programme | null>(null);
   const [programmeEnrollments, setProgrammeEnrollments] = useState<
     CourseEnrollment[]
   >([]);
@@ -252,7 +252,7 @@ export default function TrainingProgrammesManager() {
         );
       }
 
-      setProgrammes(readApiList<CohortCourse>(programmePayload));
+      setProgrammes(readApiList<Programme>(programmePayload));
       if (courseResponse.ok) setCourses(readApiList<Course>(coursePayload));
       if (sessionResponse.ok) {
         // normalizeLiveSession mirrors the new `programme` FK onto the
@@ -283,7 +283,7 @@ export default function TrainingProgrammesManager() {
 
   // Group by year (newest first); batches A -> B -> C inside each year.
   const programmesByYear = useMemo(() => {
-    const groups = new Map<string, CohortCourse[]>();
+    const groups = new Map<string, Programme[]>();
 
     for (const programme of programmes) {
       const year = programme.year ? String(programme.year) : "Undated";
@@ -293,8 +293,8 @@ export default function TrainingProgrammesManager() {
 
     for (const group of groups.values()) {
       group.sort((first, second) => {
-        const batchOrder = cohortCourseBatchLabel(first).localeCompare(
-          cohortCourseBatchLabel(second),
+        const batchOrder = programmeBatchLabel(first).localeCompare(
+          programmeBatchLabel(second),
         );
         if (batchOrder !== 0) return batchOrder;
         return (first.course_details?.title ?? "").localeCompare(
@@ -309,11 +309,11 @@ export default function TrainingProgrammesManager() {
   }, [programmes]);
 
   // True when a training for this course + cohort month + year already exists.
-  const findDuplicateTraining = (list: CohortCourse[]) =>
+  const findDuplicateTraining = (list: Programme[]) =>
     list.find(
       (programme) =>
         Number(programme.course) === Number(selectedCourseId) &&
-        cohortCourseBatchLabel(programme).toLowerCase() ===
+        programmeBatchLabel(programme).toLowerCase() ===
           form.cohort.toLowerCase() &&
         String(programme.year ?? "") === String(form.year),
     );
@@ -371,7 +371,7 @@ export default function TrainingProgrammesManager() {
           if (check.ok) {
             confirmedDuplicate = Boolean(
               findDuplicateTraining(
-                readApiList<CohortCourse>(
+                readApiList<Programme>(
                   await check.json().catch(() => null),
                 ),
               ),
@@ -413,11 +413,11 @@ export default function TrainingProgrammesManager() {
     setSaving(false);
   };
 
-  const handleDelete = async (programme: CohortCourse) => {
+  const handleDelete = async (programme: Programme) => {
     // Backend uses SET_NULL (confirmed 2026-07-10): enrollments, progress
     // and certificates survive the delete; only the course link clears.
     const confirmed = await confirm(
-      `Remove "${programme.course_details?.title}" from ${cohortCourseBatchLabel(
+      `Remove "${programme.course_details?.title}" from ${programmeBatchLabel(
         programme,
       )}${programme.year ? ` ${programme.year}` : ""}? Staff enrollments, progress and certificates are kept for history, but this cohort assignment (and its live sessions) will no longer be manageable.`,
       { danger: true },
@@ -516,7 +516,7 @@ export default function TrainingProgrammesManager() {
     }
   };
 
-  const openStaffModal = async (programme: CohortCourse) => {
+  const openStaffModal = async (programme: Programme) => {
     setStaffFor(programme);
     setProgrammeEnrollments([]);
     setStaffListError("");
@@ -607,7 +607,7 @@ export default function TrainingProgrammesManager() {
     const confirmed = await confirm(
       `Remove ALL ${programmeEnrollments.length} staff from "${
         staffFor.course_details?.title
-      }" (${cohortCourseBatchLabel(staffFor)}${
+      }" (${programmeBatchLabel(staffFor)}${
         staffFor.year ? ` ${staffFor.year}` : ""
       })? Every one of their progress records for this training will be deleted. This cannot be undone.`,
       { danger: true },
@@ -655,7 +655,7 @@ export default function TrainingProgrammesManager() {
 
   // ----- Course modules (per training row) ---------------------------------
 
-  const openModulesModal = async (programme: CohortCourse) => {
+  const openModulesModal = async (programme: Programme) => {
     setModulesFor(programme);
     setModuleAttachId("");
     setModuleForm({ title: "", description: "" });
@@ -1154,7 +1154,7 @@ export default function TrainingProgrammesManager() {
                 </thead>
                 <tbody>
                   {yearProgrammes.map((programme) => {
-                    const batch = cohortCourseBatchLabel(programme);
+                    const batch = programmeBatchLabel(programme);
                     const sessionCount = allSessions.filter(
                       (session) => session.cohort_course === programme.id,
                     ).length;
@@ -1262,7 +1262,7 @@ export default function TrainingProgrammesManager() {
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
                   {modulesCourse?.title ?? modulesFor.course_details?.title} —{" "}
-                  {cohortCourseBatchLabel(modulesFor)}
+                  {programmeBatchLabel(modulesFor)}
                   {modulesFor.year ? ` ${modulesFor.year}` : ""}
                 </p>
               </div>
@@ -1439,7 +1439,7 @@ export default function TrainingProgrammesManager() {
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
                   {sessionsFor.course_details?.title} —{" "}
-                  {cohortCourseBatchLabel(sessionsFor)}
+                  {programmeBatchLabel(sessionsFor)}
                   {sessionsFor.year ? ` ${sessionsFor.year}` : ""}
                 </p>
               </div>
@@ -1772,7 +1772,7 @@ export default function TrainingProgrammesManager() {
                 </h3>
                 <p className="mt-1 text-sm text-gray-500">
                   {staffFor.course_details?.title} —{" "}
-                  {cohortCourseBatchLabel(staffFor)}
+                  {programmeBatchLabel(staffFor)}
                   {staffFor.year ? ` ${staffFor.year}` : ""}
                 </p>
               </div>

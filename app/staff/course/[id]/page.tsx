@@ -386,7 +386,7 @@ export default function CourseModulesPage() {
   // The backend refuses modules, activities, assessments and live sessions
   // outside the programme's dates, so say so plainly instead of letting the
   // page look broken.
-  const trainingWindow = programmeWindow(staffCourse.cohortCourse);
+  const trainingWindow = programmeWindow(staffCourse.programme);
   const windowDate =
     trainingWindow.state === "before"
       ? trainingWindow.startDate

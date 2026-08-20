@@ -133,12 +133,12 @@ export function flagIsTrue(value: boolean | string | null | undefined) {
   return typeof value === "string" && value.toLowerCase() === "true";
 }
 
-// CohortCourse is the backend "Programme" (the delivery of a Course to a cohort
+// Programme is the backend "Programme" (the delivery of a Course to a cohort
 // in a year), served at /api/training/programmes/. Deployed contract
 // (verified 2026-07-11 from /api/schema/): `cohort` is one of the 12 MONTHS
 // ("January".."December") plus year/start_date/end_date, a single `course` FK,
 // unique on (course, cohort, year). Older Batch A/B/C values still parse.
-export type CohortCourse = {
+export type Programme = {
   id: number;
   cohort: Month | Batch | number;
   cohort_name?: string;
@@ -172,10 +172,10 @@ export type ProgrammeWindow = {
  * A missing date means that end is unbounded.
  */
 export function programmeWindow(
-  cohortCourse: CohortCourse | null | undefined,
+  programme: Programme | null | undefined,
 ): ProgrammeWindow {
-  const startDate = cohortCourse?.start_date ?? null;
-  const endDate = cohortCourse?.end_date ?? null;
+  const startDate = programme?.start_date ?? null;
+  const endDate = programme?.end_date ?? null;
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
@@ -203,29 +203,38 @@ export function programmeWindow(
  */
 export function isCourseClosed(item: {
   enrollment: Pick<CourseEnrollment, "status" | "completion_percentage">;
-  cohortCourse: CohortCourse | null;
+  programme: Programme | null;
 }) {
   const finished =
     item.enrollment.status === "COMPLETED" ||
     toPercentage(item.enrollment.completion_percentage) >= 100;
 
-  return !finished && programmeWindow(item.cohortCourse).state === "after";
+  return !finished && programmeWindow(item.programme).state === "after";
 }
 
 /** Human label for a programme's cohort across both backend models. */
-export function cohortCourseBatchLabel(
-  cohortCourse: CohortCourse | null | undefined,
+export function programmeBatchLabel(
+  programme: Programme | null | undefined,
 ) {
-  if (!cohortCourse) return "";
+  if (!programme) return "";
 
-  return typeof cohortCourse.cohort === "string"
-    ? cohortCourse.cohort
-    : cohortCourse.cohort_name ?? "";
+  return typeof programme.cohort === "string"
+    ? programme.cohort
+    : programme.cohort_name ?? "";
 }
 
+/**
+ * One course as a staff member sees it: their enrolment, the programme it was
+ * delivered under, the course behind it, and its modules.
+ *
+ * Note the two `programme`s. Here it is the Programme object; on the enrolment
+ * it is that programme's id. The wire field keeps its backend spelling,
+ * `cohort_course`, which is the same id again under the name it had before the
+ * restructure — normalizeEnrollment mirrors one onto the other.
+ */
 export type StaffCourse = {
   enrollment: CourseEnrollment;
-  cohortCourse: CohortCourse | null;
+  programme: Programme | null;
   course: Course | null;
   modules: CourseModule[];
 };
@@ -487,7 +496,7 @@ export async function loadStaffCourses() {
     ]);
 
   const enrollments = readEnrollments(enrollmentPayload);
-  const cohortCourses = readApiList<CohortCourse>(cohortCoursePayload);
+  const cohortCourses = readApiList<Programme>(cohortCoursePayload);
 
   // Legacy fallback only: fetch modules per course when the payload predates
   // the reusable-modules restructure (no assigned_modules embedded).
@@ -498,9 +507,9 @@ export async function loadStaffCourses() {
           cohortCourses.find((item) => item.id === enrollment.cohort_course),
         )
         .filter(
-          (cohortCourse) => !cohortCourse?.course_details?.assigned_modules,
+          (programme) => !programme?.course_details?.assigned_modules,
         )
-        .map((cohortCourse) => Number(cohortCourse?.course))
+        .map((programme) => Number(programme?.course))
         .filter((courseId) => Number.isFinite(courseId)),
     ),
   );
@@ -526,10 +535,10 @@ export async function loadStaffCourses() {
   );
 
   return liveEnrollments.map((enrollment) => {
-    const cohortCourse =
+    const programme =
       cohortCourses.find((item) => item.id === enrollment.cohort_course) ??
       null;
-    const course = cohortCourse?.course_details ?? null;
+    const course = programme?.course_details ?? null;
 
     // programme_title is generated server-side now and is the name staff are
     // meant to see, so it leads. It still arrives empty on older records, and
@@ -549,18 +558,18 @@ export async function loadStaffCourses() {
 
     const embeddedModules = modulesFromAssignedModules(
       course,
-      cohortCourse?.course,
+      programme?.course,
     );
 
     return {
       enrollment: namedEnrollment,
-      cohortCourse,
+      programme,
       course,
       modules:
         embeddedModules ??
         dedupeById(
           legacyModules.filter(
-            (module) => module.course === cohortCourse?.course,
+            (module) => module.course === programme?.course,
           ),
         ).sort((first, second) => first.order - second.order),
     };
@@ -625,7 +634,7 @@ export async function loadStaffCourse(courseId: number) {
     courses.find(
       (item) =>
         item.course?.id === courseId ||
-        item.cohortCourse?.course === courseId,
+        item.programme?.course === courseId,
     ) ?? null
   );
 }
@@ -652,7 +661,7 @@ export async function loadAssessments(courseId: number) {
 
   try {
     const cohortPayload = await getJson("/api/training/programmes");
-    const match = readApiList<CohortCourse>(cohortPayload).find(
+    const match = readApiList<Programme>(cohortPayload).find(
       (item) => Number(item.course) === courseId,
     );
 

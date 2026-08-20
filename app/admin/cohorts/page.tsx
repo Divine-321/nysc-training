@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { readApiList } from "@/app/lib/portal-api";
-import type { CohortCourse } from "@/app/lib/staff-learning";
+import type { Programme } from "@/app/lib/staff-learning";
 import LegacyCohortsManager from "./LegacyCohortsManager";
 import TrainingProgrammesManager from "./TrainingProgrammesManager";
 import { cachedFetch } from "@/app/lib/data-cache";
@@ -22,7 +22,7 @@ async function detectCohortModel(): Promise<CohortModel> {
     const payload = await response.json().catch(() => null);
 
     if (response.ok) {
-      const items = readApiList<CohortCourse>(payload);
+      const items = readApiList<Programme>(payload);
 
       // New model: cohort is the batch string / a year field exists.
       if (

@@ -23,7 +23,7 @@ import {
   type Course,
 } from "@/app/lib/portal-api";
 import type {
-  CohortCourse,
+  Programme,
   CourseEnrollment,
 } from "@/app/lib/staff-learning";
 import { formatDate } from "@/app/lib/format";
@@ -183,7 +183,7 @@ export default function AdminCoursesPage() {
 
     // The course is in use. Work out exactly how much would be removed so the
     // admin can make an informed decision before force-deleting.
-    let trainings: CohortCourse[] = [];
+    let trainings: Programme[] = [];
     let enrollments: CourseEnrollment[] = [];
 
     try {
@@ -194,7 +194,7 @@ export default function AdminCoursesPage() {
 
       trainings = (
         trainingRes.ok
-          ? readApiList<CohortCourse>(await readJsonResponse(trainingRes))
+          ? readApiList<Programme>(await readJsonResponse(trainingRes))
           : []
       ).filter((training) => Number(training.course) === course.id);
 

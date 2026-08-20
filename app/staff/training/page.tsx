@@ -157,7 +157,7 @@ const DOT_TEXTURE = {
 
 // Shared per-course derived values used by both the grid and list views.
 function courseView(item: StaffCourse) {
-  const courseId = item.course?.id ?? item.cohortCourse?.course;
+  const courseId = item.course?.id ?? item.programme?.course;
   const progress = toPercentage(item.enrollment.completion_percentage);
   const completed = isCourseCompleted(item);
   // The backend's counts, or none. They cover live sessions and post-tests as

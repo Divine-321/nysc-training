@@ -50,7 +50,7 @@ function formatDate(value: string) {
 }
 
 function staffCourseId(staffCourse: StaffCourse) {
-  return staffCourse.cohortCourse?.course ?? staffCourse.course?.id ?? null;
+  return staffCourse.programme?.course ?? staffCourse.course?.id ?? null;
 }
 
 // Spec section 21: show staff exactly which certificate requirements are
@@ -273,7 +273,7 @@ export default function CertificationsPage() {
     const candidateTitles = [
       staffCourse.enrollment.course_title,
       staffCourse.course?.title,
-      staffCourse.cohortCourse?.course_details?.title,
+      staffCourse.programme?.course_details?.title,
     ]
       .map((title) => (title ?? "").trim().toLowerCase())
       .filter(Boolean);
@@ -304,7 +304,7 @@ export default function CertificationsPage() {
   // issued for it — showing it as forever "In progress" is just confusing.
   const pendingCourses = staffCourses.filter(
     (staffCourse) =>
-      (staffCourse.cohortCourse != null || staffCourse.course != null) &&
+      (staffCourse.programme != null || staffCourse.course != null) &&
       // A course past its end date can no longer be worked on, so no
       // certificate will ever follow. Listing what is still outstanding would
       // read as a to-do list for something that cannot be done.
@@ -360,7 +360,7 @@ export default function CertificationsPage() {
   const selectedProgramme = selectedCert
     ? (staffCourses.find((staffCourse) =>
         certificateMatchesCourse(selectedCert, staffCourse),
-      )?.cohortCourse ?? null)
+      )?.programme ?? null)
     : null;
   const periodFrom = selectedProgramme?.start_date
     ? formatDate(selectedProgramme.start_date)

@@ -193,7 +193,7 @@ export default function StaffDashboard() {
           ) : (
             <div className="space-y-4">
               {activeCourses.map((item) => {
-                const courseId = item.course?.id ?? item.cohortCourse?.course;
+                const courseId = item.course?.id ?? item.programme?.course;
                 const isLocked = item.course?.is_locked ?? false;
                 const progress = toPercentage(
                   item.enrollment.completion_percentage,

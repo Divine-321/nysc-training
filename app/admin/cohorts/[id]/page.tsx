@@ -10,7 +10,7 @@ import {
   readApiList,
   type Course,
 } from "@/app/lib/portal-api";
-import { type CohortCourse, type LiveSession } from "@/app/lib/staff-learning";
+import { type Programme, type LiveSession } from "@/app/lib/staff-learning";
 import { formatDateTime } from "@/app/lib/format";
 import { useConfirm } from "@/app/components/useConfirm";
 import { cachedFetch } from "@/app/lib/data-cache";
@@ -38,7 +38,7 @@ export default function ManageCohortPage() {
 
   const [cohort, setCohort] = useState<Cohort | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
-  const [assignments, setAssignments] = useState<CohortCourse[]>([]);
+  const [assignments, setAssignments] = useState<Programme[]>([]);
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [selectedCourseIds, setSelectedCourseIds] = useState<number[]>([]);
   const [sessionForm, setSessionForm] = useState(emptySessionForm);
@@ -88,7 +88,7 @@ export default function ManageCohortPage() {
         );
       }
 
-      const cohortAssignments = readApiList<CohortCourse>(
+      const cohortAssignments = readApiList<Programme>(
         assignmentPayload,
       ).filter((assignment) => assignment.cohort === cohortId);
       const assignmentIds = new Set(
@@ -251,7 +251,7 @@ export default function ManageCohortPage() {
     setSavingAssignment(false);
   };
 
-  const handleRemoveAssignment = async (assignment: CohortCourse) => {
+  const handleRemoveAssignment = async (assignment: Programme) => {
     const confirmed = await confirm(
       `Remove "${assignment.course_details.title}" from this cohort?`,
       { danger: true },
