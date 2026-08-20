@@ -302,6 +302,27 @@ export default function AssessmentPage() {
       };
     }
 
+    // A post-test belongs to a module, and finishing it finishes that module.
+    // If another one follows, that is the next thing to do — the evaluation
+    // only comes after the last module, so offering it here would skip
+    // whatever is left.
+    const orderedModules = (staffCourse?.modules ?? [])
+      .slice()
+      .sort((first, second) => first.order - second.order);
+    const currentIndex = orderedModules.findIndex(
+      (module) => module.id === assessment?.module,
+    );
+    const nextModule =
+      currentIndex >= 0 ? orderedModules[currentIndex + 1] : undefined;
+
+    if (nextModule) {
+      return {
+        href: `/staff/course/${courseId}/module/${nextModule.id}`,
+        label: "Next module",
+        hint: `Up next: ${nextModule.title}`,
+      };
+    }
+
     if (!staffCourse?.enrollment.evaluation) {
       return {
         href: `/staff/course/${courseId}/evaluation`,
@@ -315,7 +336,7 @@ export default function AssessmentPage() {
       label: "View my certificate",
       hint: "Every requirement is complete. Certificates are issued automatically.",
     };
-  }, [assessmentType, courseId, staffCourse]);
+  }, [assessmentType, courseId, staffCourse, assessment?.module]);
 
   const sortedQuestions = useMemo(() => {
     // Server-shuffled attempt order wins; the legacy sort only applies when
