@@ -108,6 +108,13 @@ const AUDIO_URL_PATTERN = /\.(mp3|wav|m4a|aac|ogg|oga|opus)(\?|#|$)/i;
 // Office documents we can render inline via the Microsoft Office viewer.
 const OFFICE_URL_PATTERN = /\.(pptx?|ppsx?|potx?|docx?|xlsx?)(\?|#|$)/i;
 
+/**
+ * How much of a video or audio file must be played before it can be marked
+ * complete. Not the whole thing: closing credits, a trailing silence or a few
+ * seconds lost to buffering should not leave someone unable to finish.
+ */
+const MEDIA_COMPLETE_FRACTION = 0.9;
+
 function documentUrl(doc: ModuleDocument) {
   return doc.content_url ?? doc.file_url ?? "";
 }
@@ -196,7 +203,26 @@ function itemTitle(item: PlayerItem) {
   return item.doc.title;
 }
 
-function DocumentContent({ doc }: { doc: ModuleDocument }) {
+function DocumentContent({
+  doc,
+  onPlayedFraction,
+}: {
+  doc: ModuleDocument;
+  /** How much of a video or audio file has been played, 0-1. */
+  onPlayedFraction?: (fraction: number) => void;
+}) {
+  // Fires several times a second while playing, so only the rounded value is
+  // reported — React discards an update that does not change the state.
+  const handleTimeUpdate = (
+    event: React.SyntheticEvent<HTMLMediaElement>,
+  ) => {
+    const media = event.currentTarget;
+    if (!media.duration || !Number.isFinite(media.duration)) return;
+    onPlayedFraction?.(
+      Math.round((media.currentTime / media.duration) * 100) / 100,
+    );
+  };
+
   const kind = documentKind(doc);
   const url = documentUrl(doc);
 
@@ -229,6 +255,8 @@ function DocumentContent({ doc }: { doc: ModuleDocument }) {
       <video
         controls
         src={url}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={() => onPlayedFraction?.(1)}
         className="aspect-video w-full rounded-xl bg-black shadow-sm"
       />
     );
@@ -260,7 +288,13 @@ function DocumentContent({ doc }: { doc: ModuleDocument }) {
       <div className="rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
         <Headphones size={26} className="mb-4 text-[#1a6b3c]" />
         <p className="mb-4 text-sm font-medium text-gray-700">{doc.title}</p>
-        <audio controls src={url} className="w-full">
+        <audio
+          controls
+          src={url}
+          onTimeUpdate={handleTimeUpdate}
+          onEnded={() => onPlayedFraction?.(1)}
+          className="w-full"
+        >
           Your browser does not support this audio file.
         </audio>
       </div>
@@ -329,6 +363,9 @@ function CoursePlayer() {
   );
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
+  // Playback of the item on screen, 0-1. Reset on navigation: it
+  // describes what is currently open, not a per-item record.
+  const [playedFraction, setPlayedFraction] = useState(0);
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   const [moduleSwitcherOpen, setModuleSwitcherOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -705,6 +742,8 @@ function CoursePlayer() {
 
   const goTo = (key: string) => {
     setCurrentKey(key);
+    // The new item has not been played at all yet.
+    setPlayedFraction(0);
     setSidebarOpen(false);
     setModuleSwitcherOpen(false);
     setNotice("");
@@ -765,14 +804,11 @@ function CoursePlayer() {
   };
 
   const goNext = () => {
-    // Reading materials auto-complete when you move past them; assessments
-    // and live sessions complete through their own flow.
-    if (
-      currentItem?.kind === "doc" &&
-      documentKind(currentItem.doc) !== "ASSESSMENT"
-    ) {
-      void markComplete(currentItem.doc);
-    }
+    // Next moves on and nothing more. It used to mark the current material
+    // complete, so clicking through a course to see what was in it drove
+    // progress to 100% without anything being read or watched — and that
+    // progress is what the certificate requirements are built on. Completing
+    // is now a deliberate act, via the button beside this one.
 
     // The course-closing evaluation is mandatory: the learner cannot finish the
     // course (and reach their certificate) until it has been submitted — and it
@@ -1350,24 +1386,49 @@ function CoursePlayer() {
                       <h2 className="text-xl font-bold text-gray-800 sm:text-2xl">
                         {currentItem.doc.title}
                       </h2>
-                      <button
-                        type="button"
-                        onClick={() => void markComplete(currentItem.doc)}
-                        disabled={completedIds.has(currentItem.doc.id)}
-                        className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                          completedIds.has(currentItem.doc.id)
-                            ? "bg-green-100 text-green-700"
-                            : "border border-[#1a6b3c] text-[#1a6b3c] hover:bg-green-50"
-                        }`}
-                      >
-                        <CheckCircle2 size={14} />
-                        {completedIds.has(currentItem.doc.id)
-                          ? "Completed"
-                          : "Mark as complete"}
-                      </button>
+                      {(() => {
+                        const isDone = completedIds.has(currentItem.doc.id);
+                        const kind = documentKind(currentItem.doc);
+                        const isMedia = kind === "VIDEO" || kind === "AUDIO";
+                        // Video and audio can be measured, so they are: a
+                        // recording is not finished until it has been played.
+                        // Nothing blocks moving on — only marking it done.
+                        const watchedEnough =
+                          !isMedia || playedFraction >= MEDIA_COMPLETE_FRACTION;
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => void markComplete(currentItem.doc)}
+                            disabled={isDone || !watchedEnough}
+                            title={
+                              watchedEnough
+                                ? undefined
+                                : `Play at least ${Math.round(MEDIA_COMPLETE_FRACTION * 100)}% of this ${kind === "AUDIO" ? "recording" : "video"} to mark it complete.`
+                            }
+                            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                              isDone
+                                ? "bg-green-100 text-green-700"
+                                : watchedEnough
+                                  ? "border border-[#1a6b3c] text-[#1a6b3c] hover:bg-green-50"
+                                  : "cursor-not-allowed border border-gray-200 text-gray-400"
+                            }`}
+                          >
+                            <CheckCircle2 size={14} />
+                            {isDone
+                              ? "Completed"
+                              : watchedEnough
+                                ? "Mark as complete"
+                                : `Watched ${Math.round(playedFraction * 100)}%`}
+                          </button>
+                        );
+                      })()}
                     </div>
 
-                    <DocumentContent doc={currentItem.doc} />
+                    <DocumentContent
+                      doc={currentItem.doc}
+                      onPlayedFraction={setPlayedFraction}
+                    />
                   </>
                 ))}
 
