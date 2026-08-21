@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearSession, type AuthUser } from "@/app/lib/portal-api";
-import { invalidate } from "@/app/lib/data-cache";
+import { cachedFetch, invalidate } from "@/app/lib/data-cache";
 
 type AuthGuardProps = {
   children: React.ReactNode;
@@ -85,9 +85,15 @@ export default function AuthGuard({
   useEffect(() => {
     const verify = async () => {
       try {
-        const response = await fetch("/api/accounts/me", {
-          cache: "no-store",
-        });
+        // Cached, unlike the 401 re-check below. The layout requests the same
+        // user a moment later, so an uncached call here meant fetching one
+        // person twice on every page — and against a slow backend that was
+        // several seconds of the wait before anything could render.
+        //
+        // Safe because failures are never cached: a dead session still reaches
+        // the network and still redirects. clearSession() empties the cache on
+        // sign-out, so the next account cannot inherit this one.
+        const response = await cachedFetch("/api/accounts/me");
 
         if (!response.ok) {
           router.replace("/login");
