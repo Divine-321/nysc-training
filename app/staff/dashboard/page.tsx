@@ -260,18 +260,24 @@ export default function StaffDashboard() {
                     <div>
                       <div className="mb-2 flex items-center justify-between">
                         <p className="text-xs font-medium text-gray-500">
-                          Material Progress
+                          {isClosed ? "This training has ended" : "Material Progress"}
                         </p>
                         <p className="text-xs font-bold text-[#1a6b3c]">
                           {progress}%
                         </p>
                       </div>
-                      <div className="h-2 w-full rounded-full bg-gray-100">
-                        <div
-                          className="h-2 rounded-full bg-[#1a6b3c] transition-all duration-500"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
+                      {/* The bar is dropped on a closed training — its
+                          withdrawn post-test is still counted, so it can never
+                          fill — but the percentage stays. It is a record of
+                          what the person actually did before the deadline. */}
+                      {!isClosed && (
+                        <div className="h-2 w-full rounded-full bg-gray-100">
+                          <div
+                            className="h-2 rounded-full bg-[#1a6b3c] transition-all duration-500"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

@@ -261,6 +261,15 @@ function CourseGridCard({ item }: { item: StaffCourse }) {
 
         {/* Progress */}
         <div className="mb-5 rounded-xl bg-gray-50 p-3.5">
+          {isClosed ? (
+            // A closed training still counts its withdrawn post-test, so the
+            // bar can never fill. The backend's figures are untouched; only
+            // the decision to draw them changes.
+            <p className="text-xs font-medium text-gray-500">
+              This training has ended — you reached {progress}%
+            </p>
+          ) : (
+            <>
           <div className="mb-2 flex items-end justify-between">
             <span className="text-xs font-medium text-gray-500">
               {completedDocuments !== null && totalDocuments !== null
@@ -287,6 +296,8 @@ function CourseGridCard({ item }: { item: StaffCourse }) {
               style={{ width: `${Math.max(progress, 2)}%` }}
             />
           </div>
+            </>
+          )}
         </div>
 
         {isLocked && lockReason && (

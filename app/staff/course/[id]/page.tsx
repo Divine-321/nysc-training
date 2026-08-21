@@ -505,20 +505,35 @@ export default function CourseModulesPage() {
 
           <div className="w-full shrink-0 lg:w-72">
             <div className="rounded-xl bg-white/10 p-4 ring-1 ring-white/15 backdrop-blur-sm">
-              <div className="mb-2 flex items-end justify-between text-white">
-                <span className="text-xs font-medium text-green-50/90">
-                  {completedModules} of {contentModules.length} modules done
-                </span>
-                <span className="text-2xl font-extrabold leading-none">
-                  {courseProgress}%
-                </span>
-              </div>
-              <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/20">
-                <div
-                  className="h-full rounded-full bg-white transition-all duration-700 ease-out"
-                  style={{ width: `${Math.max(courseProgress, 2)}%` }}
-                />
-              </div>
+              {isClosed ? (
+                // Same reasoning as the module cards: the withdrawn post-test
+                // is still counted, so this bar can never fill. The counts
+                // themselves are the backend's and are left alone — only the
+                // decision to draw them changes.
+                <div className="text-white">
+                  <p className="text-sm font-semibold">This training has ended</p>
+                  <p className="mt-0.5 text-xs text-green-50/90">
+                    You reached {courseProgress}% before it closed
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-2 flex items-end justify-between text-white">
+                    <span className="text-xs font-medium text-green-50/90">
+                      {completedModules} of {contentModules.length} modules done
+                    </span>
+                    <span className="text-2xl font-extrabold leading-none">
+                      {courseProgress}%
+                    </span>
+                  </div>
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-white/20">
+                    <div
+                      className="h-full rounded-full bg-white transition-all duration-700 ease-out"
+                      style={{ width: `${Math.max(courseProgress, 2)}%` }}
+                    />
+                  </div>
+                </>
+              )}
 
               {!isLocked && resumeModuleId ? (
                 <Link
@@ -725,7 +740,9 @@ export default function CourseModulesPage() {
                       // which is not something we know.
                       <p className="text-xs font-medium text-gray-400">
                         {isClosed
-                          ? "This training has ended"
+                          ? stat.known
+                            ? `This training has ended — you reached ${stat.percent}%`
+                            : "This training has ended"
                           : "Progress unavailable"}
                       </p>
                     ) : (
@@ -958,7 +975,9 @@ export default function CourseModulesPage() {
                     {isClosed || !stat.known ? (
                       <span className="text-xs font-medium text-gray-400">
                         {isClosed
-                          ? "This training has ended"
+                          ? stat.known
+                            ? `This training has ended — you reached ${stat.percent}%`
+                            : "This training has ended"
                           : "Progress unavailable"}
                       </span>
                     ) : (
