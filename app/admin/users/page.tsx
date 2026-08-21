@@ -116,13 +116,6 @@ type CohortOption = {
   status: "UPCOMING" | "ACTIVE" | "COMPLETED";
 };
 
-type CohortStaffAssignment = {
-  id: number;
-  cohort: number;
-  cohort_name: string;
-  staff: number;
-};
-
 type BulkUploadData = {
   total_rows: number;
   assigned_count: number;
@@ -450,23 +443,21 @@ export default function AdminUsersPage() {
         const [
           staffResult,
           postingsResponse,
-          cohortStaffResponse,
           enrollmentsResponse,
         ] = await Promise.all([
           fetchCurrentPage(),
           cachedFetch("/api/organization/postings"),
-          cachedFetch("/api/training/cohort-staff"),
-          // Staff are assigned to trainings via enrollments now, so the cohort
-          // and course counts must include those — not just legacy cohort-staff.
+          // Staff are assigned to trainings via enrolments; the cohort name
+          // comes with the programme. The legacy cohort-staff endpoint used to
+          // be read alongside this one, but it was removed from the backend in
+          // the restructure and answered 404 on every admin page load.
           cachedFetch("/api/training/enrollments"),
         ]);
 
-        const [postingsPayload, cohortStaffPayload, enrollmentsPayload] =
-          await Promise.all([
-            postingsResponse.json().catch(() => null),
-            cohortStaffResponse.json().catch(() => null),
-            enrollmentsResponse.json().catch(() => null),
-          ]);
+        const [postingsPayload, enrollmentsPayload] = await Promise.all([
+          postingsResponse.json().catch(() => null),
+          enrollmentsResponse.json().catch(() => null),
+        ]);
 
         const users = staffResult.users;
         setTotalStaff(staffResult.count);
@@ -495,15 +486,6 @@ export default function AdminUsersPage() {
           names.add(name);
           cohortNamesByStaffId.set(staffId, names);
         };
-
-        // Legacy cohort-staff assignments.
-        if (cohortStaffResponse.ok) {
-          for (const assignment of readApiList<CohortStaffAssignment>(
-            cohortStaffPayload,
-          )) {
-            addCohortName(assignment.staff, assignment.cohort_name);
-          }
-        }
 
         // Training enrollments — the current way staff are assigned. Each
         // enrollment tied to a programme contributes its cohort name and counts
