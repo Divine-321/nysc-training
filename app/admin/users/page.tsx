@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import {
   Search,
@@ -586,7 +586,18 @@ export default function AdminUsersPage() {
     void loadStaff();
   }, [page, staffReloadKey, debouncedSearch, staffSort]);
 
-  useEffect(() => {
+  /**
+   * States, departments, grade levels, ranks and posting reasons.
+   *
+   * Only the edit and add-staff forms use these — the table never does — so
+   * they load when a form is opened rather than on page load. Fetched on mount
+   * they were five requests taking roughly fifteen seconds against the current
+   * backend, paid by everyone who only wanted to read the list.
+   *
+   * Safe to call on every form open: cachedFetch serves the cached copy and
+   * collapses concurrent callers into one request, so no guard is needed here.
+   */
+  const ensureOrgOptions = useCallback(() => {
     const loadOrgOptions = async () => {
       try {
         const [
@@ -1065,6 +1076,9 @@ export default function AdminUsersPage() {
   };
 
   const startEditStaff = (staff: StaffUser) => {
+    // The form's dropdowns need the organisation lists; nothing before this
+    // point did, so this is the first moment they are worth fetching.
+    ensureOrgOptions();
     setEditingStaff(staff);
     setEditForm(buildEditForm(staff));
     setOpenDropdownId(null);
@@ -1113,6 +1127,7 @@ export default function AdminUsersPage() {
   };
 
   const openAddStaffModal = () => {
+    ensureOrgOptions();
     setStaffRecordForm(emptyStaffRecordForm);
     setAddStaffError("");
     setAddStaffNotice("");
@@ -1212,6 +1227,7 @@ export default function AdminUsersPage() {
   };
 
   const startEditUnregisteredStaff = (record: UnregisteredStaffRecord) => {
+    ensureOrgOptions();
     setEditingUnregisteredId(record.id);
     setUnregisteredEditForm({
       file_number: record.file_number,
