@@ -43,7 +43,9 @@ const PARTITIONS: { id: PartitionId; label: string }[] = [
 ];
 
 function partitionOf(action: string): PartitionId {
-  const [method, path = ""] = action.trim().split(/\s+/, 2);
+  // Typed as a string, but it arrives from the API and has been seen absent
+  // on other records, so it is treated as optional here rather than trusted.
+  const [method, path = ""] = (action ?? "").trim().split(/\s+/, 2);
   const httpMethod = method?.toUpperCase() ?? "";
 
   if (httpMethod === "DELETE") return "deletes";
