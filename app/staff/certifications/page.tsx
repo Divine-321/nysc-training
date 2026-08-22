@@ -41,6 +41,16 @@ type Certificate = {
   course_title: string;
   /** The training's cohort (e.g. "July 2026") — deployed 2026-07-14. */
   cohort?: string;
+  /**
+   * The programme this was issued for. Either spelling may appear.
+   *
+   * This is what a certificate should be matched on. Titles were the only
+   * option before, and comparing them broke the day programme titles changed
+   * format: certificates stopped being recognised and finished courses sat on
+   * the outstanding list with the certificate visible beside them.
+   */
+  programme?: number | null;
+  programme_id?: number | null;
   issued_at: string;
   pdf_url: string | null;
 };
@@ -269,6 +279,19 @@ export default function CertificationsPage() {
     certificate: Certificate,
     staffCourse: StaffCourse,
   ) => {
+    // Match on the programme id when the certificate carries one. An id
+    // cannot drift the way a title can, so this is the answer wherever it is
+    // available — including "no", which is just as important.
+    const certProgramme = certificate.programme ?? certificate.programme_id;
+    const enrolledProgramme =
+      staffCourse.enrollment.programme ?? staffCourse.enrollment.cohort_course;
+
+    if (certProgramme != null && enrolledProgramme != null) {
+      return certProgramme === enrolledProgramme;
+    }
+
+    // Older certificates predate that field, so they still fall back to
+    // comparing titles and cohorts. This can go once none remain.
     const certTitle = (certificate.course_title ?? "").trim().toLowerCase();
     const candidateTitles = [
       staffCourse.enrollment.course_title,
