@@ -21,6 +21,9 @@ type IssuedCertificate = {
   course_title: string;
   /** The training's cohort (e.g. "July"), when the backend supplies it. */
   cohort?: string;
+  /** The programme this was issued for. Either spelling may appear. */
+  programme?: number | null;
+  programme_id?: number | null;
   issued_at: string;
   pdf_url: string | null;
 };
@@ -33,13 +36,10 @@ type CohortCourseAssignment = {
   course_details?: { title?: string } | null;
 };
 
-type CohortReportRow = {
-  cohortName: string;
+type ProgrammeReportRow = {
+  programmeId: number;
+  programmeTitle: string;
   certificateCount: number;
-  courseCount: number;
-  /** True when one of this cohort's courses also runs in another cohort, so
-   * the certificate count is an approximation. */
-  isApproximate: boolean;
 };
 
 function formatCertificateDate(value: string) {
@@ -55,63 +55,49 @@ function formatCertificateDate(value: string) {
 // When a course is delivered to several cohorts the count is marked
 // approximate; exact numbers need the backend to add the cohort to each
 // certificate.
-function buildCohortReport(
+/**
+ * Certificates issued per programme.
+ *
+ * Grouped by programme id, which the certificate now carries. It used to be
+ * grouped by cohort, worked out by matching course titles between
+ * certificates and assignments — that could only ever be approximate, because
+ * a course running in two cohorts had no way to say which one a certificate
+ * belonged to. It also answered a less useful question: a cohort is a month,
+ * so "August" told you when rather than what.
+ *
+ * A certificate whose programme is missing or unknown is left out rather than
+ * guessed at; the total beside the heading still counts every one.
+ */
+function buildProgrammeReport(
   certificates: IssuedCertificate[],
-  assignments: CohortCourseAssignment[],
-): CohortReportRow[] {
-  const courseTitleToCohorts = new Map<string, Set<string>>();
-  const cohortToCourses = new Map<string, Set<string>>();
+  programmes: CohortCourseAssignment[],
+): ProgrammeReportRow[] {
+  const titleById = new Map<number, string>();
 
-  for (const assignment of assignments) {
-    const courseTitle = assignment.course_details?.title?.trim();
-
-    if (!courseTitle || !assignment.cohort_name) continue;
-
-    const key = courseTitle.toLowerCase();
-
-    if (!courseTitleToCohorts.has(key)) {
-      courseTitleToCohorts.set(key, new Set());
-    }
-    courseTitleToCohorts.get(key)?.add(assignment.cohort_name);
-
-    if (!cohortToCourses.has(assignment.cohort_name)) {
-      cohortToCourses.set(assignment.cohort_name, new Set());
-    }
-    cohortToCourses.get(assignment.cohort_name)?.add(key);
+  for (const programme of programmes) {
+    const title =
+      programme.course_details?.title?.trim() || `Programme ${programme.id}`;
+    const cohort = programme.cohort_name?.trim();
+    titleById.set(programme.id, cohort ? `${title} - ${cohort}` : title);
   }
 
-  const rows = new Map<string, CohortReportRow>();
-
-  for (const [cohortName, courses] of cohortToCourses) {
-    rows.set(cohortName, {
-      cohortName,
-      certificateCount: 0,
-      courseCount: courses.size,
-      isApproximate: [...courses].some(
-        (course) => (courseTitleToCohorts.get(course)?.size ?? 0) > 1,
-      ),
-    });
-  }
+  const counts = new Map<number, number>();
 
   for (const certificate of certificates) {
-    // course_title has been seen missing on a certificate, which took the
-    // whole page down with it. One bad record should cost its own row, not
-    // everyone else's.
-    const cohorts =
-      courseTitleToCohorts.get(
-        (certificate.course_title ?? "").trim().toLowerCase(),
-      ) ?? new Set<string>();
-
-    for (const cohortName of cohorts) {
-      const row = rows.get(cohortName);
-      if (row) row.certificateCount += 1;
-    }
+    const programmeId = certificate.programme ?? certificate.programme_id;
+    if (programmeId == null || !titleById.has(programmeId)) continue;
+    counts.set(programmeId, (counts.get(programmeId) ?? 0) + 1);
   }
 
-  return [...rows.values()].sort(
-    (first, second) => second.certificateCount - first.certificateCount,
-  );
+  return [...counts.entries()]
+    .map(([programmeId, certificateCount]) => ({
+      programmeId,
+      programmeTitle: titleById.get(programmeId) ?? `Programme ${programmeId}`,
+      certificateCount,
+    }))
+    .sort((first, second) => second.certificateCount - first.certificateCount);
 }
+
 
 export default function AdminCertificatesPage() {
   const today = new Date().toISOString().slice(0, 10);
@@ -181,8 +167,8 @@ export default function AdminCertificatesPage() {
     void loadReport();
   }, []);
 
-  const cohortReport = useMemo(
-    () => buildCohortReport(issuedCertificates, cohortAssignments),
+  const programmeReport = useMemo(
+    () => buildProgrammeReport(issuedCertificates, cohortAssignments),
     [issuedCertificates, cohortAssignments],
   );
 
@@ -381,11 +367,10 @@ export default function AdminCertificatesPage() {
             </div>
             <div>
               <h3 className="font-bold text-gray-800">
-                Issued certificates by cohort
+                Issued certificates by training
               </h3>
               <p className="text-xs text-gray-500">
-                How many training certificates have been issued for each
-                cohort.
+                How many certificates have been issued for each training.
               </p>
             </div>
           </div>
@@ -404,10 +389,10 @@ export default function AdminCertificatesPage() {
           <p className="py-6 text-center text-sm text-gray-500">
             Loading certificate report...
           </p>
-        ) : cohortReport.length === 0 ? (
+        ) : programmeReport.length === 0 ? (
           <p className="py-6 text-center text-sm text-gray-500">
-            No cohort data to report yet. Counts appear once cohorts have
-            courses assigned and certificates have been issued.
+            No certificates issued yet. Counts appear here once a training has
+            been completed and its certificates issued.
           </p>
         ) : (
           <>
@@ -415,46 +400,26 @@ export default function AdminCertificatesPage() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-gray-50 font-medium text-gray-500">
                   <tr>
-                    <th className="px-4 py-3">Cohort</th>
-                    <th className="px-4 py-3">Courses assigned</th>
+                    <th className="px-4 py-3">Training</th>
                     <th className="px-4 py-3">Certificates issued</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {cohortReport.map((row) => (
-                    <tr key={row.cohortName}>
+                  {programmeReport.map((row) => (
+                    <tr key={row.programmeId}>
                       <td className="px-4 py-3 font-semibold text-gray-800">
-                        {row.cohortName}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {row.courseCount}
+                        {row.programmeTitle}
                       </td>
                       <td className="px-4 py-3">
                         <span className="font-bold text-[#1a6b3c]">
                           {row.certificateCount}
                         </span>
-                        {row.isApproximate && (
-                          <span
-                            className="ml-1 text-amber-600"
-                            title="A course in this cohort also runs in another cohort, so this count is approximate."
-                          >
-                            *
-                          </span>
-                        )}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {cohortReport.some((row) => row.isApproximate) && (
-              <p className="mt-3 text-xs text-gray-500">
-                * Approximate: this cohort shares a course with another cohort,
-                and certificates do not carry cohort information yet. Exact
-                per-cohort counts need the backend to include the cohort on
-                each certificate.
-              </p>
-            )}
           </>
         )}
       </section>
