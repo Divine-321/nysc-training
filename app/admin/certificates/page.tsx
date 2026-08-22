@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Award,
-  BarChart3,
   ExternalLink,
   Eye,
   Printer,
@@ -28,19 +27,7 @@ type IssuedCertificate = {
   pdf_url: string | null;
 };
 
-type CohortCourseAssignment = {
-  id: number;
-  cohort: number;
-  cohort_name: string;
-  course: number;
-  course_details?: { title?: string } | null;
-};
 
-type ProgrammeReportRow = {
-  programmeId: number;
-  programmeTitle: string;
-  certificateCount: number;
-};
 
 function formatCertificateDate(value: string) {
   if (!value) return "Select date";
@@ -55,48 +42,6 @@ function formatCertificateDate(value: string) {
 // When a course is delivered to several cohorts the count is marked
 // approximate; exact numbers need the backend to add the cohort to each
 // certificate.
-/**
- * Certificates issued per programme.
- *
- * Grouped by programme id, which the certificate now carries. It used to be
- * grouped by cohort, worked out by matching course titles between
- * certificates and assignments — that could only ever be approximate, because
- * a course running in two cohorts had no way to say which one a certificate
- * belonged to. It also answered a less useful question: a cohort is a month,
- * so "August" told you when rather than what.
- *
- * A certificate whose programme is missing or unknown is left out rather than
- * guessed at; the total beside the heading still counts every one.
- */
-function buildProgrammeReport(
-  certificates: IssuedCertificate[],
-  programmes: CohortCourseAssignment[],
-): ProgrammeReportRow[] {
-  const titleById = new Map<number, string>();
-
-  for (const programme of programmes) {
-    const title =
-      programme.course_details?.title?.trim() || `Programme ${programme.id}`;
-    const cohort = programme.cohort_name?.trim();
-    titleById.set(programme.id, cohort ? `${title} - ${cohort}` : title);
-  }
-
-  const counts = new Map<number, number>();
-
-  for (const certificate of certificates) {
-    const programmeId = certificate.programme ?? certificate.programme_id;
-    if (programmeId == null || !titleById.has(programmeId)) continue;
-    counts.set(programmeId, (counts.get(programmeId) ?? 0) + 1);
-  }
-
-  return [...counts.entries()]
-    .map(([programmeId, certificateCount]) => ({
-      programmeId,
-      programmeTitle: titleById.get(programmeId) ?? `Programme ${programmeId}`,
-      certificateCount,
-    }))
-    .sort((first, second) => second.certificateCount - first.certificateCount);
-}
 
 
 export default function AdminCertificatesPage() {
@@ -113,9 +58,6 @@ export default function AdminCertificatesPage() {
   const [issuedCertificates, setIssuedCertificates] = useState<
     IssuedCertificate[]
   >([]);
-  const [cohortAssignments, setCohortAssignments] = useState<
-    CohortCourseAssignment[]
-  >([]);
   const [loadingReport, setLoadingReport] = useState(true);
   const [reportError, setReportError] = useState("");
   const [certSearch, setCertSearch] = useState("");
@@ -123,15 +65,11 @@ export default function AdminCertificatesPage() {
   useEffect(() => {
     const loadReport = async () => {
       try {
-        const [certificateResponse, assignmentResponse] = await Promise.all([
-          cachedFetch("/api/training/certificates"),
-          cachedFetch("/api/training/programmes"),
-        ]);
+        const certificateResponse = await cachedFetch(
+          "/api/training/certificates",
+        );
 
         const certificatePayload = await certificateResponse
-          .json()
-          .catch(() => null);
-        const assignmentPayload = await assignmentResponse
           .json()
           .catch(() => null);
 
@@ -146,11 +84,6 @@ export default function AdminCertificatesPage() {
 
         setIssuedCertificates(
           readApiList<IssuedCertificate>(certificatePayload),
-        );
-        setCohortAssignments(
-          assignmentResponse.ok
-            ? readApiList<CohortCourseAssignment>(assignmentPayload)
-            : [],
         );
         setReportError("");
       } catch (loadError) {
@@ -167,10 +100,6 @@ export default function AdminCertificatesPage() {
     void loadReport();
   }, []);
 
-  const programmeReport = useMemo(
-    () => buildProgrammeReport(issuedCertificates, cohortAssignments),
-    [issuedCertificates, cohortAssignments],
-  );
 
   const formattedDate = useMemo(
     () => formatCertificateDate(issuedAt),
@@ -356,71 +285,6 @@ export default function AdminCertificatesPage() {
               </tbody>
             </table>
           </div>
-        )}
-      </section>
-
-      <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm print:hidden">
-        <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-green-50 p-3 text-[#1a6b3c]">
-              <BarChart3 size={22} />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-800">
-                Issued certificates by training
-              </h3>
-              <p className="text-xs text-gray-500">
-                How many certificates have been issued for each training.
-              </p>
-            </div>
-          </div>
-          <span className="rounded-full bg-[#f0f7f3] px-4 py-2 text-sm font-bold text-[#1a6b3c]">
-            {issuedCertificates.length} issued in total
-          </span>
-        </div>
-
-        {reportError && (
-          <div className="mb-4 rounded-lg bg-red-50 p-4 text-sm text-red-700">
-            {reportError}
-          </div>
-        )}
-
-        {loadingReport ? (
-          <p className="py-6 text-center text-sm text-gray-500">
-            Loading certificate report...
-          </p>
-        ) : programmeReport.length === 0 ? (
-          <p className="py-6 text-center text-sm text-gray-500">
-            No certificates issued yet. Counts appear here once a training has
-            been completed and its certificates issued.
-          </p>
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 font-medium text-gray-500">
-                  <tr>
-                    <th className="px-4 py-3">Training</th>
-                    <th className="px-4 py-3">Certificates issued</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {programmeReport.map((row) => (
-                    <tr key={row.programmeId}>
-                      <td className="px-4 py-3 font-semibold text-gray-800">
-                        {row.programmeTitle}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="font-bold text-[#1a6b3c]">
-                          {row.certificateCount}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
         )}
       </section>
 

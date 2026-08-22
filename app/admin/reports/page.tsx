@@ -537,11 +537,15 @@ export default function AdminReportsPage() {
           courses.
         </p>
 
-        <div className="flex h-40 items-end gap-2">
+        {/* Each column fills the row's height so the bar's percentage has
+            something to resolve against. Without h-full the column shrinks to
+            its content, a percentage height computes to zero, and the chart
+            renders as bare labels with no bars. */}
+        <div className="flex h-40 gap-2">
           {monthlyIssued.map((month) => (
             <div
               key={month.key}
-              className="flex flex-1 flex-col items-center gap-1"
+              className="flex h-full flex-1 flex-col items-center justify-end gap-1"
               title={`${month.label}: ${month.count} certificate(s)`}
             >
               <span className="text-[10px] font-bold text-gray-500">
