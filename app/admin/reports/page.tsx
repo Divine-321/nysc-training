@@ -6,6 +6,7 @@ import {
   BarChart3,
   GraduationCap,
   Layers,
+  TrendingUp,
   Trophy,
   Users,
 } from "lucide-react";
@@ -54,6 +55,10 @@ type TopPerformer = {
   best_post_test_score: number;
 };
 
+type IssuedCertificate = {
+  id: number;
+  issued_at: string;
+};
 
 function unwrap<T>(payload: unknown): T | null {
   if (!payload || typeof payload !== "object") return null;
@@ -61,8 +66,31 @@ function unwrap<T>(payload: unknown): T | null {
   return (record.data ?? payload) as T;
 }
 
+function monthKey(dateValue: string) {
+  return dateValue.slice(0, 7); // YYYY-MM
+}
 
+function monthLabel(key: string) {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("en-NG", {
+    month: "short",
+    year: "2-digit",
+  });
+}
 
+function lastTwelveMonthKeys() {
+  const keys: string[] = [];
+  const now = new Date();
+
+  for (let index = 11; index >= 0; index -= 1) {
+    const date = new Date(now.getFullYear(), now.getMonth() - index, 1);
+    keys.push(
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+    );
+  }
+
+  return keys;
+}
 
 // Management reports, powered by the backend analytics service. Year-wide
 // figures come from ?year=; picking a Training Programme narrows every
@@ -80,19 +108,28 @@ export default function AdminReportsPage() {
   );
   const [completions, setCompletions] = useState<StaffCompletion[]>([]);
   const [topPerformers, setTopPerformers] = useState<TopPerformer[]>([]);
+  const [allCertificates, setAllCertificates] = useState<IssuedCertificate[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Programme list for the filter, loaded once. The full certificate list
-  // used to be fetched alongside it to build a monthly chart in the browser;
-  // the chart is gone and the request with it.
+  // Programme list for the filter + the raw certificates for the monthly
+  // chart — loaded once.
   useEffect(() => {
     const loadStatic = async () => {
-      const programmeResponse = await cachedFetch("/api/training/programmes");
+      const [programmeResponse, certificateResponse] = await Promise.all([
+        cachedFetch("/api/training/programmes"),
+        cachedFetch("/api/training/certificates"),
+      ]);
 
       if (programmeResponse.ok) {
         const payload = await programmeResponse.json().catch(() => null);
         setProgrammes(readApiList<Programme>(payload));
+      }
+      if (certificateResponse.ok) {
+        const payload = await certificateResponse.json().catch(() => null);
+        setAllCertificates(readApiList<IssuedCertificate>(payload));
       }
     };
 
@@ -175,6 +212,25 @@ export default function AdminReportsPage() {
     void loadReports();
   }, [year, selectedProgrammeId]);
 
+  const monthlyIssued = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const certificate of allCertificates) {
+      if (!certificate.issued_at) continue;
+      const key = monthKey(certificate.issued_at);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+
+    const keys = lastTwelveMonthKeys();
+    const max = Math.max(1, ...keys.map((key) => counts.get(key) ?? 0));
+
+    return keys.map((key) => ({
+      key,
+      label: monthLabel(key),
+      count: counts.get(key) ?? 0,
+      heightPercentage: Math.round(((counts.get(key) ?? 0) / max) * 100),
+    }));
+  }, [allCertificates]);
 
   const sortedRates = useMemo(
     () =>
@@ -469,6 +525,41 @@ export default function AdminReportsPage() {
           performers and every staff member who completed it.
         </div>
       )}
+
+      {/* Certificates issued per month (all-time trend) */}
+      <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
+        <h3 className="mb-1 flex items-center gap-2 font-bold text-gray-800">
+          <TrendingUp size={18} className="text-[#1a6b3c]" />
+          Certificates issued — last 12 months
+        </h3>
+        <p className="mb-6 text-xs text-gray-500">
+          How many certificates were generated each month, across all
+          courses.
+        </p>
+
+        {/* Each column fills the row's height so the bar's percentage has
+            something to resolve against. Without h-full the column shrinks to
+            its content, a percentage height computes to zero, and the chart
+            renders as bare labels with no bars. */}
+        <div className="flex h-40 gap-2">
+          {monthlyIssued.map((month) => (
+            <div
+              key={month.key}
+              className="flex h-full flex-1 flex-col items-center justify-end gap-1"
+              title={`${month.label}: ${month.count} certificate(s)`}
+            >
+              <span className="text-[10px] font-bold text-gray-500">
+                {month.count > 0 ? month.count : ""}
+              </span>
+              <div
+                className="w-full rounded-t-md bg-[#1a6b3c]/80 transition hover:bg-[#1a6b3c]"
+                style={{ height: `${Math.max(month.heightPercentage, 2)}%` }}
+              />
+              <span className="text-[10px] text-gray-400">{month.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
