@@ -94,9 +94,13 @@ function buildCohortReport(
   }
 
   for (const certificate of certificates) {
+    // course_title has been seen missing on a certificate, which took the
+    // whole page down with it. One bad record should cost its own row, not
+    // everyone else's.
     const cohorts =
-      courseTitleToCohorts.get(certificate.course_title.trim().toLowerCase()) ??
-      new Set<string>();
+      courseTitleToCohorts.get(
+        (certificate.course_title ?? "").trim().toLowerCase(),
+      ) ?? new Set<string>();
 
     for (const cohortName of cohorts) {
       const row = rows.get(cohortName);
