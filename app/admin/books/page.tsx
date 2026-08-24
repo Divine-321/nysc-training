@@ -342,9 +342,8 @@ export default function AdminBooksPage() {
                 Upload PDF book
               </span>
               <span className="mb-3 block text-xs text-gray-500">
-                Choose a PDF from your computer. It will upload to Cloudinary,
-                then the book record will save automatically with the returned
-                URL.
+                Choose a PDF from your computer. It uploads first, then the
+                book record saves automatically.
               </span>
               <input
                 type="file"

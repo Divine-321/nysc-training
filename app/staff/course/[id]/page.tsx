@@ -7,6 +7,7 @@ import {
   useState,
   type ComponentType,
 } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -685,15 +686,35 @@ export default function CourseModulesPage() {
                 <div
                   className={`relative h-28 overflow-hidden bg-gradient-to-br ${gradient}`}
                 >
-                  <div className="absolute inset-0" style={DOT_TEXTURE} />
-                  <div
-                    className={`absolute -right-8 -top-10 h-32 w-32 rounded-full ${glow} blur-2xl`}
-                  />
-                  <Icon
-                    size={104}
-                    strokeWidth={1.25}
-                    className="absolute -bottom-3 right-1 text-white/15 transition-transform duration-500 group-hover:scale-110"
-                  />
+                  {/* An admin's uploaded thumbnail replaces the generated
+                      banner. The gradient stays underneath as the fallback for
+                      modules without one, and as the backdrop while the image
+                      loads. The badges below sit on top either way, so the
+                      image carries a scrim to keep them readable. */}
+                  {module.thumbnail_url ? (
+                    <>
+                      <Image
+                        src={module.thumbnail_url}
+                        alt=""
+                        fill
+                        sizes="(max-width: 640px) 100vw, 33vw"
+                        className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-black/25" />
+                    </>
+                  ) : (
+                    <>
+                      <div className="absolute inset-0" style={DOT_TEXTURE} />
+                      <div
+                        className={`absolute -right-8 -top-10 h-32 w-32 rounded-full ${glow} blur-2xl`}
+                      />
+                      <Icon
+                        size={104}
+                        strokeWidth={1.25}
+                        className="absolute -bottom-3 right-1 text-white/15 transition-transform duration-500 group-hover:scale-110"
+                      />
+                    </>
+                  )}
                   <div className="absolute inset-x-0 top-0 flex items-start justify-between p-4">
                     <span className="flex items-center gap-2 text-white">
                       <span className="text-[11px] font-semibold uppercase tracking-wider text-white/70">

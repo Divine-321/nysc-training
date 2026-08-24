@@ -12,7 +12,7 @@ type ActivityContentInputProps = {
 };
 
 const URL_PLACEHOLDERS: Partial<Record<ActivityContentType, string>> = {
-  VIDEO: "https://... (video URL — e.g. a Cloudinary upload)",
+  VIDEO: "https://... (video file URL)",
   PDF: "https://... (PDF file URL)",
   PPT: "https://... (slides file URL)",
   AUDIO: "https://... (audio file URL)",
