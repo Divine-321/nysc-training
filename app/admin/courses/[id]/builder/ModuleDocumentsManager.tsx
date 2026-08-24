@@ -30,7 +30,10 @@ import {
 import type { ActivityContentType } from "@/app/lib/training-types";
 import { readApiList } from "@/app/lib/portal-api";
 import type { Assessment as CourseAssessment } from "@/app/lib/staff-learning";
-import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
+import {
+  uploadFileToCloudinary,
+  type ActivityMediaKind,
+} from "@/app/lib/cloudinary-upload";
 import ActivityViewer from "@/app/components/ActivityViewer";
 import RichTextEditor from "@/app/components/RichTextEditor";
 import { useConfirm } from "@/app/components/useConfirm";
@@ -242,7 +245,15 @@ export default function ModuleActivitiesManager({
 
       if (config.input === "upload") {
         if (file) {
-          const uploadedFile = await uploadFileToCloudinary(file, setProgress);
+          // contentType is already one of VIDEO / AUDIO / PDF / PPT here —
+          // the four upload kinds — so the backend can pick the preset that
+          // matches instead of assuming video.
+          const uploadedFile = await uploadFileToCloudinary(
+            file,
+            setProgress,
+            "activity",
+            contentType as ActivityMediaKind,
+          );
           contentUrl = uploadedFile.secure_url;
           cloudinaryPublicId = uploadedFile.public_id;
         } else if (editingActivity) {

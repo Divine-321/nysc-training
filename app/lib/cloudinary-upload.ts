@@ -55,9 +55,28 @@ export type CloudinaryUploadResult = {
 const CHUNK_SIZE = 6 * 1024 * 1024;
 const CHUNK_THRESHOLD = 100 * 1024 * 1024;
 
-async function getUploadSignature(type: CloudinaryUploadType = "activity") {
+/**
+ * The media kinds an activity can be, as the signature endpoint expects them.
+ *
+ * One upload type covers four different media, so "activity" alone does not
+ * say enough: the backend needs to know whether a video, an audio file, a PDF
+ * or slides is coming to pick the matching preset. Without it, it defaulted to
+ * video for everything, and PDFs sent to the video endpoint were refused.
+ *
+ * Uppercase because the backend matches on these exactly.
+ */
+export type ActivityMediaKind = "VIDEO" | "AUDIO" | "PDF" | "PPT";
+
+async function getUploadSignature(
+  type: CloudinaryUploadType = "activity",
+  mediaKind?: ActivityMediaKind,
+) {
+  // content_type applies to activities only — the other upload types are each
+  // one kind of file already.
+  const mediaQuery =
+    type === "activity" && mediaKind ? `&content_type=${mediaKind}` : "";
   const response = await fetch(
-    `/api/training/cloudinary-signature?type=${SIGNATURE_TYPE[type]}`,
+    `/api/training/cloudinary-signature?type=${SIGNATURE_TYPE[type]}${mediaQuery}`,
     { cache: "no-store" },
   );
   const payload = await response.json().catch(() => null);
@@ -144,9 +163,17 @@ export async function uploadFileToCloudinary(
   file: File,
   onProgress?: (percentage: number) => void,
   type: CloudinaryUploadType = "activity",
+  mediaKind?: ActivityMediaKind,
 ) {
-  const signature = await getUploadSignature(type);
-  const resourceType = resourceTypeFor(file, type);
+  const signature = await getUploadSignature(type, mediaKind);
+
+  // The backend's answer is only trusted when it was told what is coming.
+  // Asked without a content type it assumes video, which is right for most
+  // activities and wrong for the two callers that upload images under the
+  // activity type — module thumbnails and pictures placed in a text lesson.
+  // Those would be sent to the video endpoint and refused.
+  const resourceType =
+    (mediaKind && signature.resource_type) || resourceTypeFor(file, type);
   const uploadUrl = `https://api.cloudinary.com/v1_1/${encodeURIComponent(
     signature.cloud_name,
   )}/${resourceType}/upload`;
