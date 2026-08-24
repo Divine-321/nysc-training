@@ -630,7 +630,7 @@ export default function ModuleActivitiesManager({
         {saving && config.input === "upload" && file && (
           <div className="sm:col-span-2">
             <div className="mb-1 flex justify-between text-xs text-gray-500">
-              <span>Uploading directly to Cloudinary...</span>
+              <span>Uploading...</span>
               <span>{progress}%</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-gray-200">

@@ -7,6 +7,19 @@ type CloudinarySignature = {
   cloud_name: string;
   folder: string;
   upload_preset: string;
+  /**
+   * Which Cloudinary endpoint the signature was generated for — "video",
+   * "image" or "raw".
+   *
+   * It has to be obeyed. A signature covers the parameters it was made from,
+   * so uploading to a different endpoint than the one it was signed for is
+   * rejected. Optional only because older backends did not send it.
+   *
+   * Note that audio belongs to "video" in Cloudinary's model; there is no
+   * separate audio type. Ignoring this field sent mp3s to the image endpoint,
+   * which answered "Image file format mp3 not allowed".
+   */
+  resource_type?: "video" | "image" | "raw" | "auto";
 };
 
 /**
@@ -111,7 +124,11 @@ export async function uploadFileToCloudinary(
   type: CloudinaryUploadType = "activity",
 ) {
   const signature = await getUploadSignature(type);
-  const resourceType = type === "book_pdf" ? "raw" : "auto";
+  // The backend's answer wins. "auto" remains the fallback for a signature
+  // that does not name one, and book PDFs stay "raw" so they are served as
+  // files rather than transformed as images.
+  const resourceType =
+    signature.resource_type ?? (type === "book_pdf" ? "raw" : "auto");
   const uploadUrl = `https://api.cloudinary.com/v1_1/${encodeURIComponent(
     signature.cloud_name,
   )}/${resourceType}/upload`;

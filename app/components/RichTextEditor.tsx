@@ -317,7 +317,7 @@ export default function RichTextEditor({
       {uploading && (
         <div className="border-b border-gray-100 px-4 py-2">
           <div className="mb-1 flex justify-between text-xs text-gray-500">
-            <span>Uploading {uploading} to Cloudinary...</span>
+            <span>Uploading {uploading}...</span>
             <span>{progress}%</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-gray-100">

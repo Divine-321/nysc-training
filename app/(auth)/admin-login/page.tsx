@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -24,8 +24,22 @@ export default function AdminLoginPage() {
   const [awaitingDeviceOtp, setAwaitingDeviceOtp] = useState(false);
   const [emailHint, setEmailHint] = useState("");
   const [otp, setOtp] = useState("");
+  // Seconds left on the emailed code. "Expires in 10 minutes" told someone
+  // nothing once they had been reading their inbox for a while — this says
+  // whether the code in front of them is still worth typing.
+  const [secondsLeft, setSecondsLeft] = useState(0);
 
   const canSubmit = email.trim() !== "" && password !== "" && !isLoading;
+
+  useEffect(() => {
+    if (!awaitingDeviceOtp || secondsLeft <= 0) return;
+
+    const timer = window.setInterval(() => {
+      setSecondsLeft((remaining) => Math.max(0, remaining - 1));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [awaitingDeviceOtp, secondsLeft]);
 
   const finishLogin = (user: { role?: string }) => {
     if (user.role !== "admin" && user.role !== "superadmin") {
@@ -99,6 +113,7 @@ export default function AdminLoginPage() {
         setEmailHint(response.data.email_hint ?? "");
         setAwaitingDeviceOtp(true);
         setOtp("");
+        setSecondsLeft(10 * 60);
         setIsLoading(false);
         return;
       }
@@ -214,7 +229,11 @@ export default function AdminLoginPage() {
                 className="w-full rounded-full border border-nysc-green px-4 py-3 text-center text-lg tracking-[0.4em] outline-none focus:ring-2 focus:ring-nysc-green"
               />
               <p className="mt-1 text-xs text-gray-500">
-                The code expires in 10 minutes.
+                {secondsLeft > 0
+                  ? `Expires in ${Math.floor(secondsLeft / 60)}:${String(
+                      secondsLeft % 60,
+                    ).padStart(2, "0")}`
+                  : "This code has expired — go back and sign in again to get a new one."}
               </p>
             </div>
 
