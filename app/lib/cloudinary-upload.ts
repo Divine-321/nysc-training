@@ -8,16 +8,13 @@ type CloudinarySignature = {
   folder: string;
   upload_preset: string;
   /**
-   * Which Cloudinary endpoint the signature was generated for — "video",
-   * "image" or "raw".
+   * The endpoint the backend had in mind. Deliberately not used.
    *
-   * It has to be obeyed. A signature covers the parameters it was made from,
-   * so uploading to a different endpoint than the one it was signed for is
-   * rejected. Optional only because older backends did not send it.
-   *
-   * Note that audio belongs to "video" in Cloudinary's model; there is no
-   * separate audio type. Ignoring this field sent mp3s to the image endpoint,
-   * which answered "Image file format mp3 not allowed".
+   * It is returned per upload *type* rather than per file — every activity
+   * gets "video" — so following it sends PDFs to the video endpoint. The
+   * endpoint is not part of the signed parameters, so resourceTypeFor decides
+   * it from the file instead. Kept here so the field is documented rather than
+   * looking overlooked.
    */
   resource_type?: "video" | "image" | "raw" | "auto";
 };
@@ -106,6 +103,31 @@ function createUploadForm(
   return form;
 }
 
+/**
+ * Which Cloudinary endpoint to upload to, decided from the file itself.
+ *
+ * The endpoint lives in the URL rather than the signed parameters, so it is
+ * ours to choose — the same signature uploads to any of them.
+ *
+ * It has to be chosen per file, not per upload type. The signature response
+ * carries a resource_type, but the backend returns "video" for every activity
+ * regardless of what is being sent, so following it uploaded PDFs to the video
+ * endpoint and they were refused as "Unsupported video format or file".
+ *
+ * Audio maps to "video" because Cloudinary has no separate audio type.
+ * Everything else goes to "auto" and is detected on arrival, which handles
+ * PDFs, slides and images alike. Book PDFs stay "raw" so they download as
+ * files rather than being treated as images.
+ */
+function resourceTypeFor(file: Blob, type: CloudinaryUploadType) {
+  if (type === "book_pdf") return "raw";
+
+  const mime = file.type.toLowerCase();
+  if (mime.startsWith("video/") || mime.startsWith("audio/")) return "video";
+
+  return "auto";
+}
+
 async function readCloudinaryResponse(response: Response) {
   const payload = await response.json().catch(() => null);
 
@@ -124,11 +146,7 @@ export async function uploadFileToCloudinary(
   type: CloudinaryUploadType = "activity",
 ) {
   const signature = await getUploadSignature(type);
-  // The backend's answer wins. "auto" remains the fallback for a signature
-  // that does not name one, and book PDFs stay "raw" so they are served as
-  // files rather than transformed as images.
-  const resourceType =
-    signature.resource_type ?? (type === "book_pdf" ? "raw" : "auto");
+  const resourceType = resourceTypeFor(file, type);
   const uploadUrl = `https://api.cloudinary.com/v1_1/${encodeURIComponent(
     signature.cloud_name,
   )}/${resourceType}/upload`;
