@@ -30,6 +30,24 @@ function clampInt(value: string | null, fallback: number, min: number, max: numb
 }
 
 /**
+ * Carries the incoming request's query string through to the backend.
+ *
+ * Proxy routes that declared `GET()` with no parameter silently dropped
+ * everything the browser asked for. Pagination was the visible casualty: the
+ * backend never saw `page` or `page_size`, so it answered page one to every
+ * request and reported a `next` link forever, and the client kept asking.
+ *
+ * Filters land the same way, so use this on any route that forwards a list.
+ */
+export function withQuery(basePath: string, request: Request): string {
+  const query = new URL(request.url).search;
+  if (!query || query === "?") return basePath;
+
+  const separator = basePath.includes("?") ? "&" : "?";
+  return `${basePath}${separator}${query.slice(1)}`;
+}
+
+/**
  * Appends doc-compliant `page`/`page_size` query params to a backend path,
  * reading them from the incoming request and clamping to the documented
  * bounds (page ≥ 1; page_size 1–100, default 20).

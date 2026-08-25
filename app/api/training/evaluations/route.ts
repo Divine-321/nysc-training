@@ -1,8 +1,8 @@
-import { proxyApi } from "@/app/lib/api-proxy";
+import { proxyApi, withQuery } from "@/app/lib/api-proxy";
 
-export async function GET() {
+export async function GET(request: Request) {
   return proxyApi("GET", {
-    path: "/api/training/evaluations/",
+    path: withQuery("/api/training/evaluations/", request),
   });
 }
 
