@@ -17,7 +17,7 @@ import type {
   Activity as ViewerActivity,
   ActivityContentType,
 } from "@/app/lib/training-types";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 export type LegacyDocType = "VIDEO" | "PDF" | "PPT" | "IMAGE" | "OTHER";
 
@@ -64,7 +64,7 @@ export async function isActivitiesApiLive(): Promise<boolean> {
   if (activitiesApiLive !== null) return activitiesApiLive;
 
   try {
-    const response = await cachedFetch("/api/training/activities");
+    const response = await cachedFetchAll("/api/training/activities");
     activitiesApiLive = response.ok;
   } catch {
     activitiesApiLive = false;

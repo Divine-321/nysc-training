@@ -31,7 +31,7 @@ import {
 } from "@/app/lib/staff-learning";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import { useConfirm } from "@/app/components/useConfirm";
-import { cachedFetch, LONG_TTL_MS } from "@/app/lib/data-cache";
+import { LONG_TTL_MS, cachedFetch, cachedFetchAll } from "@/app/lib/data-cache";
 
 type StaffUser = {
   id: string;
@@ -446,12 +446,12 @@ export default function AdminUsersPage() {
           enrollmentsResponse,
         ] = await Promise.all([
           fetchCurrentPage(),
-          cachedFetch("/api/organization/postings"),
+          cachedFetchAll("/api/organization/postings"),
           // Staff are assigned to trainings via enrolments; the cohort name
           // comes with the programme. The legacy cohort-staff endpoint used to
           // be read alongside this one, but it was removed from the backend in
           // the restructure and answered 404 on every admin page load.
-          cachedFetch("/api/training/enrollments"),
+          cachedFetchAll("/api/training/enrollments"),
         ]);
 
         const [postingsPayload, enrollmentsPayload] = await Promise.all([
@@ -607,11 +607,11 @@ export default function AdminUsersPage() {
           ranksResponse,
           postingReasonsResponse,
         ] = await Promise.all([
-          cachedFetch("/api/organization/states", { ttlMs: LONG_TTL_MS }),
-          cachedFetch("/api/organization/departments", { ttlMs: LONG_TTL_MS }),
-          cachedFetch("/api/organization/grade-levels", { ttlMs: LONG_TTL_MS }),
-          cachedFetch("/api/organization/ranks", { ttlMs: LONG_TTL_MS }),
-          cachedFetch("/api/organization/posting-reasons", { ttlMs: LONG_TTL_MS }),
+          cachedFetchAll("/api/organization/states", { ttlMs: LONG_TTL_MS }),
+          cachedFetchAll("/api/organization/departments", { ttlMs: LONG_TTL_MS }),
+          cachedFetchAll("/api/organization/grade-levels", { ttlMs: LONG_TTL_MS }),
+          cachedFetchAll("/api/organization/ranks", { ttlMs: LONG_TTL_MS }),
+          cachedFetchAll("/api/organization/posting-reasons", { ttlMs: LONG_TTL_MS }),
         ]);
 
         const [
@@ -657,7 +657,7 @@ export default function AdminUsersPage() {
     // Cohorts (legacy).
     const loadAssignmentTargets = async () => {
       try {
-        const programmeResponse = await cachedFetch("/api/training/programmes");
+        const programmeResponse = await cachedFetchAll("/api/training/programmes");
         const programmePayload = await programmeResponse
           .json()
           .catch(() => null);
@@ -676,7 +676,7 @@ export default function AdminUsersPage() {
           return;
         }
 
-        const response = await cachedFetch("/api/training/cohorts");
+        const response = await cachedFetchAll("/api/training/cohorts");
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
@@ -838,7 +838,7 @@ export default function AdminUsersPage() {
       const targetCourseId = targetProgramme?.course ?? null;
 
       if (targetCourseId != null) {
-        const enrollmentsPayload = await cachedFetch("/api/training/enrollments")
+        const enrollmentsPayload = await cachedFetchAll("/api/training/enrollments")
           .then((response) => (response.ok ? response.json() : null))
           .catch(() => null);
         const courseByProgrammeId = new Map(

@@ -42,7 +42,7 @@ import {
   ToastViewport,
   useToasts,
 } from "@/app/components/ui-interactive";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 // Course status is not admin-manageable (everything saves as PUBLISHED),
 // so no status badge or filter is shown here.
@@ -73,7 +73,7 @@ export default function AdminCoursesPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const coursesResponse = await cachedFetch("/api/training/courses");
+        const coursesResponse = await cachedFetchAll("/api/training/courses");
         const coursesPayload = await readJsonResponse(coursesResponse);
 
         if (!coursesResponse.ok) {
@@ -188,8 +188,8 @@ export default function AdminCoursesPage() {
 
     try {
       const [trainingRes, enrollmentRes] = await Promise.all([
-        cachedFetch("/api/training/programmes"),
-        cachedFetch("/api/training/enrollments"),
+        cachedFetchAll("/api/training/programmes"),
+        cachedFetchAll("/api/training/enrollments"),
       ]);
 
       trainings = (

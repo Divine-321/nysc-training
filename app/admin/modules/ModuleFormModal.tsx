@@ -12,7 +12,7 @@ import {
   type Trainer,
 } from "@/app/lib/portal-api";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 /**
  * Create / edit a reusable library module — the SINGLE place trainers are
@@ -64,7 +64,7 @@ export default function ModuleFormModal({
 
     const loadTrainers = async () => {
       try {
-        const response = await cachedFetch("/api/training/trainers");
+        const response = await cachedFetchAll("/api/training/trainers");
 
         if (!response.ok || !active) return;
 

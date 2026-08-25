@@ -24,7 +24,7 @@ import {
 import { formatDate } from "@/app/lib/format";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import { useConfirm } from "@/app/components/useConfirm";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 type NYSCBook = {
   id: number;
@@ -65,7 +65,7 @@ export default function AdminBooksPage() {
 
   const loadBooks = useCallback(async () => {
     try {
-      const response = await cachedFetch("/api/learning/books");
+      const response = await cachedFetchAll("/api/learning/books");
       const payload = await response.json();
 
       if (!response.ok) {

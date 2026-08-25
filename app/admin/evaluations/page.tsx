@@ -24,7 +24,7 @@ import {
   StatCard,
 } from "@/app/components/ui";
 import { SearchInput } from "@/app/components/ui-interactive";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 
 
@@ -72,9 +72,9 @@ export default function AdminEvaluationsPage() {
       try {
         const [evaluationRes, enrollmentRes, cohortCourseRes] =
           await Promise.all([
-            cachedFetch("/api/training/evaluations"),
-            cachedFetch("/api/training/enrollments"),
-            cachedFetch("/api/training/programmes"),
+            cachedFetchAll("/api/training/evaluations"),
+            cachedFetchAll("/api/training/enrollments"),
+            cachedFetchAll("/api/training/programmes"),
           ]);
 
         const evaluationPayload = await evaluationRes.json().catch(() => null);

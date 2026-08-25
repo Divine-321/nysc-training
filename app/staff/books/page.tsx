@@ -12,7 +12,7 @@ import {
   readApiList,
 } from "@/app/lib/portal-api";
 import { formatDate } from "@/app/lib/format";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 type NYSCBook = {
   id: number;
@@ -31,7 +31,7 @@ export default function LibraryPage() {
 
   const loadBooks = useCallback(async () => {
     try {
-      const response = await cachedFetch("/api/learning/books");
+      const response = await cachedFetchAll("/api/learning/books");
       const payload = await response.json();
 
       if (!response.ok) {

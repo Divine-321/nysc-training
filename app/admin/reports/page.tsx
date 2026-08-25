@@ -15,7 +15,7 @@ import {
   programmeBatchLabel,
   type Programme,
 } from "@/app/lib/staff-learning";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetch, cachedFetchAll } from "@/app/lib/data-cache";
 
 // Shapes from the deployed /api/analytics/ endpoints (2026-07-10).
 
@@ -119,8 +119,8 @@ export default function AdminReportsPage() {
   useEffect(() => {
     const loadStatic = async () => {
       const [programmeResponse, certificateResponse] = await Promise.all([
-        cachedFetch("/api/training/programmes"),
-        cachedFetch("/api/training/certificates"),
+        cachedFetchAll("/api/training/programmes"),
+        cachedFetchAll("/api/training/certificates"),
       ]);
 
       if (programmeResponse.ok) {

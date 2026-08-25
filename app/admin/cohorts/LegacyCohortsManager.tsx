@@ -10,7 +10,7 @@ import {
   readApiList,
 } from "@/app/lib/portal-api";
 import { useConfirm } from "@/app/components/useConfirm";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 type Cohort = {
   id: number;
@@ -63,7 +63,7 @@ export default function LegacyCohortsManager() {
 
   const loadCohorts = useCallback(async () => {
     try {
-      const response = await cachedFetch("/api/training/cohorts");
+      const response = await cachedFetchAll("/api/training/cohorts");
 
       const payload = await readResponsePayload(response);
 

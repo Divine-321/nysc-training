@@ -37,7 +37,7 @@ import {
 import ActivityViewer from "@/app/components/ActivityViewer";
 import RichTextEditor from "@/app/components/RichTextEditor";
 import { useConfirm } from "@/app/components/useConfirm";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 // Re-exported so CourseModulesManager can type the module payload.
 export type Activity = AdminActivity;
@@ -142,7 +142,7 @@ export default function ModuleActivitiesManager({
 
     const loadAssessmentOptions = async () => {
       try {
-        const response = await cachedFetch("/api/training/assessments");
+        const response = await cachedFetchAll("/api/training/assessments");
         const payload = await response.json().catch(() => null);
         const list = response.ok
           ? readApiList<CourseAssessment>(payload).filter(

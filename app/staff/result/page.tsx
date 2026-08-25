@@ -18,7 +18,7 @@ import {
 import { readApiList } from "@/app/lib/portal-api";
 import AttemptStatusChip from "@/app/components/AttemptStatusChip";
 import { formatDateTime as formatDate } from "@/app/lib/format";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 function assessmentTypeLabel(type: string | undefined): string | null {
   if (type === "PRE_TEST") return "Pre-test";
@@ -43,7 +43,7 @@ export default function ResultPage() {
       const [attemptList, staffCourses, assessmentPayload] = await Promise.all([
         loadAssessmentAttempts(),
         loadStaffCourses().catch(() => []),
-        cachedFetch("/api/training/assessments")
+        cachedFetchAll("/api/training/assessments")
           .then((response) => (response.ok ? response.json() : null))
           .catch(() => null),
       ]);

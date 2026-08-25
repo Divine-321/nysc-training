@@ -286,3 +286,71 @@ export function readApiItem<T>(payload: unknown): T | null {
 
   return payload as T;
 }
+
+/** The `next` link of a DRF page, wherever the envelope puts it. */
+function readApiNext(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const record = payload as Record<string, unknown>;
+
+  if (typeof record.next === "string") return record.next;
+
+  if (record.data && typeof record.data === "object") {
+    const nested = (record.data as Record<string, unknown>).next;
+    if (typeof nested === "string") return nested;
+  }
+
+  return null;
+}
+
+/**
+ * Read every page of a paginated list endpoint.
+ *
+ * DRF paginates by default, so a plain fetch of a list URL returns only the
+ * first 20 records. Filtering that in the browser silently hides everything
+ * past the first page — records that still exist and still enforce their
+ * uniqueness constraints, but that no screen ever shows.
+ *
+ * `next` is not followed directly: it is an absolute backend URL, and browser
+ * calls go through this app's /api proxy. Pages are requested by number
+ * instead, stopping as soon as a page reports no successor.
+ */
+export async function fetchAllPages<T>(
+  path: string,
+  fetcher: (url: string) => Promise<Response>,
+  options: { pageSize?: number; maxPages?: number; errorMessage?: string } = {},
+): Promise<T[]> {
+  const {
+    pageSize = 100,
+    // A ceiling so a backend that always reports a next page cannot spin
+    // forever. 50 pages of 100 is far beyond any list this app shows.
+    maxPages = 50,
+    errorMessage = "Could not load the list.",
+  } = options;
+
+  const joiner = path.includes("?") ? "&" : "?";
+  const items: T[] = [];
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    const response = await fetcher(
+      `${path}${joiner}page=${page}&page_size=${pageSize}`,
+    );
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      // A failure on the first page is a real error; later pages may simply
+      // be past the end on a backend that 404s rather than returning empty.
+      if (page === 1) {
+        throw new Error(extractErrorMessage(payload, errorMessage));
+      }
+      break;
+    }
+
+    const batch = readApiList<T>(payload);
+    items.push(...batch);
+
+    if (batch.length === 0 || !readApiNext(payload)) break;
+  }
+
+  return items;
+}
