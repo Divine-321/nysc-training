@@ -30,6 +30,7 @@ import {
   type CourseEnrollment,
 } from "@/app/lib/staff-learning";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
+import StaffTrainingHistory from "./StaffTrainingHistory";
 import { useConfirm } from "@/app/components/useConfirm";
 import { LONG_TTL_MS, cachedFetch, cachedFetchAll } from "@/app/lib/data-cache";
 
@@ -2122,9 +2123,9 @@ export default function AdminUsersPage() {
       {/* Comprehensive Staff Details Modal */}
       {selectedStaff && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-3xl shadow-xl w-full max-w-md flex flex-col overflow-hidden">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
+            <div className="flex shrink-0 items-center justify-between p-6 border-b border-gray-100 bg-gray-50/50">
               <div className="flex items-center gap-4">
                 <Image
                   src={selectedStaff.photo}
@@ -2153,8 +2154,9 @@ export default function AdminUsersPage() {
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-6 space-y-6">
+            {/* Modal Body — scrolls on its own so a long training history
+                cannot push the close button off screen. */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="grid grid-cols-2 gap-y-6 gap-x-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
@@ -2228,6 +2230,16 @@ export default function AdminUsersPage() {
                     </span>
                   </p>
                 </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-5">
+                <p className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">
+                  Training history
+                </p>
+                <StaffTrainingHistory
+                  staffId={selectedStaff.id}
+                  programmes={programmes}
+                />
               </div>
 
               <div className="pt-4 border-t border-gray-100">
