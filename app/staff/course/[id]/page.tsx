@@ -35,6 +35,7 @@ import {
   Star,
   Users,
 } from "lucide-react";
+import CourseLiveSessions from "@/app/components/CourseLiveSessions";
 import { Skeleton } from "@/app/components/ui";
 import {
   documentIsComplete,
@@ -571,6 +572,14 @@ export default function CourseModulesPage() {
             "This course is currently locked. Please check back later."}
         </div>
       ) : null}
+
+      {/* Live sessions covering the whole training, not a single module.
+          Module-tagged sessions stay inside their module in the player. */}
+      {staffCourse?.enrollment.cohort_course != null && (
+        <CourseLiveSessions
+          cohortCourseId={staffCourse.enrollment.cohort_course}
+        />
+      )}
 
       {/* Toolbar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
