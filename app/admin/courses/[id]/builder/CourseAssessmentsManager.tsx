@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import {
   Check,
@@ -230,6 +230,32 @@ export default function CourseAssessmentsManager({
     void fetchData();
   }, [loadAssessments]);
 
+  // One assessment of each type is allowed per module, so a type that already
+  // exists must not be offered again — the backend would reject it.
+  const takenTypes = useMemo(() => {
+    const target = moduleId ?? Number(form.module);
+    if (!target) return new Set<AssessmentType>();
+
+    return new Set(
+      assessments
+        .filter((assessment) => assessment.module === target)
+        .map((assessment) => assessment.type as AssessmentType),
+    );
+  }, [assessments, moduleId, form.module]);
+
+  const bothTypesTaken =
+    takenTypes.has("PRE_TEST") && takenTypes.has("POST_TEST");
+
+  // Derived, not stored: when the chosen type is already taken the other one
+  // is shown instead, so a module that has a pre-test opens on post-test
+  // rather than on a dead choice. Deriving avoids a second render pass.
+  const selectedType: AssessmentType =
+    takenTypes.has(form.type) && !bothTypesTaken
+      ? form.type === "PRE_TEST"
+        ? "POST_TEST"
+        : "PRE_TEST"
+      : form.type;
+
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
@@ -242,7 +268,7 @@ export default function CourseAssessmentsManager({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           module: moduleId ?? Number(form.module),
-          type: form.type,
+          type: selectedType,
           title: form.title.trim(),
           pass_mark: form.pass_mark,
           max_attempts: Number(form.max_attempts),
@@ -254,8 +280,18 @@ export default function CourseAssessmentsManager({
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
+        const raw = extractErrorMessage(
+          payload,
+          "Could not create assessment.",
+        );
+
+        // The backend allows one assessment of each type per module and
+        // rejects a second with DRF's raw validator text ("The fields module,
+        // type must make a unique set"), which means nothing to an admin.
         throw new Error(
-          extractErrorMessage(payload, "Could not create assessment."),
+          /unique set/i.test(raw)
+            ? `This module already has a ${assessmentTypeLabel(selectedType)}. Edit the existing one below instead of creating another.`
+            : raw,
         );
       }
 
@@ -789,7 +825,7 @@ export default function CourseAssessmentsManager({
             Assessment type
           </label>
           <select
-            value={form.type}
+            value={selectedType}
             onChange={(event) =>
               setForm({
                 ...form,
@@ -798,8 +834,16 @@ export default function CourseAssessmentsManager({
             }
             className={field}
           >
-            <option value="PRE_TEST">Pre-Test</option>
-            <option value="POST_TEST">Post-Test</option>
+            <option value="PRE_TEST" disabled={takenTypes.has("PRE_TEST")}>
+              {takenTypes.has("PRE_TEST")
+                ? "Pre-Test — already created"
+                : "Pre-Test"}
+            </option>
+            <option value="POST_TEST" disabled={takenTypes.has("POST_TEST")}>
+              {takenTypes.has("POST_TEST")
+                ? "Post-Test — already created"
+                : "Post-Test"}
+            </option>
           </select>
         </div>
 
@@ -901,9 +945,18 @@ export default function CourseAssessmentsManager({
           </span>
         </div>
 
+        {bothTypesTaken && (
+          <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+            This module already has both a pre-test and a post-test. Edit them
+            below, or delete one to create it again.
+          </p>
+        )}
+
         <button
           disabled={
             saving ||
+            bothTypesTaken ||
+            takenTypes.has(selectedType) ||
             !form.title.trim() ||
             (moduleId === undefined && !form.module)
           }
