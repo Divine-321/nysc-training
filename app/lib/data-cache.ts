@@ -175,8 +175,16 @@ export async function cachedFetchAll(
   const pageUrl = (page: number) =>
     `${url}${joiner}page=${page}&page_size=${pageSize}`;
 
-  const first = await cachedFetch(pageUrl(1), cacheOptions);
-  if (!first.ok) return first;
+  let first = await cachedFetch(pageUrl(1), cacheOptions);
+
+  // Not every endpoint accepts page/page_size — a custom list view can reject
+  // them or fail outright. Retry once bare so adding pagination can never take
+  // away an endpoint that worked before, then hand back whatever comes.
+  if (!first.ok) {
+    const bare = await cachedFetch(url, cacheOptions);
+    if (!bare.ok) return bare;
+    first = bare;
+  }
 
   const firstPayload = await first.clone().json().catch(() => null);
   const results = readListPage(firstPayload);
