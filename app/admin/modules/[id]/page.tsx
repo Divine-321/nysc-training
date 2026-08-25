@@ -78,7 +78,9 @@ export default function ModuleDetailPage() {
       const [moduleResponse, assessmentsResponse, coursesResponse] =
         await Promise.all([
           cachedFetch(`/api/training/modules/${moduleId}`),
-          cachedFetchAll("/api/training/assessments"),
+          // ?module= is honoured server-side, so this is two records
+          // rather than every assessment in the system.
+          cachedFetchAll(`/api/training/assessments?module=${moduleId}`),
           cachedFetchAll("/api/training/courses"),
         ]);
 
@@ -101,6 +103,8 @@ export default function ModuleDetailPage() {
       setAssessments(
         assessmentsResponse.ok
           ? readApiList<ModuleAssessment>(assessmentsPayload).filter(
+              // Filtered server-side; re-checked so an endpoint that ever
+              // ignores the parameter cannot show another module's tests.
               (assessment) => assessment.module === moduleId,
             )
           : [],
