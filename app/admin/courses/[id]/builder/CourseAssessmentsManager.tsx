@@ -25,8 +25,8 @@ import { Badge, field, fieldLabel } from "@/app/components/ui";
 import * as XLSX from "xlsx";
 import {
   extractErrorMessage,
+  fetchAllPages,
   readApiItem,
-  readApiList,
   sortedAssignedModules,
   type Course,
 } from "@/app/lib/portal-api";
@@ -158,20 +158,18 @@ export default function CourseAssessmentsManager({
     try {
       // Module-builder mode: just this module's assessments.
       if (moduleId !== undefined) {
-        const response = await cachedFetch("/api/training/assessments");
-        const payload = await response.json().catch(() => null);
-
-        if (!response.ok) {
-          throw new Error(
-            extractErrorMessage(payload, "Could not load assessments."),
-          );
-        }
+        // Every page, not just the first. The list is paginated, so reading
+        // one page hid most modules' assessments — they still existed and
+        // still blocked re-creation, they were simply never shown.
+        const all = await fetchAllPages<Assessment>(
+          "/api/training/assessments",
+          cachedFetch,
+          { errorMessage: "Could not load assessments." },
+        );
 
         setModuleOptions([]);
         setAssessments(
-          readApiList<Assessment>(payload).filter(
-            (assessment) => assessment.module === moduleId,
-          ),
+          all.filter((assessment) => assessment.module === moduleId),
         );
         setError("");
         return;
@@ -179,18 +177,13 @@ export default function CourseAssessmentsManager({
 
       // Course-builder mode: assessments belong to Modules, so scope the
       // list to the modules currently assigned to this course.
-      const [assessmentsResponse, courseResponse] = await Promise.all([
-        cachedFetch("/api/training/assessments"),
+      const [allAssessments, courseResponse] = await Promise.all([
+        fetchAllPages<Assessment>("/api/training/assessments", cachedFetch, {
+          errorMessage: "Could not load assessments.",
+        }),
         cachedFetch(`/api/training/courses/${courseId}`),
       ]);
-      const payload = await assessmentsResponse.json().catch(() => null);
       const coursePayload = await courseResponse.json().catch(() => null);
-
-      if (!assessmentsResponse.ok) {
-        throw new Error(
-          extractErrorMessage(payload, "Could not load assessments."),
-        );
-      }
 
       const courseModules = courseResponse.ok
         ? sortedAssignedModules(readApiItem<Course>(coursePayload)).map(
@@ -204,7 +197,7 @@ export default function CourseAssessmentsManager({
 
       setModuleOptions(courseModules);
       setAssessments(
-        readApiList<Assessment>(payload).filter(
+        allAssessments.filter(
           (assessment) =>
             assessment.module !== null &&
             courseModuleIds.has(assessment.module),
