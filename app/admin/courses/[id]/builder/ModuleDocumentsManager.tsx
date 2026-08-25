@@ -142,7 +142,12 @@ export default function ModuleActivitiesManager({
 
     const loadAssessmentOptions = async () => {
       try {
-        const response = await cachedFetchAll("/api/training/assessments");
+        // Scoped to this module server-side. The course branch in the
+        // filter below is dead against the current backend — assessments
+        // carry no course FK any more — so nothing is lost by narrowing.
+        const response = await cachedFetchAll(
+          `/api/training/assessments?module=${moduleId}`,
+        );
         const payload = await response.json().catch(() => null);
         const list = response.ok
           ? readApiList<CourseAssessment>(payload).filter(

@@ -354,3 +354,25 @@ export async function fetchAllPages<T>(
 
   return items;
 }
+
+/**
+ * The total a paginated list reports, wherever the envelope puts it.
+ *
+ * Lets a screen that only wants "how many are there?" ask for a single
+ * record and read the count, instead of downloading the list to measure it.
+ * Returns null when the payload carries no count.
+ */
+export function readApiCount(payload: unknown): number | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const record = payload as Record<string, unknown>;
+
+  if (typeof record.count === "number") return record.count;
+
+  if (record.data && typeof record.data === "object") {
+    const nested = (record.data as Record<string, unknown>).count;
+    if (typeof nested === "number") return nested;
+  }
+
+  return null;
+}

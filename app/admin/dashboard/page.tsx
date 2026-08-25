@@ -15,13 +15,7 @@ import {
   Users,
   Video,
 } from "lucide-react";
-import {
-  collectTrainerNames,
-  extractErrorMessage,
-  readApiItem,
-  readApiList,
-  type LibraryModule,
-} from "@/app/lib/portal-api";
+import { extractErrorMessage, readApiCount, readApiItem, readApiList } from "@/app/lib/portal-api";
 import { formatDate, formatTime } from "@/app/lib/format";
 import {
   normalizeLiveSession,
@@ -111,19 +105,21 @@ export default function AdminDashboardPage() {
     const loadSessionsAndModules = async () => {
       try {
         const [modulesResponse, sessionsResponse] = await Promise.all([
-          cachedFetchAll("/api/training/modules"),
+          // The tile needs a total, not the modules. A single-record page
+          // carries the count in its envelope, so ask for one instead of
+          // downloading the library to call .length on it.
+          cachedFetch("/api/training/modules?page=1&page_size=1"),
           cachedFetchAll("/api/training/live-sessions"),
         ]);
 
-        const modules = modulesResponse.ok
-          ? readApiList<LibraryModule>(
-              await modulesResponse.json().catch(() => null),
-            )
-          : [];
+        const modulesPayload = modulesResponse.ok
+          ? await modulesResponse.json().catch(() => null)
+          : null;
 
-        setTotalModules(modulesResponse.ok ? modules.length : null);
+        setTotalModules(readApiCount(modulesPayload));
 
-        const moduleById = new Map(modules.map((module) => [module.id, module]));
+        // Sessions name their own module, so the tile below needs no
+        // module lookup of its own.
 
         if (!sessionsResponse.ok) return;
 
@@ -144,17 +140,14 @@ export default function AdminDashboardPage() {
           )
           .slice(0, 6)
           .map<UpcomingSession>((session) => {
-            const sessionModule =
-              session.module != null ? moduleById.get(session.module) : null;
-            const trainerName =
-              collectTrainerNames([sessionModule]).join(", ") ||
-              session.trainer_name ||
-              "No trainer assigned";
+            // A session's trainer is set from its module's trainer when it
+            // is scheduled, so the session's own name is authoritative here.
+            const trainerName = session.trainer_name || "No trainer assigned";
 
             return {
               id: session.id,
               title: session.title,
-              moduleTitle: session.module_title || sessionModule?.title || null,
+              moduleTitle: session.module_title || null,
               trainerName,
               cohortName: session.cohort_name,
               courseTitle: session.course_title,

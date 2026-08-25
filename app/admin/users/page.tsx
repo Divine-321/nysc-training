@@ -857,21 +857,34 @@ export default function AdminUsersPage() {
       const targetCourseId = targetProgramme?.course ?? null;
 
       if (targetCourseId != null) {
-        const enrollmentsPayload = await cachedFetchAll("/api/training/enrollments")
-          .then((response) => (response.ok ? response.json() : null))
-          .catch(() => null);
-        const courseByProgrammeId = new Map(
-          programmes.map((programme) => [programme.id, programme.course]),
+        // Only the deliveries of this course, and only their enrolments.
+        // Asking for the whole enrolment table to answer "has anyone here
+        // taken this course before?" gets slower every time anyone is
+        // enrolled in anything.
+        const deliveries = programmes.filter(
+          (programme) => programme.course === targetCourseId,
         );
+
+        const enrollmentPayloads = await Promise.all(
+          deliveries.map((programme) =>
+            cachedFetchAll(
+              `/api/training/enrollments?programme=${programme.id}`,
+            )
+              .then((response) => (response.ok ? response.json() : null))
+              .catch(() => null),
+          ),
+        );
+
+        const deliveryIds = new Set(deliveries.map((programme) => programme.id));
         const staffWithCourse = new Set(
-          readApiList<CourseEnrollment>(enrollmentsPayload)
+          enrollmentPayloads
+            .flatMap((payload) => readApiList<CourseEnrollment>(payload))
             .filter((enrollment) => {
               const programmeId =
                 enrollment.programme ?? enrollment.cohort_course;
-              return (
-                programmeId != null &&
-                courseByProgrammeId.get(programmeId) === targetCourseId
-              );
+              // Re-checked: a warning raised off another course's enrolments
+              // would train admins to click through it.
+              return programmeId != null && deliveryIds.has(programmeId);
             })
             .map((enrollment) => String(enrollment.staff)),
         );

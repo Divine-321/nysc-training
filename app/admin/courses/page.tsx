@@ -187,23 +187,39 @@ export default function AdminCoursesPage() {
     let enrollments: CourseEnrollment[] = [];
 
     try {
-      const [trainingRes, enrollmentRes] = await Promise.all([
-        cachedFetchAll("/api/training/programmes"),
-        cachedFetchAll("/api/training/enrollments"),
-      ]);
+      // Only this course's deliveries, and only their enrolments. Both
+      // filters are honoured server-side; before this the page pulled every
+      // programme and every enrolment in the system to count one course's.
+      const trainingRes = await cachedFetchAll(
+        `/api/training/programmes?course=${course.id}`,
+      );
+      const trainingsForCourse = trainingRes.ok
+        ? readApiList<Programme>(await readJsonResponse(trainingRes))
+        : [];
 
-      trainings = (
-        trainingRes.ok
-          ? readApiList<Programme>(await readJsonResponse(trainingRes))
-          : []
-      ).filter((training) => Number(training.course) === course.id);
+      const enrollmentResults = await Promise.all(
+        trainingsForCourse.map((training) =>
+          cachedFetchAll(`/api/training/enrollments?programme=${training.id}`),
+        ),
+      );
+
+      // Re-checked rather than trusted: if the parameter were ever ignored
+      // this would count every course's deliveries as this one's.
+      trainings = trainingsForCourse.filter(
+        (training) => Number(training.course) === course.id,
+      );
 
       const trainingIds = new Set(trainings.map((training) => training.id));
-      enrollments = (
-        enrollmentRes.ok
-          ? readApiList<CourseEnrollment>(await readJsonResponse(enrollmentRes))
-          : []
-      ).filter((enrollment) =>
+      const collected: CourseEnrollment[] = [];
+
+      for (const response of enrollmentResults) {
+        if (!response.ok) continue;
+        collected.push(
+          ...readApiList<CourseEnrollment>(await readJsonResponse(response)),
+        );
+      }
+
+      enrollments = collected.filter((enrollment) =>
         trainingIds.has(
           (enrollment.programme ?? enrollment.cohort_course) as number,
         ),
