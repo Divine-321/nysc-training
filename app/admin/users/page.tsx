@@ -45,7 +45,10 @@ type StaffUser = {
   location: string;
   department: string;
   cohort: string;
+  /** How many trainings this staff member has been put on. */
   coursesAttended: number;
+  /** How many of those they have finished. */
+  coursesCompleted: number;
   status: string;
   firstName: string;
   middleName: string;
@@ -471,6 +474,7 @@ export default function AdminUsersPage() {
         const postingByStaffId = new Map<number, Posting>();
         const cohortNamesByStaffId = new Map<number, Set<string>>();
         const courseCountByStaffId = new Map<number, number>();
+        const completedCountByStaffId = new Map<number, number>();
 
         for (const posting of postings) {
           const existingPosting = postingByStaffId.get(posting.staff.id);
@@ -503,6 +507,19 @@ export default function AdminUsersPage() {
               enrollment.staff,
               (courseCountByStaffId.get(enrollment.staff) ?? 0) + 1,
             );
+
+            // Finished either by status or by reaching 100 — a programme can
+            // sit at 100% before the backend flips the status.
+            const finished =
+              enrollment.status === "COMPLETED" ||
+              Number(enrollment.completion_percentage ?? 0) >= 100;
+
+            if (finished) {
+              completedCountByStaffId.set(
+                enrollment.staff,
+                (completedCountByStaffId.get(enrollment.staff) ?? 0) + 1,
+              );
+            }
           }
         }
 
@@ -534,6 +551,7 @@ export default function AdminUsersPage() {
                   ", ",
                 ) || "Not assigned",
               coursesAttended: courseCountByStaffId.get(user.id) ?? 0,
+              coursesCompleted: completedCountByStaffId.get(user.id) ?? 0,
               status:
                 posting?.status === "retired"
                   ? "Retired"
@@ -1629,7 +1647,8 @@ export default function AdminUsersPage() {
                 <th className="px-6 py-4 font-medium">Location</th>
                 <th className="px-6 py-4 font-medium">Department</th>
                 <th className="px-6 py-4 font-medium">Cohort</th>
-                <th className="px-6 py-4 font-medium">Courses</th>
+                <th className="px-6 py-4 font-medium">Enrolled</th>
+                <th className="px-6 py-4 font-medium">Completed</th>
                 <th className="px-6 py-4 font-medium">Status</th>
                 <th className="px-6 py-4 font-medium">Actions</th>
               </tr>
@@ -1697,6 +1716,14 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-6 py-4 text-gray-600 font-medium">
                     {staff.coursesAttended}
+                  </td>
+                  <td className="px-6 py-4 font-medium text-gray-600">
+                    {staff.coursesCompleted}
+                    {staff.coursesAttended > 0 && (
+                      <span className="ml-1 text-xs font-normal text-gray-400">
+                        of {staff.coursesAttended}
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <span
@@ -2190,11 +2217,15 @@ export default function AdminUsersPage() {
                 </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
-                    Courses Attended
+                    Trainings
                   </p>
                   <p className="font-semibold text-gray-800 flex items-center gap-1.5">
                     <BookOpen size={14} className="text-[#1a6b3c]" />{" "}
-                    {selectedStaff.coursesAttended}
+                    {selectedStaff.coursesCompleted} completed
+                    {" "}
+                    <span className="font-normal text-gray-500">
+                      of {selectedStaff.coursesAttended} enrolled
+                    </span>
                   </p>
                 </div>
               </div>
