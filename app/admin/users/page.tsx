@@ -1648,8 +1648,7 @@ export default function AdminUsersPage() {
                 <th className="px-6 py-4 font-medium">Location</th>
                 <th className="px-6 py-4 font-medium">Department</th>
                 <th className="px-6 py-4 font-medium">Cohort</th>
-                <th className="px-6 py-4 font-medium">Enrolled</th>
-                <th className="px-6 py-4 font-medium">Completed</th>
+                <th className="px-6 py-4 font-medium">Trainings</th>
                 <th className="px-6 py-4 font-medium">Status</th>
                 <th className="px-6 py-4 font-medium">Actions</th>
               </tr>
@@ -1717,14 +1716,6 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-6 py-4 text-gray-600 font-medium">
                     {staff.coursesAttended}
-                  </td>
-                  <td className="px-6 py-4 font-medium text-gray-600">
-                    {staff.coursesCompleted}
-                    {staff.coursesAttended > 0 && (
-                      <span className="ml-1 text-xs font-normal text-gray-400">
-                        of {staff.coursesAttended}
-                      </span>
-                    )}
                   </td>
                   <td className="px-6 py-4">
                     <span
