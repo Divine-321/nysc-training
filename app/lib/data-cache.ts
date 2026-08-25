@@ -194,20 +194,58 @@ export async function cachedFetchAll(
   if (results === null) return first;
 
   const items = [...results.items];
-  let hasNext = results.hasNext;
 
-  // A ceiling so a backend that always reports a successor cannot spin
-  // forever. 50 pages of 100 is far beyond any list this app shows.
-  for (let page = 2; hasNext && page <= 50; page += 1) {
+  // How many pages there are, from the first page's total. Walking one page at
+  // a time and waiting for each is what made this unusable: a list of 3,500
+  // records at seven seconds a page kept a screen blank for minutes. Knowing
+  // the total up front means the rest can be fetched together instead.
+  const perPage = results.items.length;
+  const totalPages =
+    results.count !== null && perPage > 0
+      ? Math.ceil(results.count / perPage)
+      : null;
+
+  // A ceiling so a backend that miscounts, or always reports a successor,
+  // cannot spin forever.
+  const MAX_PAGES = 50;
+  // Enough to collapse the wait without opening a connection per page; the
+  // backend has rate-limited us before under bursts.
+  const CONCURRENCY = 6;
+
+  if (totalPages !== null) {
+    const last = Math.min(totalPages, MAX_PAGES);
+
+    for (let page = 2; page <= last; page += CONCURRENCY) {
+      const batch = [];
+      for (let n = page; n < page + CONCURRENCY && n <= last; n += 1) {
+        batch.push(fetchPage(n));
+      }
+
+      const settled = await Promise.all(batch);
+      // Order matters: a list rendered in a shuffled order looks broken.
+      for (const parsed of settled) {
+        if (parsed) items.push(...parsed.items);
+      }
+    }
+  } else {
+    // No usable total — fall back to following the pages one at a time.
+    let hasNext = results.hasNext;
+
+    for (let page = 2; hasNext && page <= MAX_PAGES; page += 1) {
+      const parsed = await fetchPage(page);
+      if (!parsed || parsed.items.length === 0) break;
+
+      items.push(...parsed.items);
+      hasNext = parsed.hasNext;
+    }
+  }
+
+  async function fetchPage(page: number) {
     const response = await cachedFetch(pageUrl(page), cacheOptions);
-    if (!response.ok) break;
+    if (!response.ok) return null;
 
     const payload = await response.json().catch(() => null);
-    const parsed = readListPage(payload);
-    if (!parsed || parsed.items.length === 0) break;
-
-    items.push(...parsed.items);
-    hasNext = parsed.hasNext;
+    return readListPage(payload);
   }
 
   return new Response(
@@ -227,7 +265,7 @@ export async function cachedFetchAll(
  */
 function readListPage(
   payload: unknown,
-): { items: unknown[]; hasNext: boolean } | null {
+): { items: unknown[]; hasNext: boolean; count: number | null } | null {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return null;
   }
@@ -246,5 +284,6 @@ function readListPage(
   return {
     items: envelope.results,
     hasNext: typeof envelope.next === "string" && envelope.next.length > 0,
+    count: typeof envelope.count === "number" ? envelope.count : null,
   };
 }
