@@ -710,8 +710,14 @@ export async function loadAssessments(courseId: number) {
   let moduleIds: Set<number> | null = null;
 
   try {
-    const cohortPayload = await getJson("/api/training/programmes");
+    // ?course= is honoured server-side, so this is the deliveries of one
+    // course rather than every programme NYSC has scheduled.
+    const cohortPayload = await getJson(
+      `/api/training/programmes?course=${courseId}`,
+    );
     const match = readApiList<Programme>(cohortPayload).find(
+      // Re-checked: an ignored filter would otherwise scope this course's
+      // assessments by another course's modules.
       (item) => Number(item.course) === courseId,
     );
 
