@@ -193,7 +193,30 @@ export async function cachedFetchAll(
   // page through, so hand back the original response untouched.
   if (results === null) return first;
 
-  const items = [...results.items];
+  const items: unknown[] = [];
+
+  // Ids already collected. A backend that ignores `page` hands back the same
+  // records for every request; without this they would be counted repeatedly
+  // and the real later pages would never be reached.
+  const seen = new Set<unknown>();
+
+  const appendNew = (batch: unknown[]) => {
+    for (const item of batch) {
+      const id =
+        item && typeof item === "object"
+          ? (item as Record<string, unknown>).id
+          : undefined;
+
+      if (id !== undefined) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+      }
+
+      items.push(item);
+    }
+  };
+
+  appendNew(results.items);
 
   // How many pages there are, from the first page's total. Walking one page at
   // a time and waiting for each is what made this unusable: a list of 3,500
@@ -222,20 +245,32 @@ export async function cachedFetchAll(
       }
 
       const settled = await Promise.all(batch);
+      const before = items.length;
+
       // Order matters: a list rendered in a shuffled order looks broken.
       for (const parsed of settled) {
-        if (parsed) items.push(...parsed.items);
+        if (parsed) appendNew(parsed.items);
       }
+
+      // A whole batch that added nothing means the backend is repeating
+      // itself — it is ignoring `page`, and further requests cannot help.
+      if (items.length === before) break;
     }
   } else {
-    // No usable total — fall back to following the pages one at a time.
+    // No usable total — follow the pages one at a time, but stop as soon as a
+    // page stops adding anything new. This backend reports a `next` link on
+    // every page whether or not one exists, so trusting it alone walked all
+    // the way to MAX_PAGES for a two-page list.
     let hasNext = results.hasNext;
 
     for (let page = 2; hasNext && page <= MAX_PAGES; page += 1) {
       const parsed = await fetchPage(page);
       if (!parsed || parsed.items.length === 0) break;
 
-      items.push(...parsed.items);
+      const before = items.length;
+      appendNew(parsed.items);
+      if (items.length === before) break;
+
       hasNext = parsed.hasNext;
     }
   }
