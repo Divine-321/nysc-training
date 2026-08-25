@@ -148,3 +148,95 @@ export async function cachedFetch(
 
   return buildResponse(await load());
 }
+
+/**
+ * Like `cachedFetch`, but returns every page of a paginated list endpoint.
+ *
+ * DRF paginates list endpoints by default, so a plain fetch returns only the
+ * first 20 records. Screens that then filter in the browser — "this module's
+ * assessments", "this cohort's sessions" — silently showed nothing for
+ * anything past that first page, while the records stayed in the database and
+ * kept enforcing their constraints.
+ *
+ * The pages are merged into one synthetic response shaped like a single DRF
+ * page, so `response.ok`, `.json()` and `readApiList` all behave exactly as
+ * they do for `cachedFetch` and call sites need no other change.
+ *
+ * A failing first page is returned untouched, so existing `!response.ok`
+ * checks and error-message extraction keep working.
+ */
+export async function cachedFetchAll(
+  url: string,
+  options: { ttlMs?: number; staleMs?: number; pageSize?: number } = {},
+): Promise<Response> {
+  const { pageSize = 100, ...cacheOptions } = options;
+  const joiner = url.includes("?") ? "&" : "?";
+
+  const pageUrl = (page: number) =>
+    `${url}${joiner}page=${page}&page_size=${pageSize}`;
+
+  const first = await cachedFetch(pageUrl(1), cacheOptions);
+  if (!first.ok) return first;
+
+  const firstPayload = await first.clone().json().catch(() => null);
+  const results = readListPage(firstPayload);
+
+  // Not a paginated envelope (a bare array, or a single object): nothing to
+  // page through, so hand back the original response untouched.
+  if (results === null) return first;
+
+  const items = [...results.items];
+  let hasNext = results.hasNext;
+
+  // A ceiling so a backend that always reports a successor cannot spin
+  // forever. 50 pages of 100 is far beyond any list this app shows.
+  for (let page = 2; hasNext && page <= 50; page += 1) {
+    const response = await cachedFetch(pageUrl(page), cacheOptions);
+    if (!response.ok) break;
+
+    const payload = await response.json().catch(() => null);
+    const parsed = readListPage(payload);
+    if (!parsed || parsed.items.length === 0) break;
+
+    items.push(...parsed.items);
+    hasNext = parsed.hasNext;
+  }
+
+  return new Response(
+    JSON.stringify({
+      count: items.length,
+      next: null,
+      previous: null,
+      results: items,
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
+/**
+ * Reads one DRF page, wherever the envelope sits. Returns null when the
+ * payload is not a paginated envelope at all.
+ */
+function readListPage(
+  payload: unknown,
+): { items: unknown[]; hasNext: boolean } | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+
+  const envelope =
+    Array.isArray(record.results)
+      ? record
+      : record.data && typeof record.data === "object"
+        ? (record.data as Record<string, unknown>)
+        : null;
+
+  if (!envelope || !Array.isArray(envelope.results)) return null;
+
+  return {
+    items: envelope.results,
+    hasNext: typeof envelope.next === "string" && envelope.next.length > 0,
+  };
+}

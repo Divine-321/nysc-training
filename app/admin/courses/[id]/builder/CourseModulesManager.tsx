@@ -37,7 +37,7 @@ import { ActionMenu } from "@/app/components/ui-interactive";
 import ModuleActivitiesManager from "./ModuleDocumentsManager";
 import type { Activity } from "./ModuleDocumentsManager";
 import { useConfirm } from "@/app/components/useConfirm";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetch, cachedFetchAll } from "@/app/lib/data-cache";
 
 /**
  * Reusable-modules backend (live 2026-07-12): Modules live in a shared
@@ -82,7 +82,7 @@ export default function CourseModulesManager({
     try {
       const [courseResponse, modulesResponse] = await Promise.all([
         cachedFetch(`/api/training/courses/${courseId}`),
-        cachedFetch("/api/training/modules"),
+        cachedFetchAll("/api/training/modules"),
       ]);
 
       const coursePayload = await courseResponse.json().catch(() => null);

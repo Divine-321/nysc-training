@@ -13,7 +13,7 @@ import {
 import CameraCaptureModal, {
   dataUrlToFile,
 } from "@/app/components/CameraCaptureModal";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetch, cachedFetchAll } from "@/app/lib/data-cache";
 
 type CourseEnrollment = {
   id: number;
@@ -75,7 +75,7 @@ const [formData, setFormData] = useState(emptyProfileData);
       const user = payload?.data as AuthUser | undefined;
       if (!user) return;
 
-      const enrollmentResponse = await cachedFetch("/api/training/enrollments");
+      const enrollmentResponse = await cachedFetchAll("/api/training/enrollments");
       const postingResponse = await cachedFetch("/api/organization/postings/current");
 
       const enrollmentPayload = enrollmentResponse.ok

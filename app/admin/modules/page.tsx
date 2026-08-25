@@ -47,7 +47,7 @@ import {
   useToasts,
 } from "@/app/components/ui-interactive";
 import ModuleFormModal from "./ModuleFormModal";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 type AssessmentLite = {
   id: number;
@@ -87,9 +87,9 @@ export default function ModuleLibraryPage() {
     try {
       const [modulesResponse, coursesResponse, assessmentsResponse] =
         await Promise.all([
-          cachedFetch("/api/training/modules"),
-          cachedFetch("/api/training/courses"),
-          cachedFetch("/api/training/assessments"),
+          cachedFetchAll("/api/training/modules"),
+          cachedFetchAll("/api/training/courses"),
+          cachedFetchAll("/api/training/assessments"),
         ]);
 
       const modulesPayload = await modulesResponse.json().catch(() => null);

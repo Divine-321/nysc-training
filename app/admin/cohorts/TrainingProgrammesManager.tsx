@@ -40,7 +40,7 @@ import {
 } from "@/app/lib/staff-learning";
 import { formatDateTime } from "@/app/lib/format";
 import { useConfirm } from "@/app/components/useConfirm";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetch, cachedFetchAll } from "@/app/lib/data-cache";
 
 // A Course = a set of Modules delivered to a Cohort (month) in a given year.
 // Each selected module becomes one cohort-course record on the backend,
@@ -231,9 +231,9 @@ export default function TrainingProgrammesManager() {
     try {
       const [programmeResponse, courseResponse, sessionResponse] =
         await Promise.all([
-          cachedFetch("/api/training/programmes"),
-          cachedFetch("/api/training/courses"),
-          cachedFetch("/api/training/live-sessions"),
+          cachedFetchAll("/api/training/programmes"),
+          cachedFetchAll("/api/training/courses"),
+          cachedFetchAll("/api/training/live-sessions"),
         ]);
 
       const [programmePayload, coursePayload, sessionPayload] =
@@ -366,7 +366,7 @@ export default function TrainingProgrammesManager() {
         let confirmedDuplicate = false;
 
         try {
-          const check = await cachedFetch("/api/training/programmes");
+          const check = await cachedFetchAll("/api/training/programmes");
 
           if (check.ok) {
             confirmedDuplicate = Boolean(
@@ -662,7 +662,7 @@ export default function TrainingProgrammesManager() {
     setModuleError("");
 
     try {
-      const response = await cachedFetch("/api/training/modules");
+      const response = await cachedFetchAll("/api/training/modules");
       const payload = await response.json().catch(() => null);
 
       if (response.ok) {

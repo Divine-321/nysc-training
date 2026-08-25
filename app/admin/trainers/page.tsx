@@ -8,7 +8,7 @@ import {
   type Trainer,
 } from "@/app/lib/portal-api";
 import { useConfirm } from "@/app/components/useConfirm";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 const emptyForm = {
   full_name: "",
@@ -31,7 +31,7 @@ export default function AdminTrainersPage() {
 
   const loadTrainers = useCallback(async () => {
     try {
-      const response = await cachedFetch("/api/training/trainers");
+      const response = await cachedFetchAll("/api/training/trainers");
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {

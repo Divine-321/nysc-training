@@ -31,7 +31,7 @@ import RequirementChecklist, {
 } from "@/app/components/RequirementChecklist";
 import CertificateDocument from "@/app/components/CertificateDocument";
 import { formatDate as formatDateMedium } from "@/app/lib/format";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetchAll } from "@/app/lib/data-cache";
 
 type Certificate = {
   id: number;
@@ -198,7 +198,7 @@ export default function CertificationsPage() {
 
   const loadCertificates = useCallback(async () => {
     try {
-      const response = await cachedFetch("/api/training/certificates");
+      const response = await cachedFetchAll("/api/training/certificates");
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
@@ -241,7 +241,7 @@ export default function CertificationsPage() {
         const [courses, attemptList, assessmentPayload] = await Promise.all([
           loadStaffCourses().catch(() => [] as StaffCourse[]),
           loadAssessmentAttempts(),
-          cachedFetch("/api/training/assessments")
+          cachedFetchAll("/api/training/assessments")
             .then((response) => (response.ok ? response.json() : null))
             .catch(() => null),
         ]);
