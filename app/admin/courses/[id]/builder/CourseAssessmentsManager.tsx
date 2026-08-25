@@ -276,7 +276,9 @@ export default function CourseAssessmentsManager({
           pass_mark: form.pass_mark,
           // null, not 0: the backend reads 0 as "zero attempts allowed"
           // and refuses every start with "Maximum attempts (0) reached".
-          max_attempts: unlimitedAttempts ? null : Number(form.max_attempts),
+          max_attempts: unlimitedAttempts
+            ? null
+            : Math.max(1, Number(form.max_attempts) || 1),
           duration: Number(form.duration) || 30,
           shuffle_questions: form.shuffle_questions,
           shuffle_options: form.shuffle_options,
@@ -635,7 +637,7 @@ export default function CourseAssessmentsManager({
             pass_mark: editForm.pass_mark,
             max_attempts: editForm.unlimited_attempts
               ? null
-              : Number(editForm.max_attempts),
+              : Math.max(1, Number(editForm.max_attempts) || 1),
             duration: Number(editForm.duration) || 30,
             shuffle_questions: editForm.shuffle_questions,
             shuffle_options: editForm.shuffle_options,
@@ -840,6 +842,11 @@ export default function CourseAssessmentsManager({
               setForm({
                 ...form,
                 type: event.target.value as AssessmentType,
+                // Back to "not chosen", so the new type's own default applies:
+                // unlimited for a pre-test, limited for a post-test. Without
+                // this, picking post-test after pre-test would silently keep
+                // unlimited retakes on the test that decides who passes.
+                unlimited_attempts: null,
               })
             }
             className={field}
@@ -1412,12 +1419,14 @@ export default function CourseAssessmentsManager({
                       <label className={fieldLabel}>Assessment type</label>
                       <select
                         value={editForm.type}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                          const type = event.target.value as AssessmentType;
                           setEditForm({
                             ...editForm,
-                            type: event.target.value as AssessmentType,
-                          })
-                        }
+                            type,
+                            unlimited_attempts: type === "PRE_TEST",
+                          });
+                        }}
                         className={field}
                       >
                         <option value="PRE_TEST">Pre-Test</option>
