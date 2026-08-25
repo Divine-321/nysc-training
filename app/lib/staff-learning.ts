@@ -490,17 +490,50 @@ async function loadModulesForCourse(courseId: number) {
   }
 }
 
-export async function loadStaffCourses() {
-  const [enrollmentPayload, cohortCoursePayload] =
-    await Promise.all([
-      getJson("/api/training/enrollments"),
-      // page_size matters: the proxy defaults to 20, and a staff member
-      // enrolled on the 21st programme would not find theirs in the reply.
-      getJson("/api/training/programmes?page_size=100"),
-    ]);
+/**
+ * The programmes behind a set of enrolments, fetched one by one.
+ *
+ * This used to read the whole programmes list with `page_size=100` and pick
+ * from it. Two problems with that: it downloads every programme NYSC has ever
+ * run to find the two or three a person is on, and it silently stops working
+ * past a hundred of them — a programme off the end of that page left its
+ * course on screen with no modules inside it, which reads as missing content
+ * rather than a bug.
+ *
+ * A staff member has a handful of enrolments, so fetching each programme by
+ * id is both smaller and has no ceiling. A programme that fails to load is
+ * skipped: the enrolment carries `programme_title`, so the course is still
+ * named, exactly as it is for one whose programme was deleted.
+ */
+async function loadProgrammesById(ids: number[]): Promise<Programme[]> {
+  const settled = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        return readApiItem<Programme>(
+          await getJson(`/api/training/programmes/${id}`),
+        );
+      } catch {
+        return null;
+      }
+    }),
+  );
 
+  return settled.filter((programme): programme is Programme => !!programme);
+}
+
+export async function loadStaffCourses() {
+  const enrollmentPayload = await getJson("/api/training/enrollments");
   const enrollments = readEnrollments(enrollmentPayload);
-  const cohortCourses = readApiList<Programme>(cohortCoursePayload);
+
+  const programmeIds = Array.from(
+    new Set(
+      enrollments
+        .map((enrollment) => enrollment.programme ?? enrollment.cohort_course)
+        .filter((id): id is number => typeof id === "number"),
+    ),
+  );
+
+  const cohortCourses = await loadProgrammesById(programmeIds);
 
   // Legacy fallback only: fetch modules per course when the payload predates
   // the reusable-modules restructure (no assigned_modules embedded).
@@ -701,11 +734,29 @@ export async function loadAssessments(courseId: number) {
 }
 
 export async function loadLiveSessionsForCourse(cohortCourseIds: number[]) {
-  const payload = await getJson("/api/training/live-sessions");
   const allowedIds = new Set(cohortCourseIds);
 
-  return readApiList<LiveSession>(payload)
+  // One request per programme instead of the whole schedule. The parameter is
+  // `programme_id` here — every other endpoint takes the bare name, and
+  // sending `programme` would be accepted and quietly ignored, handing back
+  // every session NYSC has scheduled.
+  const settled = await Promise.all(
+    cohortCourseIds.map(async (id) => {
+      try {
+        return readApiList<LiveSession>(
+          await getJson(`/api/training/live-sessions?programme_id=${id}`),
+        );
+      } catch {
+        return [];
+      }
+    }),
+  );
+
+  return settled
+    .flat()
     .map(normalizeLiveSession)
+    // Re-checked rather than trusted: a staff member must never be shown
+    // another cohort's sessions if the filter is ever ignored.
     .filter((session) => allowedIds.has(session.cohort_course));
 }
 
