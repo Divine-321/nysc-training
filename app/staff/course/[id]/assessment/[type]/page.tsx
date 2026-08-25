@@ -592,10 +592,20 @@ export default function AssessmentPage() {
         }
         setProctoring(null);
         setExamPhase("intro");
-        setError(
+
+        const raw =
           startError instanceof Error
             ? startError.message
-            : "Could not start this assessment.",
+            : "Could not start this assessment.";
+
+        // "Maximum attempts (0) reached" means the assessment was saved with
+        // a limit of zero — the old admin convention for "unlimited", which
+        // the backend enforces literally. Nobody can ever sit it, so telling
+        // the learner they are out of attempts is both wrong and unhelpful.
+        setError(
+          /maximum attempts \(0\)/i.test(raw)
+            ? "This assessment is set to zero attempts, so it cannot be started. Please ask your administrator to set an attempt limit for it."
+            : raw,
         );
         return;
       }
