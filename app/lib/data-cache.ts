@@ -80,6 +80,30 @@ export function invalidate(match?: string) {
  * Returns a real Response, so calling code keeps reading `.ok`, `.status` and
  * `.json()` exactly as before — only the word `fetch` changes at the call site.
  */
+/**
+ * One GET, retried once if the server errors.
+ *
+ * The backend intermittently answers 5xx after about eleven seconds — a
+ * timeout rather than a refusal, and the same request usually succeeds
+ * straight after. Untreated that surfaces as "Course not available" on a
+ * course that is perfectly fine, where the user's own fix is to reload, which
+ * is what this does for them.
+ *
+ * Only server errors: a 401 must reach the caller so the session can refresh,
+ * and a 404 is an answer rather than a failure. Only once, so a backend that
+ * is genuinely down costs one extra wait rather than a storm of requests.
+ * Safe to repeat because this only ever issues GETs.
+ */
+async function fetchOnceRetried(url: string): Promise<Response> {
+  const response = await fetch(url, { cache: "no-store" });
+
+  if (response.status >= 500) {
+    return fetch(url, { cache: "no-store" });
+  }
+
+  return response;
+}
+
 export async function cachedFetch(
   url: string,
   options: { ttlMs?: number; staleMs?: number } = {},
@@ -90,7 +114,7 @@ export async function cachedFetch(
   // No cache on the server: the map would be module-level state shared by
   // every visitor, which is one user seeing another user's data.
   if (typeof window === "undefined") {
-    return fetch(url, { cache: "no-store" });
+    return fetchOnceRetried(url);
   }
 
   const load = () => {
@@ -98,7 +122,8 @@ export async function cachedFetch(
     if (pending) return pending;
 
     const request = (async (): Promise<CacheEntry> => {
-      const response = await fetch(url, { cache: "no-store" });
+      const response = await fetchOnceRetried(url);
+
       const entry: CacheEntry = {
         at: Date.now(),
         status: response.status,
@@ -175,16 +200,14 @@ export async function cachedFetchAll(
   const pageUrl = (page: number) =>
     `${url}${joiner}page=${page}&page_size=${pageSize}`;
 
-  let first = await cachedFetch(pageUrl(1), cacheOptions);
-
-  // Not every endpoint accepts page/page_size — a custom list view can reject
-  // them or fail outright. Retry once bare so adding pagination can never take
-  // away an endpoint that worked before, then hand back whatever comes.
-  if (!first.ok) {
-    const bare = await cachedFetch(url, cacheOptions);
-    if (!bare.ok) return bare;
-    first = bare;
-  }
+  // Only ever called for endpoints the API schema shows accept page and
+  // page_size. There used to be a retry here that dropped the parameters when
+  // the first attempt failed, guarding against endpoints that reject them —
+  // but the guess was the wrong fix. The endpoints that reject them are known,
+  // and they call cachedFetch instead. All the retry did was ask twice on a
+  // 401, delaying the session refresh that a 401 exists to trigger.
+  const first = await cachedFetch(pageUrl(1), cacheOptions);
+  if (!first.ok) return first;
 
   const firstPayload = await first.clone().json().catch(() => null);
   const results = readListPage(firstPayload);

@@ -31,6 +31,7 @@ import RichTextViewer from "@/app/components/RichTextViewer";
 import {
   documentIsComplete,
   attemptsForEnrollment,
+  flagIsTrue,
   loadAssessmentAttempts,
   loadAssessments,
   loadLiveSessionsForCourse,
@@ -201,6 +202,45 @@ function itemTitle(item: PlayerItem) {
   if (item.kind === "live") return item.session.title || "Live Session";
   if (item.kind === "evaluation") return "Course Evaluation";
   return item.doc.title;
+}
+
+/**
+ * Why the programme is not at 100% yet, in terms a learner can act on.
+ *
+ * Live sessions count towards completion but are not part of any module's
+ * progress bar, and a session covering the whole training appears outside the
+ * module list entirely. So a learner can finish every module, see 100% on
+ * each, and be refused with nothing on screen to explain it.
+ *
+ * Naming the sessions is the useful part; when none are outstanding the
+ * generic wording is still better than the backend's, which mentions a
+ * percentage the learner cannot see anywhere.
+ */
+function describeMissingCompletion(sessions: LiveSession[]) {
+  const unattended = sessions.filter(
+    (session) =>
+      !flagIsTrue(session.has_joined) && session.status !== "CANCELLED",
+  );
+
+  if (unattended.length === 0) {
+    return "This course is not quite complete yet. Work back through the modules — an activity or a post-assessment is still outstanding.";
+  }
+
+  const names = unattended
+    .map((session) => session.title?.trim() || "a live session")
+    .join(", ");
+
+  // Where to go matters as much as what is missing. A session covering the
+  // whole training is not shown in this player at all — it lives on the
+  // course page — so "join it" without saying where leaves the learner
+  // looking for something that is not here.
+  const where = unattended.some((session) => session.module == null)
+    ? " You will find it on the course page, under “Live sessions for this training”."
+    : "";
+
+  return unattended.length === 1
+    ? `You still need to join the live session “${names}” — attending it counts towards completing this course.${where}`
+    : `You still need to join these live sessions: ${names}. Attending them counts towards completing this course.${where}`;
 }
 
 function DocumentContent({
@@ -854,8 +894,20 @@ function CoursePlayer() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
+        const raw = extractErrorMessage(
+          payload,
+          "Could not submit your evaluation.",
+        );
+
+        // The backend refuses an evaluation until the programme is at 100%,
+        // and says only that. A learner reading it has usually finished every
+        // module and has no idea what is missing — most often a live session,
+        // which counts towards completion but sits outside the module list,
+        // so nothing on screen shows it as outstanding.
         throw new Error(
-          extractErrorMessage(payload, "Could not submit your evaluation."),
+          /100%|100 %|completed before/i.test(raw)
+            ? describeMissingCompletion(liveSessions)
+            : raw,
         );
       }
 

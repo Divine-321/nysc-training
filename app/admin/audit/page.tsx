@@ -7,7 +7,7 @@ import {
   readApiList,
 } from "@/app/lib/portal-api";
 import { formatDateTime } from "@/app/lib/format";
-import { cachedFetchAll } from "@/app/lib/data-cache";
+import { cachedFetch } from "@/app/lib/data-cache";
 
 type AuditLog = {
   id: number;
@@ -67,7 +67,7 @@ export default function AuditTrailPage() {
   useEffect(() => {
     const loadLogs = async () => {
       try {
-        const response = await cachedFetchAll("/api/audit");
+        const response = await cachedFetch("/api/audit");
 
         const payload = await response.json().catch(() => null);
 

@@ -23,7 +23,7 @@ import {
   type AuthUser,
 } from "@/app/lib/portal-api";
 import AuthGuard from "@/app/components/AuthGuard";
-import { cachedFetch, cachedFetchAll } from "@/app/lib/data-cache";
+import { cachedFetch } from "@/app/lib/data-cache";
 import SupportContacts from "@/app/components/SupportContacts";
 
 type Notification = {
@@ -253,7 +253,7 @@ export default function StaffLayout({
     setLoadingNotifications(true);
 
     try {
-      const response = await cachedFetchAll("/api/notifications");
+      const response = await cachedFetch("/api/notifications");
 
       if (!response.ok) return;
 
