@@ -1,5 +1,7 @@
 "use client";
 
+import { UNLIMITED_ATTEMPTS } from "@/app/lib/training-types";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -270,10 +272,14 @@ export default function AssessmentPage() {
     void fetchData();
   }, [assessmentType, courseId, refreshAttempts]);
 
-  // Attempt accounting. max_attempts of null/0 means unlimited.
+  // Attempt accounting. null and 0 both mean unlimited, and so does anything
+  // at or above the figure the admin form saves for "unlimited retakes" — the
+  // backend cannot store unlimited, so it is written as a number nobody
+  // reaches. "Attempt 1 of 999" would be worse than showing no limit at all.
+  const storedAttempts = assessment?.max_attempts ?? 0;
   const maxAttempts =
-    assessment?.max_attempts && assessment.max_attempts > 0
-      ? assessment.max_attempts
+    storedAttempts > 0 && storedAttempts < UNLIMITED_ATTEMPTS
+      ? storedAttempts
       : null;
   const attemptsUsed = attempts.length;
   const attemptsRemaining =

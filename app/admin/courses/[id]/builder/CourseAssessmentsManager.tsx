@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
+import { UNLIMITED_ATTEMPTS } from "@/app/lib/training-types";
 import {
   Check,
   ClipboardList,
@@ -277,7 +278,7 @@ export default function CourseAssessmentsManager({
           // null, not 0: the backend reads 0 as "zero attempts allowed"
           // and refuses every start with "Maximum attempts (0) reached".
           max_attempts: unlimitedAttempts
-            ? null
+            ? UNLIMITED_ATTEMPTS
             : Math.max(1, Number(form.max_attempts) || 1),
           duration: Number(form.duration) || 30,
           shuffle_questions: form.shuffle_questions,
@@ -611,7 +612,9 @@ export default function CourseAssessmentsManager({
       // A stored 0 was the old "unlimited" convention, which the backend
       // enforces literally. Treat it as unlimited here so re-saving clears it.
       max_attempts: String(assessment.max_attempts || 1),
-      unlimited_attempts: !assessment.max_attempts,
+      unlimited_attempts:
+        !assessment.max_attempts ||
+        assessment.max_attempts >= UNLIMITED_ATTEMPTS,
       duration: String(assessment.duration ?? 30),
       shuffle_questions: assessment.shuffle_questions ?? true,
       shuffle_options: assessment.shuffle_options ?? true,
@@ -636,7 +639,7 @@ export default function CourseAssessmentsManager({
             title: editForm.title.trim(),
             pass_mark: editForm.pass_mark,
             max_attempts: editForm.unlimited_attempts
-              ? null
+              ? UNLIMITED_ATTEMPTS
               : Math.max(1, Number(editForm.max_attempts) || 1),
             duration: Number(editForm.duration) || 30,
             shuffle_questions: editForm.shuffle_questions,
@@ -1061,7 +1064,8 @@ export default function CourseAssessmentsManager({
                       </span>
                       <span className="inline-flex items-center gap-1.5">
                         <RotateCcw size={13} className="text-gray-400" />
-                        {assessment.max_attempts
+                        {assessment.max_attempts &&
+                        assessment.max_attempts < UNLIMITED_ATTEMPTS
                           ? `${assessment.max_attempts} attempt${
                               assessment.max_attempts === 1 ? "" : "s"
                             }`
