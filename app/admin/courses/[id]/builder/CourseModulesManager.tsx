@@ -20,6 +20,7 @@ import {
   MinusCircle,
   Pencil,
   Plus,
+  Search,
   Trash2,
 } from "lucide-react";
 import {
@@ -70,6 +71,7 @@ export default function CourseModulesManager({
   const [assigned, setAssigned] = useState<CourseModuleLink[]>([]);
   const [library, setLibrary] = useState<LibraryModule[]>([]);
   const [selectedAttachId, setSelectedAttachId] = useState("");
+  const [attachSearch, setAttachSearch] = useState("");
   const [attaching, setAttaching] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -134,6 +136,25 @@ export default function CourseModulesManager({
   const availableModules = library.filter(
     (module) => !assignedModuleIds.includes(module.id),
   );
+
+  // Narrowed by the search box. Module titles here run to a full sentence, so
+  // a plain dropdown of them is unreadable once the library has more than a
+  // handful.
+  const attachQuery = attachSearch.trim().toLowerCase();
+  const matchingModules = attachQuery
+    ? availableModules.filter((module) =>
+        module.title.toLowerCase().includes(attachQuery),
+      )
+    : availableModules;
+
+  // A selection the search has since hidden must not stay armed: the button
+  // would attach a module the admin can no longer see. Derived rather than
+  // cleared in an effect, so there is no render where the two disagree.
+  const attachId = matchingModules.some(
+    (module) => String(module.id) === selectedAttachId,
+  )
+    ? selectedAttachId
+    : "";
 
   /** Replaces the course's ordered module list on the backend. */
   const saveAssignments = async (moduleIds: number[]) => {
@@ -229,9 +250,9 @@ export default function CourseModulesManager({
   // Attaches a library module to this course (non-destructive — the module
   // stays available to every other course).
   const handleAttachModule = async () => {
-    const moduleId = Number(selectedAttachId);
+    const moduleId = Number(attachId);
 
-    if (!Number.isFinite(moduleId) || !selectedAttachId) return;
+    if (!Number.isFinite(moduleId) || !attachId) return;
 
     setAttaching(true);
     setError("");
@@ -441,23 +462,44 @@ export default function CourseModulesManager({
               </p>
             </div>
 
+            <div className="relative">
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                type="search"
+                value={attachSearch}
+                onChange={(event) => setAttachSearch(event.target.value)}
+                placeholder="Search the library..."
+                className={`${field} pl-9`}
+              />
+            </div>
+
             <select
-              value={selectedAttachId}
+              value={attachId}
               onChange={(event) => setSelectedAttachId(event.target.value)}
-              className={field}
+              size={Math.min(Math.max(matchingModules.length + 1, 3), 8)}
+              className={`${field} h-auto py-1`}
             >
               <option value="">Select a module to attach</option>
-              {availableModules.map((module) => (
+              {matchingModules.map((module) => (
                 <option key={module.id} value={module.id}>
                   {module.title} ({moduleActivities(module).length} item(s))
                 </option>
               ))}
             </select>
 
+            {attachQuery && matchingModules.length === 0 && (
+              <p className="text-xs text-gray-500">
+                No library module matches &ldquo;{attachSearch.trim()}&rdquo;.
+              </p>
+            )}
+
             <button
               type="button"
               onClick={handleAttachModule}
-              disabled={!selectedAttachId || attaching}
+              disabled={!attachId || attaching}
               className={`w-full ${btn.secondary}`}
             >
               {attaching ? "Attaching..." : "Attach to course"}
