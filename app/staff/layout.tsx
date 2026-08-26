@@ -171,7 +171,19 @@ export default function StaffLayout({
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const res = await cachedFetch("/api/accounts/me");
+        // Both at once. The enrolments URL carries nothing from the profile —
+        // the backend scopes it to whoever holds the token — so waiting for
+        // one before asking for the other spent a whole round trip, roughly
+        // 600ms against this backend, on every page a staff member opens.
+        //
+        // Cohort membership comes from enrolments: staff are enrolled on a
+        // programme, and the cohort is part of that programme. The old
+        // cohort-staff endpoint this used to try first no longer exists, so
+        // asking for it only bought a guaranteed 404 before this ran anyway.
+        const [res, enrollmentResponse] = await Promise.all([
+          cachedFetch("/api/accounts/me"),
+          cachedFetch("/api/training/enrollments"),
+        ]);
 
         if (!res.ok) {
           setUser(null);
@@ -182,25 +194,15 @@ export default function StaffLayout({
         const currentUser = payload?.data as AuthUser | null;
         setUser(currentUser);
 
-        if (currentUser) {
-          // Cohort membership comes from enrolments: staff are enrolled on a
-          // programme, and the cohort is part of that programme. The old
-          // cohort-staff endpoint this used to try first no longer exists, so
-          // asking for it only bought a guaranteed 404 before this ran anyway.
-          const enrollmentResponse = await cachedFetch(
-            "/api/training/enrollments",
-          );
+        if (currentUser && enrollmentResponse.ok) {
+          const enrollmentPayload = await enrollmentResponse
+            .json()
+            .catch(() => null);
+          const cohortNames = readApiList<CourseEnrollment>(enrollmentPayload)
+            .map((enrollment) => enrollment.cohort_name)
+            .filter((name): name is string => Boolean(name));
 
-          if (enrollmentResponse.ok) {
-            const enrollmentPayload = await enrollmentResponse
-              .json()
-              .catch(() => null);
-            const cohortNames = readApiList<CourseEnrollment>(enrollmentPayload)
-              .map((enrollment) => enrollment.cohort_name)
-              .filter((name): name is string => Boolean(name));
-
-            setUserCohorts([...new Set(cohortNames)]);
-          }
+          setUserCohorts([...new Set(cohortNames)]);
         }
       } catch {
         setUser(null);

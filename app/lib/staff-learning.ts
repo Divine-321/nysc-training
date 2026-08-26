@@ -522,8 +522,17 @@ async function loadProgrammesById(ids: number[]): Promise<Programme[]> {
 }
 
 export async function loadStaffCourses() {
-  const enrollmentPayload = await getJson("/api/training/enrollments");
+  // Both at once. Every request to this backend costs about 600ms before it
+  // does any work, so a second round trip is far more expensive than a larger
+  // reply — waiting for the enrolments before asking for programmes would
+  // double what a staff member waits for their dashboard.
+  const [enrollmentPayload, cohortCoursePayload] = await Promise.all([
+    getJson("/api/training/enrollments"),
+    getJson("/api/training/programmes?page_size=100"),
+  ]);
+
   const enrollments = readEnrollments(enrollmentPayload);
+  const listed = readApiList<Programme>(cohortCoursePayload);
 
   const programmeIds = Array.from(
     new Set(
@@ -533,7 +542,17 @@ export async function loadStaffCourses() {
     ),
   );
 
-  const cohortCourses = await loadProgrammesById(programmeIds);
+  // A hundred is the largest page the backend serves, and NYSC will pass that
+  // — roughly one programme per course per cohort. Anything of this staff
+  // member's that fell off the end is fetched by id, so the common case stays
+  // at one round trip and the rare case stays correct rather than showing a
+  // course with no modules in it.
+  const listedIds = new Set(listed.map((programme) => programme.id));
+  const missing = programmeIds.filter((id) => !listedIds.has(id));
+
+  const cohortCourses = missing.length
+    ? [...listed, ...(await loadProgrammesById(missing))]
+    : listed;
 
   // Legacy fallback only: fetch modules per course when the payload predates
   // the reusable-modules restructure (no assigned_modules embedded).
