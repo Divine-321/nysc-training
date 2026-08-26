@@ -1549,6 +1549,10 @@ export default function AdminUsersPage() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => {
+              // This modal can enrol a whole department, so it needs the
+              // organisation lists too — without this its department picker
+              // opens empty and there is nothing to choose.
+              ensureOrgOptions();
               setAssignmentError("");
               setFileError("");
               setShowAssignmentModal(true);
