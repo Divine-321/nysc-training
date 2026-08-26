@@ -265,7 +265,8 @@ export type Assessment = {
   title: string;
   description: string | null;
   pass_mark: string;
-  /** Null/0 means unlimited attempts (restructure, 2026-07-10). */
+  /** A real limit. 0 is refused by the backend on every start, and null
+   * only appears on records saved before that was enforced. */
   max_attempts: number | null;
   /** Duration in minutes (reusable-modules backend, 2026-07-12). */
   duration?: number;

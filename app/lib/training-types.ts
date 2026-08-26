@@ -262,16 +262,3 @@ export type ProctoringFrameResult = {
   eventsDetected: ProctoringEventType[];
   message: string;
 };
-
-/**
- * What "unlimited retakes" is stored as.
- *
- * The backend has no way to say unlimited: max_attempts is a plain integer,
- * null is rejected outright, and 0 is enforced literally — an assessment saved
- * with 0 refuses every start, so nobody can sit it at all.
- *
- * A number nobody will reach is the only option left. It is a workaround, not
- * a convention worth keeping: if the backend gains real support for unlimited,
- * this and both of its readers should go.
- */
-export const UNLIMITED_ATTEMPTS = 999;

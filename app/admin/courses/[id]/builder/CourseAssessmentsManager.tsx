@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { UNLIMITED_ATTEMPTS } from "@/app/lib/training-types";
 import {
   Check,
   ClipboardList,
@@ -66,8 +65,6 @@ type Assessment = {
   description: string | null;
   pass_mark: string;
   max_attempts: number;
-  /** null = follow the default for the chosen type. */
-  unlimited_attempts: boolean | null;
   duration?: number;
   /** Per-attempt server-side shuffling (deployed 2026-07-14). */
   shuffle_questions?: boolean;
@@ -85,8 +82,9 @@ const emptyForm = {
   type: "PRE_TEST" as AssessmentType,
   title: "",
   pass_mark: "50.00",
-  max_attempts: "1",
-  unlimited_attempts: null as boolean | null,
+  // Blank so the field shows the chosen type's default as its
+  // placeholder. A number here would override that default silently.
+  max_attempts: "",
   duration: "30",
   // Shuffle by default — the whole point is exam integrity. Admins can
   // untick for sequential question sets.
@@ -253,13 +251,6 @@ export default function CourseAssessmentsManager({
         : "PRE_TEST"
       : form.type;
 
-  // A pre-test measures what someone knows before the module — capping it
-  // teaches nothing and only locks people out, so it is unlimited unless the
-  // admin says otherwise. null means "not chosen", so switching type moves
-  // the default with it instead of sticking at the first type's.
-  const unlimitedAttempts =
-    form.unlimited_attempts ?? selectedType === "PRE_TEST";
-
   const handleCreate = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
@@ -277,9 +268,9 @@ export default function CourseAssessmentsManager({
           pass_mark: form.pass_mark,
           // null, not 0: the backend reads 0 as "zero attempts allowed"
           // and refuses every start with "Maximum attempts (0) reached".
-          max_attempts: unlimitedAttempts
-            ? UNLIMITED_ATTEMPTS
-            : Math.max(1, Number(form.max_attempts) || 1),
+          // Floored at one: `min` only constrains the stepper, and a 0 is
+          // stored literally and refuses every start.
+          max_attempts: Math.max(1, Number(form.max_attempts) || 1),
           duration: Number(form.duration) || 30,
           shuffle_questions: form.shuffle_questions,
           shuffle_options: form.shuffle_options,
@@ -609,12 +600,12 @@ export default function CourseAssessmentsManager({
       type: assessment.type,
       title: assessment.title,
       pass_mark: assessment.pass_mark ?? "50.00",
-      // A stored 0 was the old "unlimited" convention, which the backend
-      // enforces literally. Treat it as unlimited here so re-saving clears it.
-      max_attempts: String(assessment.max_attempts || 1),
-      unlimited_attempts:
-        !assessment.max_attempts ||
-        assessment.max_attempts >= UNLIMITED_ATTEMPTS,
+      // A stored 0 was an old convention for "unlimited" that the backend
+      // enforces literally, locking every learner out. Left blank so it has
+      // to be filled in rather than saved back unchanged.
+      max_attempts: assessment.max_attempts
+        ? String(assessment.max_attempts)
+        : "",
       duration: String(assessment.duration ?? 30),
       shuffle_questions: assessment.shuffle_questions ?? true,
       shuffle_options: assessment.shuffle_options ?? true,
@@ -638,9 +629,7 @@ export default function CourseAssessmentsManager({
             type: editForm.type,
             title: editForm.title.trim(),
             pass_mark: editForm.pass_mark,
-            max_attempts: editForm.unlimited_attempts
-              ? UNLIMITED_ATTEMPTS
-              : Math.max(1, Number(editForm.max_attempts) || 1),
+            max_attempts: Math.max(1, Number(editForm.max_attempts) || 1),
             duration: Number(editForm.duration) || 30,
             shuffle_questions: editForm.shuffle_questions,
             shuffle_options: editForm.shuffle_options,
@@ -845,11 +834,9 @@ export default function CourseAssessmentsManager({
               setForm({
                 ...form,
                 type: event.target.value as AssessmentType,
-                // Back to "not chosen", so the new type's own default applies:
-                // unlimited for a pre-test, limited for a post-test. Without
-                // this, picking post-test after pre-test would silently keep
-                // unlimited retakes on the test that decides who passes.
-                unlimited_attempts: null,
+                // Cleared, so a limit chosen for a pre-test is never
+                // carried onto the test that decides who passes.
+                max_attempts: "",
               })
             }
             className={field}
@@ -905,31 +892,15 @@ export default function CourseAssessmentsManager({
             Max attempts
           </label>
           <input
-            required={!unlimitedAttempts}
-            disabled={unlimitedAttempts}
+            required
             type="number"
             min="1"
-            value={unlimitedAttempts ? "" : form.max_attempts}
-            placeholder={unlimitedAttempts ? "Unlimited" : ""}
+            value={form.max_attempts}
             onChange={(event) =>
               setForm({ ...form, max_attempts: event.target.value })
             }
-            className={`${field} disabled:bg-gray-50 disabled:text-gray-400`}
+            className={field}
           />
-          <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
-            <input
-              type="checkbox"
-              checked={unlimitedAttempts}
-              onChange={(event) =>
-                setForm({
-                  ...form,
-                  unlimited_attempts: event.target.checked,
-                })
-              }
-              className="h-4 w-4 rounded border-gray-300 accent-[#1a6b3c]"
-            />
-            Unlimited retakes
-          </label>
         </div>
 
         <div>
@@ -1064,12 +1035,11 @@ export default function CourseAssessmentsManager({
                       </span>
                       <span className="inline-flex items-center gap-1.5">
                         <RotateCcw size={13} className="text-gray-400" />
-                        {assessment.max_attempts &&
-                        assessment.max_attempts < UNLIMITED_ATTEMPTS
+                        {assessment.max_attempts
                           ? `${assessment.max_attempts} attempt${
                               assessment.max_attempts === 1 ? "" : "s"
                             }`
-                          : "Unlimited attempts"}
+                          : "No attempt limit set"}
                       </span>
                       {assessment.duration ? (
                         <span className="inline-flex items-center gap-1.5">
@@ -1425,11 +1395,7 @@ export default function CourseAssessmentsManager({
                         value={editForm.type}
                         onChange={(event) => {
                           const type = event.target.value as AssessmentType;
-                          setEditForm({
-                            ...editForm,
-                            type,
-                            unlimited_attempts: type === "PRE_TEST",
-                          });
+                          setEditForm({ ...editForm, type, max_attempts: "" });
                         }}
                         className={field}
                       >
@@ -1472,40 +1438,18 @@ export default function CourseAssessmentsManager({
                     <div>
                       <label className={fieldLabel}>Max attempts</label>
                       <input
-                        required={!editForm.unlimited_attempts}
-                        disabled={!!editForm.unlimited_attempts}
+                        required
                         type="number"
                         min="1"
-                        value={
-                          editForm.unlimited_attempts
-                            ? ""
-                            : editForm.max_attempts
-                        }
-                        placeholder={
-                          editForm.unlimited_attempts ? "Unlimited" : ""
-                        }
+                        value={editForm.max_attempts}
                         onChange={(event) =>
                           setEditForm({
                             ...editForm,
                             max_attempts: event.target.value,
                           })
                         }
-                        className={`${field} disabled:bg-gray-50 disabled:text-gray-400`}
+                        className={field}
                       />
-                      <label className="mt-2 inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-gray-700">
-                        <input
-                          type="checkbox"
-                          checked={!!editForm.unlimited_attempts}
-                          onChange={(event) =>
-                            setEditForm({
-                              ...editForm,
-                              unlimited_attempts: event.target.checked,
-                            })
-                          }
-                          className="h-4 w-4 rounded border-gray-300 accent-[#1a6b3c]"
-                        />
-                        Unlimited retakes
-                      </label>
                     </div>
 
                     <div>
