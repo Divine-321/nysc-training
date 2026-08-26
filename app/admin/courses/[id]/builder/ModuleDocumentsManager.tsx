@@ -62,6 +62,13 @@ type ContentTypeConfig = {
   /** Best-effort mapping to the legacy backend doc_type. */
   docType: LegacyDocType;
   accept?: string;
+  /**
+   * Kept for labelling activities already saved as this type, but not offered
+   * when adding one. Assessments are created in the Assessments section and
+   * appear in the module flow from there — adding one here was a second route
+   * to the same thing that only produced an activity pointing at nothing.
+   */
+  retired?: boolean;
 };
 
 const CONTENT_TYPES: ContentTypeConfig[] = [
@@ -71,7 +78,7 @@ const CONTENT_TYPES: ContentTypeConfig[] = [
   { value: "AUDIO", label: "Audio", input: "upload", docType: "OTHER", accept: "audio/*" },
   { value: "EXTERNAL", label: "External Link", input: "url", docType: "OTHER" },
   { value: "TEXT", label: "Text lesson", input: "text", docType: "OTHER" },
-  { value: "ASSESSMENT", label: "Assessment", input: "assessment", docType: "OTHER" },
+  { value: "ASSESSMENT", label: "Assessment", input: "assessment", docType: "OTHER", retired: true },
 ];
 
 function configFor(type: ActivityContentType): ContentTypeConfig {
@@ -523,7 +530,7 @@ export default function ModuleActivitiesManager({
           }}
           className={field}
         >
-          {CONTENT_TYPES.map((option) => (
+          {CONTENT_TYPES.filter((option) => !option.retired).map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>

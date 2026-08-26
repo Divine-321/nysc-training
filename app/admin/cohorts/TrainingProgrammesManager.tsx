@@ -1482,7 +1482,14 @@ export default function TrainingProgrammesManager() {
                     className="w-full rounded-lg border px-4 py-2.5 text-sm"
                   >
                     <option value="">
-                      Select the module this session covers…
+                      Select what this session covers…
+                    </option>
+                    {/* Saved as module: null. The form already understood
+                        "general" — editing such a session set it — but the
+                        option was never offered, so it could be read back and
+                        not chosen. */}
+                    <option value="general">
+                      The whole training (not one module)
                     </option>
                     {sessionModuleOptions.map((option) => (
                       <option key={option.id} value={option.id}>
@@ -1491,8 +1498,9 @@ export default function TrainingProgrammesManager() {
                     ))}
                   </select>
                   <p className="mt-1 text-xs text-gray-500">
-                    Each module of the course should have its own live
-                    session.
+                    Each module can have its own session. Pick the whole
+                    training for anything that is not about one module — an
+                    opening address, a closing ceremony.
                   </p>
                 </div>
               ) : (
