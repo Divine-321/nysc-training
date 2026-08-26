@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { readApiList } from "@/app/lib/portal-api";
-import { LONG_TTL_MS, cachedFetch, cachedFetchAll } from "@/app/lib/data-cache";
+import { LONG_TTL_MS, cachedFetch } from "@/app/lib/data-cache";
 
 const ranks = [
   "ACCOUNTANT I", "ACCOUNTANT II", "ADMIN OFFICER I", "ADMIN OFFICER II",
@@ -323,8 +323,8 @@ export default function BulkImportPage() {
     appendLog("Checking Locations list for department-like entries...");
 
     const [statesRes, departmentsRes] = await Promise.all([
-      cachedFetchAll("/api/organization/states", { ttlMs: LONG_TTL_MS }),
-      cachedFetchAll("/api/organization/departments", { ttlMs: LONG_TTL_MS }),
+      cachedFetch("/api/organization/states", { ttlMs: LONG_TTL_MS }),
+      cachedFetch("/api/organization/departments", { ttlMs: LONG_TTL_MS }),
     ]);
     const statesList = readList(await statesRes.json().catch(() => null));
     const departmentsList = readList(

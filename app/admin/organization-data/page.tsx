@@ -4,7 +4,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { Edit3, Plus, Trash2, Users, X } from "lucide-react";
 import { extractErrorMessage, readApiList } from "@/app/lib/portal-api";
 import { useConfirm } from "@/app/components/useConfirm";
-import { LONG_TTL_MS, cachedFetch, cachedFetchAll } from "@/app/lib/data-cache";
+import { LONG_TTL_MS, cachedFetch } from "@/app/lib/data-cache";
 
 type ResourceKey = "ranks" | "grade-levels" | "states" | "departments";
 
@@ -171,7 +171,9 @@ export default function OrganizationDataPage() {
 
   const loadItems = useCallback(async (key: ResourceKey) => {
     try {
-      const response = await cachedFetchAll(`/api/organization/${key}`, {
+      // Not paginated: the organization endpoints take no page or page_size,
+      // and postings answers 500 when sent them.
+      const response = await cachedFetch(`/api/organization/${key}`, {
         ttlMs: LONG_TTL_MS,
       });
       const payload = await response.json().catch(() => null);

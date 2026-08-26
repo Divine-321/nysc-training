@@ -450,7 +450,7 @@ export default function AdminUsersPage() {
           enrollmentsResponse,
         ] = await Promise.all([
           fetchCurrentPage(),
-          cachedFetchAll("/api/organization/postings"),
+          cachedFetch("/api/organization/postings"),
           // Staff are assigned to trainings via enrolments; the cohort name
           // comes with the programme. The legacy cohort-staff endpoint used to
           // be read alongside this one, but it was removed from the backend in
@@ -626,11 +626,11 @@ export default function AdminUsersPage() {
           ranksResponse,
           postingReasonsResponse,
         ] = await Promise.all([
-          cachedFetchAll("/api/organization/states", { ttlMs: LONG_TTL_MS }),
-          cachedFetchAll("/api/organization/departments", { ttlMs: LONG_TTL_MS }),
-          cachedFetchAll("/api/organization/grade-levels", { ttlMs: LONG_TTL_MS }),
-          cachedFetchAll("/api/organization/ranks", { ttlMs: LONG_TTL_MS }),
-          cachedFetchAll("/api/organization/posting-reasons", { ttlMs: LONG_TTL_MS }),
+          cachedFetch("/api/organization/states", { ttlMs: LONG_TTL_MS }),
+          cachedFetch("/api/organization/departments", { ttlMs: LONG_TTL_MS }),
+          cachedFetch("/api/organization/grade-levels", { ttlMs: LONG_TTL_MS }),
+          cachedFetch("/api/organization/ranks", { ttlMs: LONG_TTL_MS }),
+          cachedFetch("/api/organization/posting-reasons", { ttlMs: LONG_TTL_MS }),
         ]);
 
         const [
@@ -695,7 +695,7 @@ export default function AdminUsersPage() {
           return;
         }
 
-        const response = await cachedFetchAll("/api/training/cohorts");
+        const response = await cachedFetch("/api/training/cohorts");
         const payload = await response.json().catch(() => null);
 
         if (!response.ok) {
