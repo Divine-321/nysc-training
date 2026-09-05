@@ -250,12 +250,14 @@ const [formData, setFormData] = useState(emptyProfileData);
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Photo, Name, Rank & Status */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col items-center text-center">
-          <div className="w-32 h-32 rounded-full border-4 border-[#f0f7f3] overflow-hidden mb-4 relative bg-gray-100 shadow-sm group">
-            <Image 
-              src={staffData.photo} 
-              alt={`${staffData.surname} Photo`} 
-              fill 
-              className="object-cover" 
+          <div className="w-40 h-40 rounded-full border-4 border-[#f0f7f3] overflow-hidden mb-4 relative bg-gray-100 shadow-sm group">
+            <Image
+              src={staffData.photo}
+              alt={`${staffData.surname} Photo`}
+              fill
+              sizes="160px"
+              quality={90}
+              className="object-cover"
             />
             {isEditing && (
               <button

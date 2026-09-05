@@ -28,6 +28,13 @@ export function dataUrlToFile(dataUrl: string, filename: string): File {
   return new File([bytes], filename, { type: mime });
 }
 
+// Unlike a proctoring frame (small, sent every few seconds during an exam),
+// this is captured once and then shown large — the profile card and the
+// header avatar — so it's worth the extra bytes of a sharper capture instead
+// of useCamera's bandwidth-optimised defaults.
+const PROFILE_PHOTO_MAX_WIDTH = 1280;
+const PROFILE_PHOTO_QUALITY = 0.92;
+
 // Profile photos must be taken live with the camera (no device uploads):
 // the registered photo is what AWS Rekognition compares exam takers against,
 // so it has to be a real capture of the account owner.
@@ -47,7 +54,10 @@ export default function CameraCaptureModal({
   }, []);
 
   const handleCapture = () => {
-    const frame = camera.captureFrame();
+    const frame = camera.captureFrame({
+      maxWidth: PROFILE_PHOTO_MAX_WIDTH,
+      quality: PROFILE_PHOTO_QUALITY,
+    });
     if (frame) setCapturedImage(frame);
   };
 

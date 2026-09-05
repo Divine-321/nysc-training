@@ -5,6 +5,8 @@ import {
   Download,
   ExternalLink,
   FileText,
+  LayoutGrid,
+  List,
   Search,
 } from "lucide-react";
 import {
@@ -12,7 +14,10 @@ import {
   readApiList,
 } from "@/app/lib/portal-api";
 import { formatDate } from "@/app/lib/format";
+import { Pagination } from "@/app/components/ui-interactive";
 import { cachedFetchAll } from "@/app/lib/data-cache";
+
+type ViewMode = "grid" | "list";
 
 type NYSCBook = {
   id: number;
@@ -26,6 +31,8 @@ type NYSCBook = {
 export default function LibraryPage() {
   const [books, setBooks] = useState<NYSCBook[]>([]);
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<ViewMode>("grid");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -73,30 +80,79 @@ export default function LibraryPage() {
     );
   }, [books, search]);
 
+  // Bounds how many cards render at once — with many staff on the portal at
+  // once, an unbounded list is exactly what makes a page like this feel slow.
+  const pageSize = view === "grid" ? 9 : 10;
+  const pageCount = Math.max(1, Math.ceil(filteredBooks.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const visibleBooks = filteredBooks.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
+
   return (
     <div className="mx-auto max-w-7xl space-y-8">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h2 className="mb-1 text-2xl font-bold text-gray-800">
-            Library & Resources
-          </h2>
-          <p className="text-sm text-gray-500">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="text-2xl font-bold text-gray-800">
+              Library & Resources
+            </h2>
+            {!loading ? (
+              <span className="rounded-full bg-[#f0f7f3] px-2.5 py-1 text-xs font-bold text-[#1a6b3c]">
+                {books.length} resource{books.length === 1 ? "" : "s"}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1 text-sm text-gray-500">
             Access official NYSC handbooks, rules, and policy documents.
           </p>
         </div>
 
-        <div className="relative w-full md:w-80">
-          <Search
-            size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          />
-          <input
-            type="text"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search library..."
-            className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative w-full md:w-80">
+            <Search
+              size={18}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Search library..."
+              className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
+            />
+          </div>
+
+          <div className="hidden shrink-0 items-center rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm sm:flex">
+            {(
+              [
+                { mode: "grid" as const, icon: LayoutGrid, label: "Grid view" },
+                { mode: "list" as const, icon: List, label: "List view" },
+              ]
+            ).map(({ mode, icon: Icon, label }) => (
+              <button
+                key={mode}
+                type="button"
+                aria-label={label}
+                aria-pressed={view === mode}
+                onClick={() => {
+                  setView(mode);
+                  setPage(1);
+                }}
+                className={`flex h-9 w-9 items-center justify-center rounded-md transition ${
+                  view === mode
+                    ? "bg-[#1a6b3c] text-white"
+                    : "text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                <Icon size={15} />
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -106,17 +162,106 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {loading ? (
-        <p className="rounded-2xl bg-white p-6 text-sm text-gray-500 shadow-sm">
-          Loading books...
+      {!loading && books.length > 0 ? (
+        <p className="-mb-4 text-xs font-medium text-gray-400">
+          Showing {visibleBooks.length} of {filteredBooks.length} resource
+          {filteredBooks.length === 1 ? "" : "s"}
         </p>
+      ) : null}
+
+      {loading ? (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"
+            >
+              <div className="h-40 w-full animate-pulse bg-gray-100" />
+              <div className="space-y-2 p-6">
+                <div className="h-4 w-24 animate-pulse rounded bg-gray-100" />
+                <div className="h-5 w-3/4 animate-pulse rounded bg-gray-100" />
+                <div className="h-4 w-full animate-pulse rounded bg-gray-100" />
+              </div>
+            </div>
+          ))}
+        </div>
       ) : filteredBooks.length === 0 ? (
         <p className="rounded-2xl bg-white p-6 text-sm text-gray-500 shadow-sm">
           No NYSC books are available yet.
         </p>
+      ) : view === "list" ? (
+        <div className="space-y-3">
+          {visibleBooks.map((book) => (
+            <div
+              key={book.id}
+              className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition hover:border-gray-200 hover:shadow-md"
+            >
+              <a
+                href={book.file_url}
+                target="_blank"
+                rel="noreferrer"
+                className="block h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-green-100 bg-[#f0f7f3]"
+                title={`Open ${book.title}`}
+              >
+                {book.cover_image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={book.cover_image_url}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-[#1a6b3c]/40">
+                    <FileText size={22} strokeWidth={1.5} />
+                  </span>
+                )}
+              </a>
+
+              <div className="min-w-0 flex-1">
+                <a
+                  href={book.file_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="truncate font-semibold text-gray-900 transition hover:text-[#1a6b3c]"
+                >
+                  {book.title}
+                </a>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                  <span className="line-clamp-1">
+                    {book.description || "Official NYSC resource document."}
+                  </span>
+                  <span className="hidden shrink-0 sm:inline">
+                    Updated {formatDate(book.uploaded_at)}
+                  </span>
+                </p>
+              </div>
+
+              <div className="flex shrink-0 items-center gap-2">
+                <a
+                  href={book.file_url}
+                  download
+                  className="rounded-lg p-2 text-gray-400 transition hover:bg-[#f0f7f3] hover:text-[#1a6b3c]"
+                  title="Download PDF"
+                >
+                  <Download size={18} />
+                </a>
+                <a
+                  href={book.file_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
+                >
+                  <ExternalLink size={16} />
+                  Read
+                </a>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredBooks.map((book) => (
+          {visibleBooks.map((book) => (
             <div
               key={book.id}
               className="group flex flex-col rounded-2xl border border-gray-100 bg-white p-6 shadow-sm transition hover:shadow-md"
@@ -127,6 +272,7 @@ export default function LibraryPage() {
                   <img
                     src={book.cover_image_url}
                     alt={`${book.title} cover`}
+                    loading="lazy"
                     className="h-full w-full object-cover"
                   />
                 ) : (
@@ -184,6 +330,14 @@ export default function LibraryPage() {
           ))}
         </div>
       )}
+
+      {!loading && filteredBooks.length > 0 ? (
+        <Pagination
+          page={currentPage}
+          pageCount={pageCount}
+          onPageChange={setPage}
+        />
+      ) : null}
     </div>
   );
 }

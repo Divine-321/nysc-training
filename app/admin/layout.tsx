@@ -64,7 +64,7 @@ const navItems = [
     superadminOnly: true,
   },
   {
-    label: "NYSC Books",
+    label: "Library & Resources",
     href: "/admin/books",
     icon: Library,
   },
@@ -238,9 +238,10 @@ export default function AdminLayout({
                 <Image
                   src={adminPhoto}
                   alt={displayName}
-                  width={36}
-                  height={36}
-                  className="rounded-full object-cover"
+                  width={60}
+                  height={60}
+                  quality={90}
+                  className="aspect-square rounded-full border-2 border-[#f0f7f3] object-cover shadow-sm"
                 />
 
                 <span className="hidden text-sm font-medium text-gray-700 sm:inline">

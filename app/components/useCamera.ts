@@ -17,6 +17,9 @@ type UseCameraOptions = {
 
 // Captured frames are downscaled before upload so periodic proctoring frames
 // stay small (~30-60 KB) instead of shipping full-resolution camera images.
+// These are only the defaults: a one-time capture shown large afterwards (a
+// profile photo, not a repeated proctoring frame) has no such bandwidth
+// pressure, so its caller passes captureFrame a bigger maxWidth/quality.
 const MAX_CAPTURE_WIDTH = 640;
 const CAPTURE_QUALITY = 0.7;
 
@@ -105,25 +108,30 @@ export function useCamera(options: UseCameraOptions = {}) {
 
   /**
    * Captures the current video frame as a base64 JPEG data URL, downscaled to
-   * keep uploads small. Returns null if the camera is not running yet.
+   * `maxWidth` at `quality` (defaults sized for frequent, bandwidth-sensitive
+   * proctoring frames). Returns null if the camera is not running yet.
    */
-  const captureFrame = useCallback((): string | null => {
-    const video = videoRef.current;
+  const captureFrame = useCallback(
+    (options: { maxWidth?: number; quality?: number } = {}): string | null => {
+      const { maxWidth = MAX_CAPTURE_WIDTH, quality = CAPTURE_QUALITY } = options;
+      const video = videoRef.current;
 
-    if (!video || !streamRef.current || video.videoWidth === 0) return null;
+      if (!video || !streamRef.current || video.videoWidth === 0) return null;
 
-    const scale = Math.min(1, MAX_CAPTURE_WIDTH / video.videoWidth);
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(video.videoWidth * scale);
-    canvas.height = Math.round(video.videoHeight * scale);
+      const scale = Math.min(1, maxWidth / video.videoWidth);
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
 
-    const context = canvas.getContext("2d");
-    if (!context) return null;
+      const context = canvas.getContext("2d");
+      if (!context) return null;
 
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    return canvas.toDataURL("image/jpeg", CAPTURE_QUALITY);
-  }, []);
+      return canvas.toDataURL("image/jpeg", quality);
+    },
+    [],
+  );
 
   useEffect(() => stop, [stop]);
 

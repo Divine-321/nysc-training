@@ -15,6 +15,7 @@ import {
   Bell,
   CheckCheck,
   Menu,
+  Settings,
   X,
 } from "lucide-react";
 import {
@@ -107,11 +108,12 @@ function normalizeStaffNotificationLink(link: string) {
 
 const navItems = [
   { label: "Dashboard", href: "/staff/dashboard", icon: LayoutDashboard },
-  { label: "NYSC Books", href: "/staff/books", icon: Library },
   { label: "Courses", href: "/staff/training", icon: BarChart2 },
+  { label: "Library & Resources", href: "/staff/books", icon: Library },
   { label: "Test/Exams", href: "/staff/cbt", icon: FileQuestion },
   { label: "Result", href: "/staff/result", icon: Monitor },
   { label: "Certifications", href: "/staff/certifications", icon: Award },
+  { label: "Settings", href: "/staff/settings", icon: Settings },
 ];
 
 const KNOWN_STAFF_ROUTES = new Set(navItems.map((item) => item.href));
@@ -471,9 +473,10 @@ export default function StaffLayout({
                 <Image
                   src={userPhoto}
                   alt={displayName}
-                  width={36}
-                  height={36}
-                  className="rounded-full object-cover"
+                  width={60}
+                  height={60}
+                  quality={90}
+                  className="aspect-square rounded-full border-2 border-[#f0f7f3] object-cover shadow-sm"
                 />
 
                 <span className="hidden text-sm font-medium text-gray-700 sm:inline">
@@ -489,14 +492,6 @@ export default function StaffLayout({
                     className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition"
                   >
                     Profile
-                  </Link>
-
-                  <Link
-                    href="/staff/settings"
-                    onClick={() => setIsProfileOpen(false)}
-                    className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-[#1a6b3c] transition"
-                  >
-                    Settings
                   </Link>
 
                   <div className="h-px bg-gray-100 my-1" />

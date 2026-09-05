@@ -12,6 +12,8 @@ import {
   ExternalLink,
   FileText,
   ImageUp,
+  LayoutGrid,
+  List,
   MoreHorizontal,
   Plus,
   Search,
@@ -24,7 +26,10 @@ import {
 import { formatDate } from "@/app/lib/format";
 import { uploadFileToCloudinary } from "@/app/lib/cloudinary-upload";
 import { useConfirm } from "@/app/components/useConfirm";
+import { Pagination } from "@/app/components/ui-interactive";
 import { cachedFetchAll } from "@/app/lib/data-cache";
+
+type ViewMode = "grid" | "list";
 
 type NYSCBook = {
   id: number;
@@ -53,6 +58,8 @@ export default function AdminBooksPage() {
   const [showForm, setShowForm] = useState(false);
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<ViewMode>("grid");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedPdf, setSelectedPdf] = useState<File | null>(null);
@@ -106,6 +113,18 @@ export default function AdminBooksPage() {
         .includes(normalizedSearch)
     );
   }, [books, search]);
+
+  // Rendering every book at once is what would make this page sluggish as the
+  // library grows — paginate instead, same as the module library and staff
+  // course list. Grid cards take more vertical space than table rows, so grid
+  // shows fewer per page.
+  const pageSize = view === "grid" ? 9 : 10;
+  const pageCount = Math.max(1, Math.ceil(filteredBooks.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const visibleBooks = filteredBooks.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
+  );
 
   const resetForm = () => {
     setForm(emptyForm);
@@ -253,9 +272,16 @@ export default function AdminBooksPage() {
     <div className="mx-auto max-w-7xl space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">
-            Manage NYSC Books
-          </h2>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="text-2xl font-bold text-gray-800">
+              Manage Library &amp; Resources
+            </h2>
+            {!loading ? (
+              <span className="rounded-full bg-[#f0f7f3] px-2.5 py-1 text-xs font-bold text-[#1a6b3c]">
+                {books.length} book{books.length === 1 ? "" : "s"}
+              </span>
+            ) : null}
+          </div>
           <p className="mt-1 text-sm text-gray-500">
             Add and manage official handbooks, acts, and rules.
           </p>
@@ -461,20 +487,153 @@ export default function AdminBooksPage() {
             <input
               type="text"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
               placeholder="Search books by title..."
               className="w-full rounded-xl border border-gray-200 py-2.5 pl-10 pr-4 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]"
             />
           </div>
+
+          <div className="flex items-center rounded-lg border border-gray-200 bg-white p-0.5 shadow-sm">
+            {(
+              [
+                { mode: "grid" as const, icon: LayoutGrid, label: "Grid view" },
+                { mode: "list" as const, icon: List, label: "List view" },
+              ]
+            ).map(({ mode, icon: Icon, label }) => (
+              <button
+                key={mode}
+                type="button"
+                aria-label={label}
+                aria-pressed={view === mode}
+                onClick={() => {
+                  setView(mode);
+                  setPage(1);
+                }}
+                className={`flex h-8 w-9 items-center justify-center rounded-md transition ${
+                  view === mode
+                    ? "bg-[#1a6b3c] text-white"
+                    : "text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                <Icon size={15} />
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {!loading && books.length > 0 ? (
+          <p className="px-5 pt-4 text-xs font-medium text-gray-400">
+            Showing {visibleBooks.length} of {filteredBooks.length} book
+            {filteredBooks.length === 1 ? "" : "s"}
+          </p>
+        ) : null}
+
+        <div className={view === "list" ? "overflow-x-auto" : "p-5"}>
           {loading ? (
-            <p className="p-6 text-sm text-gray-500">Loading books...</p>
+            view === "grid" ? (
+              <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="overflow-hidden rounded-2xl border border-gray-100"
+                  >
+                    <div className="h-36 w-full animate-pulse bg-gray-100" />
+                    <div className="space-y-2 p-4">
+                      <div className="h-4 w-3/4 animate-pulse rounded bg-gray-100" />
+                      <div className="h-3 w-full animate-pulse rounded bg-gray-100" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="p-6 text-sm text-gray-500">Loading books...</p>
+            )
           ) : filteredBooks.length === 0 ? (
             <p className="p-6 text-sm text-gray-500">
               No NYSC books found.
             </p>
+          ) : view === "grid" ? (
+            <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+              {visibleBooks.map((book) => (
+                <div
+                  key={book.id}
+                  className="group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-gray-200 hover:shadow-md"
+                >
+                  <a
+                    href={book.file_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="relative block h-36 w-full overflow-hidden bg-[#f0f7f3]"
+                    title={`Open ${book.title}`}
+                  >
+                    {book.cover_image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={book.cover_image_url}
+                        alt=""
+                        loading="lazy"
+                        className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+                      />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center text-[#1a6b3c]/40">
+                        <FileText size={34} strokeWidth={1.5} />
+                      </span>
+                    )}
+                  </a>
+
+                  <div className="flex flex-1 flex-col p-4">
+                    <a
+                      href={book.file_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="min-w-0"
+                      title={`Open ${book.title}`}
+                    >
+                      <h3 className="truncate font-semibold text-gray-900 transition group-hover:text-[#1a6b3c]">
+                        {book.title}
+                      </h3>
+                    </a>
+                    <p className="mt-1 line-clamp-2 min-h-[2.5rem] text-sm text-gray-500">
+                      {book.description || "No description"}
+                    </p>
+                    <p className="mt-2 text-xs text-gray-400">
+                      Uploaded {formatDate(book.uploaded_at)}
+                    </p>
+
+                    <div className="mt-4 flex items-center gap-1.5 border-t border-gray-100 pt-3">
+                      <a
+                        href={book.file_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-[#1a6b3c] hover:text-[#1a6b3c]"
+                      >
+                        <ExternalLink size={13} />
+                        Read
+                      </a>
+                      <button
+                        type="button"
+                        aria-label={`Edit ${book.title}`}
+                        onClick={() => startEdit(book)}
+                        className="rounded-lg border border-gray-200 p-1.5 text-gray-500 transition hover:border-[#1a6b3c] hover:text-[#1a6b3c]"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Delete ${book.title}`}
+                        onClick={() => void handleDelete(book)}
+                        className="rounded-lg border border-gray-200 p-1.5 text-gray-500 transition hover:border-red-200 hover:text-red-600"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
             <table className="w-full whitespace-nowrap text-left text-sm">
               <thead className="bg-gray-50 text-gray-500">
@@ -487,7 +646,7 @@ export default function AdminBooksPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredBooks.map((book) => (
+                {visibleBooks.map((book) => (
                   <tr key={book.id} className="transition hover:bg-gray-50">
                     <td className="px-6 py-4">
                       <a
@@ -588,6 +747,14 @@ export default function AdminBooksPage() {
           )}
         </div>
       </div>
+
+      {!loading && filteredBooks.length > 0 ? (
+        <Pagination
+          page={currentPage}
+          pageCount={pageCount}
+          onPageChange={setPage}
+        />
+      ) : null}
 
       {dialog}
     </div>
