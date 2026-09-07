@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, Eye, Info, MessageSquareText, ThumbsUp, Users } from "lucide-react";
+import { Download, Eye, MessageSquareText, ThumbsUp, Users } from "lucide-react";
+import * as XLSX from "xlsx";
 import { extractErrorMessage, readApiList, type Course } from "@/app/lib/portal-api";
 import {
   programmeBatchLabel,
@@ -172,49 +173,98 @@ export default function AdminEvaluationsPage() {
     return { yes, answered };
   }, [filtered]);
 
-  const exportCsv = () => {
-    const header = [
-      "Staff",
-      "File number",
-      "Course",
-      "Cohort",
-      "Year",
-      "Submitted",
-      ...questionColumns.map((column) => column.question),
-    ];
-    const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
-    const lines = [header.map(escape).join(",")];
-
-    for (const row of filtered) {
+  /**
+   * A real workbook, not a flat CSV: a "Responses" sheet (one row per
+   * submission — everything the old CSV export had) plus a "Question
+   * summary" sheet that tallies each choice question's answers across the
+   * currently filtered set. The tally is the thing a flat export can't give
+   * an admin without them building their own pivot table first — how many
+   * people picked each option, and what share of respondents that is.
+   */
+  const exportExcel = () => {
+    const responseRows = filtered.map((row) => {
       const answerByQuestionId = new Map(
         row.evaluations.map((answer) => [answer.question.id, answer]),
       );
 
-      const cells = [
-        row.staff_name,
-        row.file_number,
-        row.course_title,
-        row.cohort,
-        row.year != null ? String(row.year) : "",
-        row.submitted_at ? formatDateTime(row.submitted_at) : "",
-        ...questionColumns.map((column) => {
-          const answer = answerByQuestionId.get(column.id);
-          return answer ? formatEvaluationAnswer(answer) : "";
-        }),
-      ];
+      const record: Record<string, string> = {
+        Staff: row.staff_name,
+        "File number": row.file_number,
+        Course: row.course_title,
+        Cohort: row.cohort,
+        Year: row.year != null ? String(row.year) : "",
+        Submitted: row.submitted_at ? formatDateTime(row.submitted_at) : "",
+      };
 
-      lines.push(cells.map((value) => escape(String(value))).join(","));
+      for (const column of questionColumns) {
+        const answer = answerByQuestionId.get(column.id);
+        record[column.question] = answer ? formatEvaluationAnswer(answer) : "";
+      }
+
+      return record;
+    });
+
+    const summaryRows: {
+      Question: string;
+      Answer: string;
+      Count: number;
+      Share: string;
+    }[] = [];
+
+    for (const column of questionColumns) {
+      const answersForQuestion = filtered
+        .flatMap((row) => row.evaluations)
+        .filter((answer) => answer.question.id === column.id);
+
+      if (answersForQuestion.length === 0) continue;
+
+      // Open text has no fixed set of answers to tally — a count is still
+      // useful, the individual answers themselves are on the Responses sheet.
+      if (answersForQuestion[0].question.question_type === "OPEN_TEXT") {
+        summaryRows.push({
+          Question: column.question,
+          Answer: "(open text — see Responses sheet)",
+          Count: answersForQuestion.length,
+          Share: "",
+        });
+        continue;
+      }
+
+      // Tally by the option's own label, not formatEvaluationAnswer's output
+      // — that appends a MIXED question's free "Other" text, which would
+      // otherwise split what should be one "Other" count into one row per
+      // person's unique wording.
+      const counts = new Map<string, number>();
+      for (const answer of answersForQuestion) {
+        const label = answer.selected_option?.option ?? "—";
+        counts.set(label, (counts.get(label) ?? 0) + 1);
+      }
+
+      const total = answersForQuestion.length;
+      for (const [label, count] of [...counts.entries()].sort(
+        (first, second) => second[1] - first[1],
+      )) {
+        summaryRows.push({
+          Question: column.question,
+          Answer: label,
+          Count: count,
+          Share: `${Math.round((count / total) * 100)}%`,
+        });
+      }
     }
 
-    const blob = new Blob([lines.join("\n")], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "course-evaluations.csv";
-    anchor.click();
-    URL.revokeObjectURL(url);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(responseRows),
+      "Responses",
+    );
+    XLSX.utils.book_append_sheet(
+      workbook,
+      XLSX.utils.json_to_sheet(summaryRows),
+      "Question summary",
+    );
+    XLSX.writeFile(workbook, "course-evaluations.xlsx");
   };
 
   return (
@@ -226,25 +276,14 @@ export default function AdminEvaluationsPage() {
           rows.length > 0 ? (
             <button
               type="button"
-              onClick={exportCsv}
+              onClick={exportExcel}
               className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
             >
-              <Download size={16} /> Export CSV
+              <Download size={16} /> Export Excel
             </button>
           ) : undefined
         }
       />
-
-      <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-        <Info size={18} className="mt-0.5 shrink-0" />
-        <p>
-          Every response is the full 23-question survey — a 1–5 or Yes/No
-          scale, multiple-choice, and open-text questions, depending on the
-          question. Filter by course or training to narrow the list; each
-          filter change re-asks the backend rather than downloading
-          everything.
-        </p>
-      </div>
 
       {error ? (
         <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
