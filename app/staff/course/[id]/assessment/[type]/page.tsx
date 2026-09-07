@@ -25,8 +25,10 @@ import {
 } from "lucide-react";
 import {
   attemptsForEnrollment,
+  flagIsTrue,
   loadAssessmentAttempts,
   loadAssessments,
+  loadLiveSessionsForCourse,
   loadStaffCourse,
   markDocumentComplete,
   startAssessment,
@@ -35,6 +37,7 @@ import {
   type AssessmentAttempt,
   type AssessmentQuestion,
   type AssessmentResult,
+  type LiveSession,
   type ProctoringViolationOutcome,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
@@ -101,6 +104,10 @@ export default function AssessmentPage() {
 
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [staffCourse, setStaffCourse] = useState<StaffCourse | null>(null);
+  // Whole-training live sessions (no module), for nextStep below — a general
+  // session left unattended gates the evaluation, so pointing at the
+  // evaluation while one is still outstanding just lands on a locked screen.
+  const [generalSessions, setGeneralSessions] = useState<LiveSession[]>([]);
   const [examPhase, setExamPhase] = useState<ExamPhase>("intro");
   const [proctoring, setProctoring] = useState<ProctoringStartResult | null>(
     null,
@@ -245,6 +252,19 @@ export default function AssessmentPage() {
         setAssessment(selectedAssessment);
         setStaffCourse(course);
 
+        // Not awaited — this only refines where the "next step" button on
+        // the results screen points, so it shouldn't hold up showing the
+        // assessment itself.
+        if (course?.enrollment.cohort_course != null) {
+          void loadLiveSessionsForCourse([course.enrollment.cohort_course])
+            .then((sessions) =>
+              setGeneralSessions(
+                sessions.filter((session) => session.module == null),
+              ),
+            )
+            .catch(() => {});
+        }
+
         // Resume a cached attempt here rather than in an effect watching the
         // assessment: the cache key is built from the assessment id, so this
         // is the first moment it can be read, and doing it in the same pass
@@ -302,6 +322,8 @@ export default function AssessmentPage() {
         href: `/staff/course/${courseId}/learn`,
         label: "Start learning",
         hint: "The pre-test is done — the course content is next.",
+        // There's still content ahead worth the option to look back at.
+        isFinal: false,
       };
     }
 
@@ -323,6 +345,27 @@ export default function AssessmentPage() {
         href: `/staff/course/${courseId}/module/${nextModule.id}`,
         label: "Next module",
         hint: `Up next: ${nextModule.title}`,
+        isFinal: false,
+      };
+    }
+
+    // A live session covering the whole training (not one module) gates the
+    // evaluation exactly like a module-linked one gates its module — so if
+    // one is still outstanding, that's the genuine next step, not the
+    // evaluation. Its join button lives on the course overview page rather
+    // than in the module player (see CourseLiveSessions), so that's where
+    // this points.
+    const unattendedGeneralSessions = generalSessions.filter(
+      (session) =>
+        !flagIsTrue(session.has_joined) && session.status !== "CANCELLED",
+    );
+
+    if (unattendedGeneralSessions.length > 0) {
+      return {
+        href: `/staff/course/${courseId}`,
+        label: "Attend the live session",
+        hint: "A live session covering the whole training is required before the evaluation — you'll find it on the course overview page.",
+        isFinal: true,
       };
     }
 
@@ -331,6 +374,9 @@ export default function AssessmentPage() {
         href: `/staff/course/${courseId}/evaluation`,
         label: "Continue to course evaluation",
         hint: "The evaluation is the last requirement before your certificate is issued.",
+        // Nothing left to go back for — every module is done, so offering
+        // "Back to Module" here just competes with the one thing left to do.
+        isFinal: true,
       };
     }
 
@@ -338,8 +384,9 @@ export default function AssessmentPage() {
       href: "/staff/certifications",
       label: "View my certificate",
       hint: "Every requirement is complete. Certificates are issued automatically.",
+      isFinal: true,
     };
-  }, [assessmentType, courseId, staffCourse, assessment?.module]);
+  }, [assessmentType, courseId, staffCourse, assessment?.module, generalSessions]);
 
   const sortedQuestions = useMemo(() => {
     // Server-shuffled attempt order wins; the legacy sort only applies when
@@ -981,12 +1028,22 @@ export default function AssessmentPage() {
                           {nextStep.label} <ChevronRight size={18} />
                         </Link>
                       ) : null}
-                      <button
-                        onClick={() => router.back()}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-xl border-2 border-[#1a6b3c] px-6 py-3 font-semibold text-[#1a6b3c] transition hover:bg-green-50"
-                      >
-                        Back to Module
-                      </button>
+                      {/* Once the only thing left is the evaluation (or the
+                          certificate), "Back to Module" has nothing useful to
+                          offer and just competes with the one real next step —
+                          this is exactly the "two buttons, which do I press"
+                          moment right before the evaluation. Still shown for
+                          a failed attempt, a passed pre-test, or a pass with
+                          another module ahead, where going back is a real
+                          choice. */}
+                      {!(result.passed && nextStep.isFinal) && (
+                        <button
+                          onClick={() => router.back()}
+                          className="flex flex-1 items-center justify-center gap-2 rounded-xl border-2 border-[#1a6b3c] px-6 py-3 font-semibold text-[#1a6b3c] transition hover:bg-green-50"
+                        >
+                          Back to Module
+                        </button>
+                      )}
                     </div>
                     {result.passed && (
                       <p className="mt-4 text-xs text-gray-500">
