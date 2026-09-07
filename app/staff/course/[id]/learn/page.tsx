@@ -214,14 +214,12 @@ function itemTitle(item: PlayerItem) {
 /**
  * Why the programme is not at 100% yet, in terms a learner can act on.
  *
- * Live sessions count towards completion but are not part of any module's
- * progress bar, and a session covering the whole training appears outside the
- * module list entirely. So a learner can finish every module, see 100% on
- * each, and be refused with nothing on screen to explain it.
- *
- * Naming the sessions is the useful part; when none are outstanding the
- * generic wording is still better than the backend's, which mentions a
- * percentage the learner cannot see anywhere.
+ * The player itself now locks the evaluation on this same rule (see
+ * totalSteps/doneSteps), so reaching this normally means a rare edge case —
+ * session state changing between page load and submit. Kept as a fallback:
+ * the backend refuses an evaluation until 100% and says only that, and a
+ * learner reading it has usually finished every module with no idea a live
+ * session is what's still missing.
  */
 function describeMissingCompletion(sessions: LiveSession[]) {
   const unattended = sessions.filter(
@@ -237,10 +235,9 @@ function describeMissingCompletion(sessions: LiveSession[]) {
     .map((session) => session.title?.trim() || "a live session")
     .join(", ");
 
-  // Where to go matters as much as what is missing. A session covering the
-  // whole training is not shown in this player at all — it lives on the
-  // course page — so "join it" without saying where leaves the learner
-  // looking for something that is not here.
+  // Where to go matters as much as what is missing. A module-linked session
+  // is right here, in this player's timeline; a session covering the whole
+  // training only appears on the course overview page.
   const where = unattended.some((session) => session.module == null)
     ? " You will find it on the course page, under “Live sessions for this training”."
     : "";
@@ -409,6 +406,14 @@ function CoursePlayer() {
     new Set(),
   );
   const [liveSessions, setLiveSessions] = useState<LiveSession[]>([]);
+  // Whole-training sessions (session.module is null) — joined from the
+  // course overview page, not from inside a module, but still shown as an
+  // explanatory row here so a fully-checked module list doesn't leave the
+  // evaluation locked with nothing on screen saying why.
+  const generalSessions = useMemo(
+    () => liveSessions.filter((session) => session.module == null),
+    [liveSessions],
+  );
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set());
   // Playback of the item on screen, 0-1. Reset on navigation: it
   // describes what is currently open, not a per-item record.
@@ -550,6 +555,14 @@ function CoursePlayer() {
       });
     }
 
+    // General live sessions (session.module is null — the admin's "whole
+    // training" option) are NOT added here. They have their own home on the
+    // course overview page (CourseLiveSessions, rendered as its own grid
+    // card), with its own join flow already — putting them here too would
+    // just be a second, competing way to join the same session. This player
+    // still gates the evaluation on them being attended (see totalSteps
+    // below); it just doesn't render them as a step.
+
     // Course-closing evaluation — the final step after the last module.
     if (built.length > 0) {
       const last = built[built.length - 1];
@@ -608,11 +621,17 @@ function CoursePlayer() {
     return postId === undefined || passedAssessmentIds.has(postId);
   };
 
-  // Course progress is step-based — every content item PLUS each module's
-  // post-assessment — so the player agrees with the Modules page and only
-  // reaches 100% once every module (assessments included) is truly complete.
-  // (The dashboard/training cards still show the backend content-only % until
-  // B1/B3 land server-side.) Falls back to the backend value pre-hydration.
+  // Course progress is step-based — every content item, each module's
+  // post-assessment, AND every live session (module-linked or general) —
+  // so the player agrees with the Modules page and only reaches 100% once
+  // everything is truly complete, evaluation included. Live sessions used
+  // to be left out here even though the backend counts them: this player
+  // would show 100% and unlock the evaluation while an unattended session
+  // still sat right there in the timeline, only to have the submission
+  // refused server-side with describeMissingCompletion's explanation below.
+  // (The dashboard/training cards still show the backend content-only %
+  // until B1/B3 land server-side.) Falls back to the backend value
+  // pre-hydration.
   const { totalSteps, doneSteps } = useMemo(() => {
     let total = 0;
     let done = 0;
@@ -628,8 +647,28 @@ function CoursePlayer() {
         if (passedAssessmentIds.has(postId)) done += 1;
       }
     }
+
+    // Live sessions — module-linked (shown as a step in this player) and
+    // general (shown on the course overview page instead) — counted here
+    // directly from liveSessions rather than from `sections`, since a
+    // general session never appears inside any module's own item list. A
+    // cancelled session was never something to attend, so it doesn't block
+    // completion — same exemption describeMissingCompletion uses.
+    const countableSessions = liveSessions.filter(
+      (session) => session.status !== "CANCELLED",
+    );
+    total += countableSessions.length;
+    done += countableSessions.filter((session) => flagIsTrue(session.has_joined))
+      .length;
+
     return { totalSteps: total, doneSteps: done };
-  }, [sections, completedIds, postAssessmentByModule, passedAssessmentIds]);
+  }, [
+    sections,
+    completedIds,
+    postAssessmentByModule,
+    passedAssessmentIds,
+    liveSessions,
+  ]);
 
   const progress =
     totalSteps > 0
@@ -659,10 +698,44 @@ function CoursePlayer() {
   const sectionCompleted = sectionDocs.filter((item) =>
     completedIds.has(item.doc.id),
   ).length;
+  // Activities only — kept separate from the broader count below because
+  // it drives the "Module activities completed" banner right before the
+  // post-assessment gate, which must stay true there regardless of whether
+  // the post-assessment itself (or a live session) is done yet.
   const sectionProgress =
     sectionDocs.length === 0
       ? 0
       : Math.round((sectionCompleted / sectionDocs.length) * 100);
+
+  // Everything this module actually requires — activities, its
+  // post-assessment (if it has one), and any live session tied to it — all
+  // already loaded in currentSection.items, so this costs nothing extra to
+  // compute. Used for the module header's X/Y badge and progress bar, so
+  // that number agrees with the course-wide step count and the evaluation
+  // lock instead of only counting activities and calling a module "5/5"
+  // while a live session or post-assessment it still needs sits outstanding.
+  const sectionLiveItems = (currentSection?.items ?? []).filter(
+    (item): item is LiveItem =>
+      item.kind === "live" && item.session.status !== "CANCELLED",
+  );
+  const sectionPostId = currentSection
+    ? postAssessmentByModule.get(currentSection.moduleId)
+    : undefined;
+  const sectionOverallTotal =
+    sectionDocs.length +
+    sectionLiveItems.length +
+    (sectionPostId !== undefined ? 1 : 0);
+  const sectionOverallCompleted =
+    sectionCompleted +
+    sectionLiveItems.filter((item) => flagIsTrue(item.session.has_joined))
+      .length +
+    (sectionPostId !== undefined && passedAssessmentIds.has(sectionPostId)
+      ? 1
+      : 0);
+  const sectionOverallProgress =
+    sectionOverallTotal === 0
+      ? 0
+      : Math.round((sectionOverallCompleted / sectionOverallTotal) * 100);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1143,13 +1216,15 @@ function CoursePlayer() {
               <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
-                    sectionProgress >= 100 ? "bg-green-500" : "bg-[#1a6b3c]"
+                    sectionOverallProgress >= 100
+                      ? "bg-green-500"
+                      : "bg-[#1a6b3c]"
                   }`}
-                  style={{ width: `${sectionProgress}%` }}
+                  style={{ width: `${sectionOverallProgress}%` }}
                 />
               </div>
               <span className="text-[11px] font-bold text-gray-500">
-                {sectionCompleted}/{sectionDocs.length}
+                {sectionOverallCompleted}/{sectionOverallTotal}
               </span>
             </div>
 
@@ -1209,7 +1284,7 @@ function CoursePlayer() {
             This module has no learning items yet.
           </p>
         ) : (
-          (currentSection?.items ?? []).map((item, index) => {
+          (currentSection?.items ?? []).flatMap((item, index) => {
             const Icon = itemIcon(item);
             const isCurrent = effectiveKey === item.key;
             const isDone =
@@ -1225,7 +1300,7 @@ function CoursePlayer() {
                   ? "Final"
                   : null;
 
-            return (
+            const row = (
               <button
                 key={item.key}
                 type="button"
@@ -1271,6 +1346,55 @@ function CoursePlayer() {
                 ) : null}
               </button>
             );
+
+            // Right before the evaluation item (so only in the section that
+            // has one), an explanatory row for general (whole-training) live
+            // sessions — they gate the evaluation same as anything else here,
+            // but the actual join button lives on the course overview page,
+            // not inside a module. Without this, everything visible in this
+            // list can show done while the evaluation stays locked, with
+            // nothing on screen saying why. This isn't a real player step —
+            // it navigates away rather than opening inline — so it's a plain
+            // link, not part of `sections`/`items`, and touches nothing else
+            // about how steps or progress are counted.
+            if (item.kind !== "evaluation" || generalSessions.length === 0) {
+              return [row];
+            }
+
+            const generalDone = generalSessions.every(
+              (session) =>
+                flagIsTrue(session.has_joined) ||
+                session.status === "CANCELLED",
+            );
+
+            return [
+              <Link
+                key="general-live-session"
+                href={`/staff/course/${courseId}`}
+                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm text-gray-600 transition hover:bg-gray-50"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[11px] font-semibold text-gray-400">
+                  {generalDone ? (
+                    <CheckCircle2 size={16} className="text-green-500" />
+                  ) : (
+                    <Video size={15} className="text-gray-400" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 truncate">
+                  Course-wide Live Session
+                </span>
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                    generalDone
+                      ? "bg-green-50 text-green-700"
+                      : "bg-blue-50 text-blue-700"
+                  }`}
+                >
+                  {generalDone ? "Done" : "On overview"}
+                </span>
+              </Link>,
+              row,
+            ];
           })
         )}
       </nav>

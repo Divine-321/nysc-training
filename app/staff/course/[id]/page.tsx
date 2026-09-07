@@ -40,14 +40,17 @@ import { Skeleton } from "@/app/components/ui";
 import {
   documentIsComplete,
   attemptsForEnrollment,
+  flagIsTrue,
   loadAssessmentAttempts,
   loadAssessments,
+  loadEvaluationQuestions,
   loadModulesBreakdown,
   loadStaffCourse,
   programmeWindow,
   toPercentage,
   type CourseModule,
   type CourseEnrollment,
+  type LiveSession,
   type ModuleBreakdown,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
@@ -199,6 +202,11 @@ export default function CourseModulesPage() {
   const [passedAssessmentIds, setPassedAssessmentIds] = useState<Set<number>>(
     new Set(),
   );
+  // Reported by CourseLiveSessions (which owns the fetch) so the evaluation
+  // card below can be gated on general — whole-training, not one-module —
+  // sessions being attended, the same rule the player already applies to
+  // module-linked ones.
+  const [generalSessions, setGeneralSessions] = useState<LiveSession[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -232,11 +240,31 @@ export default function CourseModulesPage() {
         setPassedAssessmentIds(passed);
 
         // Separate call: modules_breakdown is only populated on the enrolment
-        // detail endpoint, never on the list loadStaffCourse reads. Fired
-        // after the page already has what it needs to render, so a slow or
-        // failed response refines the module cards rather than delaying them.
+        // detail endpoint, never on the list loadStaffCourse reads. Genuinely
+        // not awaited (it used to be, despite this same comment already
+        // claiming otherwise) — a slow or failed response now refines the
+        // module cards after the fact instead of holding up the page's first
+        // render on a second round trip it doesn't strictly need.
         if (course?.enrollment.id != null) {
-          setBreakdown(await loadModulesBreakdown(course.enrollment.id));
+          void loadModulesBreakdown(course.enrollment.id)
+            .then(setBreakdown)
+            .catch(() => {});
+        }
+
+        // Prefetches the evaluation's 23-question bank into the shared cache
+        // as soon as the enrollment id is known, so that by the time "Start
+        // Evaluation" is actually clickable and clicked, the learn page's own
+        // fetch is a cache hit instead of a second Amsterdam round trip
+        // stacked after the course data's own — which is what made that
+        // click feel slow. Skipped once already submitted, since the form
+        // won't be shown again. Cheap either way: one small GET, and the
+        // cache serves it instantly for up to 15 minutes even if this fires
+        // well before the course is actually finished.
+        if (
+          course?.enrollment.id != null &&
+          !flagIsTrue(course.enrollment.evaluation_submitted)
+        ) {
+          void loadEvaluationQuestions(course.enrollment.id).catch(() => {});
         }
 
         setError("");
@@ -411,11 +439,20 @@ export default function CourseModulesPage() {
   const showEvalCard =
     (tab === "all" || (tab === "completed" && evaluationDone)) &&
     (!evalQuery || "course evaluation feedback".includes(evalQuery));
+  // Every general (whole-training) live session must be attended too — same
+  // rule the player enforces for module-linked ones. A cancelled session was
+  // never something to attend, so it doesn't block completion.
+  const generalSessionsAttended = generalSessions.every(
+    (session) =>
+      flagIsTrue(session.has_joined) || session.status === "CANCELLED",
+  );
   // The evaluation stays locked until every content module is complete (or the
   // backend reports the whole course at 100%). Once submitted it never re-locks.
   const allModulesDone =
-    courseProgress >= 100 ||
-    (contentModules.length > 0 && completedModules === contentModules.length);
+    (courseProgress >= 100 ||
+      (contentModules.length > 0 &&
+        completedModules === contentModules.length)) &&
+    generalSessionsAttended;
   const evalLocked = !evaluationDone && !allModulesDone;
 
   // The backend refuses modules, activities, assessments and live sessions
@@ -572,14 +609,6 @@ export default function CourseModulesPage() {
             "This course is currently locked. Please check back later."}
         </div>
       ) : null}
-
-      {/* Live sessions covering the whole training, not a single module.
-          Module-tagged sessions stay inside their module in the player. */}
-      {staffCourse?.enrollment.cohort_course != null && (
-        <CourseLiveSessions
-          cohortCourseId={staffCourse.enrollment.cohort_course}
-        />
-      )}
 
       {/* Toolbar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -844,6 +873,14 @@ export default function CourseModulesPage() {
             );
           })}
 
+          {tab === "all" && staffCourse?.enrollment.cohort_course != null ? (
+            <CourseLiveSessions
+              cohortCourseId={staffCourse.enrollment.cohort_course}
+              variant="grid"
+              onSessionsChange={setGeneralSessions}
+            />
+          ) : null}
+
           {showEvalCard ? (
             <div
               className={`group flex flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-all duration-300 ${
@@ -1048,6 +1085,14 @@ export default function CourseModulesPage() {
               </div>
             );
           })}
+
+          {tab === "all" && staffCourse?.enrollment.cohort_course != null ? (
+            <CourseLiveSessions
+              cohortCourseId={staffCourse.enrollment.cohort_course}
+              variant="list"
+              onSessionsChange={setGeneralSessions}
+            />
+          ) : null}
 
           {showEvalCard ? (
             <div
