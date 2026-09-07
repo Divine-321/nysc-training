@@ -79,6 +79,16 @@ export function withPagination(basePath: string, request: Request): string {
     query += `&is_registered=${isRegistered}`;
   }
 
+  // Free-text search (name, file number, email) — forwarded as-is since it's
+  // not a fixed set of values like sortBy/is_registered above. Without this
+  // the staff and staff-records lists silently ignored ?search= entirely: it
+  // reached this function, matched nothing in the explicit whitelist below,
+  // and was dropped before the backend ever saw it.
+  const search = params.get("search");
+  if (search) {
+    query += `&search=${encodeURIComponent(search)}`;
+  }
+
   return `${basePath}${separator}${query}`;
 }
 
