@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, useSyncExternalStore } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { AlertCircle, Eye, EyeOff, Loader2, X } from "lucide-react";
@@ -23,11 +23,17 @@ const readRememberedLogin = () =>
   window.localStorage.getItem(REMEMBERED_LOGIN_KEY) ?? "";
 const noRememberedLogin = () => "";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  // AuthGuard redirects here with ?reason= when it signs someone out on a
+  // 401 mid-session (e.g. the backend's idle timeout — 15 minutes for staff,
+  // 10 for admin) — otherwise that would be a silent redirect with no
+  // explanation. Read once, lazily, so this is the toast's initial value
+  // rather than a setState call inside an effect.
+  const [error, setError] = useState(() => searchParams.get("reason") ?? "");
   const [isLoading, setIsLoading] = useState(false);
   const [uploadedManual, setUploadedManual] = useState<Manual | null>(null);
 
@@ -43,6 +49,17 @@ export default function LoginPage() {
 
   const username = usernameInput ?? rememberedLogin;
   const rememberMe = rememberMeInput ?? rememberedLogin !== "";
+
+  // The reason (if any) is already showing, from the lazy state init above —
+  // this just strips ?reason= from the address bar afterwards, so refreshing
+  // or navigating back doesn't keep re-surfacing it.
+  useEffect(() => {
+    if (searchParams.get("reason")) {
+      router.replace("/login");
+    }
+    // Read once on mount; only the URL needs cleaning up here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Optional extra manual attached by an admin from Admin Settings. The two
   // built-in guides work with or without it, so any failure here is silent.
@@ -311,5 +328,13 @@ export default function LoginPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }
