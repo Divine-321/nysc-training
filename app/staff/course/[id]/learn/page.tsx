@@ -19,26 +19,33 @@ import {
   Image as ImageIcon,
   Lock,
   Menu,
+  MessageSquareText,
   MonitorPlay,
   PlayCircle,
   Presentation,
-  Star,
   UserCheck,
   Video,
   X,
 } from "lucide-react";
 import RichTextViewer from "@/app/components/RichTextViewer";
+import CourseEvaluationForm, {
+  buildEvaluationSubmission,
+  missingRequiredQuestions,
+  type EvaluationAnswerState,
+} from "@/app/components/CourseEvaluationForm";
 import {
   documentIsComplete,
   attemptsForEnrollment,
   flagIsTrue,
   loadAssessmentAttempts,
   loadAssessments,
+  loadEvaluationQuestions,
   loadLiveSessionsForCourse,
   loadStaffCourse,
   markDocumentComplete,
   toPercentage,
   type Assessment,
+  type EvaluationQuestion,
   type LiveSession,
   type ModuleActivity,
   type StaffCourse,
@@ -190,7 +197,7 @@ function itemIcon(item: PlayerItem) {
   if (item.kind === "overview") return BookOpen;
   if (item.kind === "assessment") return ClipboardCheck;
   if (item.kind === "live") return Video;
-  if (item.kind === "evaluation") return Star;
+  if (item.kind === "evaluation") return MessageSquareText;
   return documentIcon(item.doc);
 }
 
@@ -410,8 +417,9 @@ function CoursePlayer() {
   const [moduleSwitcherOpen, setModuleSwitcherOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [joiningSessionId, setJoiningSessionId] = useState<number | null>(null);
-  const [evalRating, setEvalRating] = useState(5);
-  const [evalFeedback, setEvalFeedback] = useState("");
+  const [evalQuestions, setEvalQuestions] = useState<EvaluationQuestion[]>([]);
+  const [evalQuestionsLoading, setEvalQuestionsLoading] = useState(false);
+  const [evalAnswers, setEvalAnswers] = useState<EvaluationAnswerState>({});
   const [evalSubmitting, setEvalSubmitting] = useState(false);
   const [evalDone, setEvalDone] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -637,6 +645,14 @@ function CoursePlayer() {
     totalSteps > 0 ? doneSteps >= totalSteps : progress >= 100;
   const evalLocked = !evalDone && !evalUnlocked;
 
+  // Q14 ("was the live session valuable") is hidden by the backend itself for
+  // a programme with no live session, as long as the question-bank request
+  // passed ?enrollment= — nothing to filter client-side any more.
+  const evalMissingRequired = useMemo(
+    () => missingRequiredQuestions(evalQuestions, evalAnswers),
+    [evalQuestions, evalAnswers],
+  );
+
   const sectionDocs = (currentSection?.items ?? []).filter(
     (item): item is DocItem => item.kind === "doc",
   );
@@ -674,11 +690,31 @@ function CoursePlayer() {
           ),
         );
 
-        // Seed the closing evaluation from any previously submitted feedback.
-        if (courseData.enrollment.evaluation) {
-          setEvalDone(true);
-          setEvalRating(courseData.enrollment.evaluation.rating);
-          setEvalFeedback(courseData.enrollment.evaluation.feedback ?? "");
+        // Whether the evaluation is already done comes from this flag, not
+        // from the nested `evaluation` object being non-null — the backend's
+        // integration notes are explicit that the thin {id, submitted_at}
+        // shape isn't the right thing to check truthiness on.
+        const alreadyEvaluated = flagIsTrue(courseData.enrollment.evaluation_submitted);
+        setEvalDone(alreadyEvaluated);
+
+        // The question bank needs the enrollment id (it's how the backend
+        // knows whether to include Q14, the live-session question), so this
+        // can only start once loadStaffCourse above has resolved. Not
+        // awaited: the evaluation is the last step of the course, so there's
+        // no rush, and the step itself shows a loading state until this
+        // lands.
+        if (!alreadyEvaluated) {
+          setEvalQuestionsLoading(true);
+          loadEvaluationQuestions(courseData.enrollment.id)
+            .then(setEvalQuestions)
+            .catch((questionsError) => {
+              setNotice(
+                questionsError instanceof Error
+                  ? questionsError.message
+                  : "Could not load the evaluation questions.",
+              );
+            })
+            .finally(() => setEvalQuestionsLoading(false));
         }
 
         // `?step=` lets the standalone /live and /evaluation routes deep-link
@@ -752,7 +788,7 @@ function CoursePlayer() {
 
           if (landing) {
             setCurrentKey(`doc-${landing.id}`);
-          } else if (!courseData.enrollment.evaluation) {
+          } else if (!alreadyEvaluated) {
             // Everything is read, so there is no "next incomplete" to resume
             // at. Falling back to the first material here is what sent people
             // back to the start of module one after an assessment, since
@@ -878,6 +914,13 @@ function CoursePlayer() {
   const handleEvalSubmit = async () => {
     if (!staffCourse || evalDone) return;
 
+    if (evalMissingRequired.length > 0) {
+      setNotice(
+        `Please answer every required question (${evalMissingRequired.length} left) before submitting.`,
+      );
+      return;
+    }
+
     setEvalSubmitting(true);
     setNotice("");
 
@@ -887,8 +930,7 @@ function CoursePlayer() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           enrollment: staffCourse.enrollment.id,
-          rating: evalRating,
-          feedback: evalFeedback.trim() || null,
+          evaluations: buildEvaluationSubmission(evalQuestions, evalAnswers),
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -898,6 +940,16 @@ function CoursePlayer() {
           payload,
           "Could not submit your evaluation.",
         );
+
+        // "Already submitted" is a real, expected 400 (e.g. a second tab, or
+        // a retry after a slow response actually landed) — the form is done,
+        // not broken, so treat it the same as a successful submit rather than
+        // showing an error.
+        if (/already submitted/i.test(raw)) {
+          setEvalDone(true);
+          router.push("/staff/certifications");
+          return;
+        }
 
         // The backend refuses an evaluation until the programme is at 100%,
         // and says only that. A learner reading it has usually finished every
@@ -1613,7 +1665,11 @@ function CoursePlayer() {
                         : "bg-[#e3f2ea] text-[#1a6b3c]"
                     }`}
                   >
-                    {evalLocked ? <Lock size={26} /> : <Star size={28} />}
+                    {evalLocked ? (
+                      <Lock size={26} />
+                    ) : (
+                      <MessageSquareText size={28} />
+                    )}
                   </div>
                   <h2 className="text-center text-2xl font-bold text-gray-800">
                     Course Evaluation
@@ -1666,9 +1722,6 @@ function CoursePlayer() {
                         <p className="font-semibold text-[#1a6b3c]">
                           Thank you — your feedback has been submitted.
                         </p>
-                        <p className="mt-1 text-sm text-gray-600">
-                          Rating: {evalRating}/5
-                        </p>
                       </div>
                       <button
                         type="button"
@@ -1679,54 +1732,37 @@ function CoursePlayer() {
                       </button>
                     </div>
                   ) : (
-                    <div className="mx-auto mt-6 max-w-md space-y-5">
-                      <div>
-                        <p className="mb-2 text-center text-sm font-medium text-gray-700">
-                          How useful was this course?
-                        </p>
-                        <div className="flex justify-center gap-2">
-                          {[1, 2, 3, 4, 5].map((value) => (
-                            <button
-                              key={value}
-                              type="button"
-                              aria-label={`Rate ${value} of 5`}
-                              onClick={() => setEvalRating(value)}
-                              className={`rounded-lg border p-2.5 transition ${
-                                value <= evalRating
-                                  ? "border-[#1a6b3c] bg-green-50 text-[#1a6b3c]"
-                                  : "border-gray-200 text-gray-300 hover:border-gray-300"
-                              }`}
-                            >
-                              <Star
-                                size={22}
-                                fill={value <= evalRating ? "currentColor" : "none"}
-                              />
-                            </button>
-                          ))}
+                    <div className="mx-auto mt-6 max-w-2xl space-y-6">
+                      {evalQuestionsLoading || evalQuestions.length === 0 ? (
+                        <div className="flex items-center justify-center gap-2 py-10 text-sm text-gray-400">
+                          <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-[#1a6b3c]" />
+                          Loading the evaluation…
                         </div>
-                      </div>
+                      ) : (
+                        <>
+                          <CourseEvaluationForm
+                            questions={evalQuestions}
+                            answers={evalAnswers}
+                            onChange={setEvalAnswers}
+                            disabled={evalSubmitting}
+                          />
 
-                      <div>
-                        <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                          Any comments? (optional)
-                        </label>
-                        <textarea
-                          value={evalFeedback}
-                          onChange={(event) => setEvalFeedback(event.target.value)}
-                          rows={4}
-                          placeholder="What worked well? What could be better?"
-                          className="w-full rounded-lg border border-gray-200 px-4 py-2.5 text-sm outline-none focus:border-[#1a6b3c] focus:ring-2 focus:ring-[#1a6b3c]/15"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => void handleEvalSubmit()}
-                        disabled={evalSubmitting}
-                        className="w-full rounded-xl bg-[#1a6b3c] py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530] disabled:opacity-60"
-                      >
-                        {evalSubmitting ? "Submitting..." : "Submit Evaluation"}
-                      </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleEvalSubmit()}
+                            disabled={evalSubmitting || evalMissingRequired.length > 0}
+                            className="w-full rounded-xl bg-[#1a6b3c] py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530] disabled:opacity-60"
+                          >
+                            {evalSubmitting
+                              ? "Submitting..."
+                              : evalMissingRequired.length > 0
+                                ? `Answer ${evalMissingRequired.length} more question${
+                                    evalMissingRequired.length === 1 ? "" : "s"
+                                  }`
+                                : "Submit Evaluation"}
+                          </button>
+                        </>
+                      )}
                     </div>
                   )}
 

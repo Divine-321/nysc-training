@@ -1,20 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  Download,
-  Info,
-  MessageSquareText,
-  Star,
-  Users,
-} from "lucide-react";
-import { extractErrorMessage, readApiList } from "@/app/lib/portal-api";
+import { Download, Eye, Info, MessageSquareText, ThumbsUp, Users } from "lucide-react";
+import { extractErrorMessage, readApiList, type Course } from "@/app/lib/portal-api";
 import {
   programmeBatchLabel,
-  type Programme,
-  type CourseEnrollment,
   type CourseEvaluation,
+  type Programme,
 } from "@/app/lib/staff-learning";
+import { formatEvaluationAnswer } from "@/app/components/CourseEvaluationForm";
 import { formatDateTime } from "@/app/lib/format";
 import {
   EmptyState,
@@ -23,134 +17,72 @@ import {
   Skeleton,
   StatCard,
 } from "@/app/components/ui";
-import { SearchInput } from "@/app/components/ui-interactive";
+import { Modal, SearchInput } from "@/app/components/ui-interactive";
 import { cachedFetchAll } from "@/app/lib/data-cache";
 
-
-
-type EvaluationRow = {
-  id: number;
-  staffName: string;
-  fileNumber: string;
-  course: string;
-  cohort: string;
-  rating: number;
-  feedback: string;
-  submittedAt: string;
-};
-
-function Stars({ rating }: { rating: number }) {
-  return (
-    <span className="inline-flex items-center gap-0.5" aria-label={`${rating} of 5`}>
-      {[1, 2, 3, 4, 5].map((value) => (
-        <Star
-          key={value}
-          size={14}
-          className={
-            value <= rating ? "text-amber-500" : "text-gray-200"
-          }
-          fill={value <= rating ? "currentColor" : "none"}
-        />
-      ))}
-      <span className="ml-1 text-xs font-semibold text-gray-500">
-        {rating}/5
-      </span>
-    </span>
-  );
-}
-
 export default function AdminEvaluationsPage() {
-  const [rows, setRows] = useState<EvaluationRow[]>([]);
+  const [rows, setRows] = useState<CourseEvaluation[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [programmes, setProgrammes] = useState<Programme[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
-  const [ratingFilter, setRatingFilter] = useState("all");
+  const [programmeFilter, setProgrammeFilter] = useState("all");
+  const [detailRow, setDetailRow] = useState<CourseEvaluation | null>(null);
 
+  // Course and programme lists are only for the filter dropdowns — small,
+  // cached separately from the (potentially much larger, and growing every
+  // time a course finishes) evaluations list itself.
+  useEffect(() => {
+    const loadFilterOptions = async () => {
+      const [courseRes, programmeRes] = await Promise.all([
+        cachedFetchAll("/api/training/courses"),
+        cachedFetchAll("/api/training/programmes"),
+      ]);
+
+      if (courseRes.ok) {
+        setCourses(readApiList<Course>(await courseRes.json().catch(() => null)));
+      }
+      if (programmeRes.ok) {
+        setProgrammes(
+          readApiList<Programme>(await programmeRes.json().catch(() => null)),
+        );
+      }
+    };
+
+    void loadFilterOptions();
+  }, []);
+
+  // Filtering by course/programme happens server-side — real query params the
+  // backend supports, not a client-side guess — so this list never has to
+  // download every evaluation NYSC has ever collected just to show one
+  // course's. Free-text search still runs over whatever page that leaves.
   useEffect(() => {
     const load = async () => {
+      setLoading(true);
+
       try {
-        const [evaluationRes, enrollmentRes, cohortCourseRes] =
-          await Promise.all([
-            cachedFetchAll("/api/training/evaluations"),
-            cachedFetchAll("/api/training/enrollments"),
-            cachedFetchAll("/api/training/programmes"),
-          ]);
+        const params = new URLSearchParams();
+        if (courseFilter !== "all") params.set("course", courseFilter);
+        if (programmeFilter !== "all") params.set("programme", programmeFilter);
+        const query = params.toString() ? `?${params.toString()}` : "";
 
-        const evaluationPayload = await evaluationRes.json().catch(() => null);
+        const response = await cachedFetchAll(`/api/training/evaluations${query}`);
+        const payload = await response.json().catch(() => null);
 
-        if (!evaluationRes.ok) {
+        if (!response.ok) {
           throw new Error(
-            extractErrorMessage(evaluationPayload, "Could not load evaluations."),
+            extractErrorMessage(payload, "Could not load evaluations."),
           );
         }
 
-        const evaluations = readApiList<CourseEvaluation>(evaluationPayload);
-        const enrollments = enrollmentRes.ok
-          ? readApiList<CourseEnrollment>(
-              await enrollmentRes.json().catch(() => null),
-            )
-          : [];
-        const cohortCourses = cohortCourseRes.ok
-          ? readApiList<Programme>(
-              await cohortCourseRes.json().catch(() => null),
-            )
-          : [];
-
-        const enrollmentById = new Map(
-          enrollments.map((enrollment) => [enrollment.id, enrollment]),
-        );
-        const cohortCourseById = new Map(
-          cohortCourses.map((programme) => [programme.id, programme]),
+        const evaluations = readApiList<CourseEvaluation>(payload).sort(
+          (first, second) =>
+            (second.submitted_at ?? "").localeCompare(first.submitted_at ?? ""),
         );
 
-        const built: EvaluationRow[] = evaluations
-          .map((evaluation) => {
-            const enrollment = enrollmentById.get(evaluation.enrollment);
-            const staffId = enrollment?.staff;
-            const programmeId =
-              enrollment?.programme ?? enrollment?.cohort_course;
-            const programme =
-              programmeId != null ? cohortCourseById.get(programmeId) : undefined;
-
-            const course =
-              programme?.course_details?.title?.trim() ||
-              enrollment?.course_title?.trim() ||
-              enrollment?.programme_title?.trim() ||
-              "—";
-            // Cohort + year identifies the exact Training (a course delivered
-            // to a cohort in a given year). The evaluation is course-level, so
-            // there is no module dimension.
-            const cohortLabel =
-              enrollment?.cohort_name?.trim() ||
-              programmeBatchLabel(programme) ||
-              "—";
-            const cohort =
-              programme?.year && cohortLabel !== "—"
-                ? `${cohortLabel} ${programme.year}`
-                : cohortLabel;
-
-            return {
-              id: evaluation.id,
-              staffName:
-                evaluation.staff_name?.trim() ||
-                (staffId != null ? `Staff #${staffId}` : "—"),
-              // The evaluation payload carries staff_name but not the file
-              // number. Fetching it meant downloading the whole staff table on
-              // every page load, which is not worth one column.
-              fileNumber: "—",
-              course,
-              cohort,
-              rating: evaluation.rating,
-              feedback: evaluation.feedback?.trim() || "",
-              submittedAt: evaluation.submitted_at,
-            };
-          })
-          .sort((first, second) =>
-            (second.submittedAt ?? "").localeCompare(first.submittedAt ?? ""),
-          );
-
-        setRows(built);
+        setRows(evaluations);
         setError("");
       } catch (loadError) {
         setError(
@@ -164,33 +96,81 @@ export default function AdminEvaluationsPage() {
     };
 
     void load();
-  }, []);
+  }, [courseFilter, programmeFilter]);
 
-  const courses = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.course))).sort(),
-    [rows],
+  const courseOptions = useMemo(
+    () =>
+      courses
+        .map((course) => ({ id: course.id, title: course.title }))
+        .sort((first, second) => first.title.localeCompare(second.title)),
+    [courses],
   );
+
+  const programmeOptions = useMemo(
+    () =>
+      programmes
+        .filter(
+          (programme) =>
+            courseFilter === "all" || String(programme.course) === courseFilter,
+        )
+        .map((programme) => ({
+          id: programme.id,
+          label: `${programme.course_details?.title ?? "—"} — ${
+            programmeBatchLabel(programme)
+          }${programme.year ? ` ${programme.year}` : ""}`,
+        }))
+        .sort((first, second) => first.label.localeCompare(second.label)),
+    [programmes, courseFilter],
+  );
+
+  // The full set of questions actually seen across the loaded responses, in
+  // survey order — derived from the data itself (each answer carries its
+  // full question) rather than a separate /evaluation-questions/ fetch, so
+  // CSV columns never drift out of sync with what staff were actually asked.
+  const questionColumns = useMemo(() => {
+    const byId = new Map<number, string>();
+    for (const row of rows) {
+      for (const answer of row.evaluations) {
+        if (!byId.has(answer.question.id)) {
+          byId.set(answer.question.id, answer.question.question);
+        }
+      }
+    }
+    return Array.from(byId, ([id, question]) => ({ id, question })).sort(
+      (first, second) => first.id - second.id,
+    );
+  }, [rows]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
+    if (!query) return rows;
 
     return rows.filter((row) => {
-      if (courseFilter !== "all" && row.course !== courseFilter) return false;
-      if (ratingFilter !== "all" && row.rating !== Number(ratingFilter)) {
-        return false;
-      }
-      if (query) {
-        const haystack =
-          `${row.staffName} ${row.fileNumber} ${row.course} ${row.cohort} ${row.feedback}`.toLowerCase();
-        if (!haystack.includes(query)) return false;
-      }
-      return true;
+      const answerText = row.evaluations
+        .map((answer) => formatEvaluationAnswer(answer))
+        .join(" ");
+      const haystack =
+        `${row.staff_name} ${row.file_number} ${row.course_title} ${row.cohort} ${answerText}`.toLowerCase();
+      return haystack.includes(query);
     });
-  }, [rows, search, courseFilter, ratingFilter]);
+  }, [rows, search]);
 
-  const averageRating = filtered.length
-    ? filtered.reduce((sum, row) => sum + row.rating, 0) / filtered.length
-    : 0;
+  // Q22 ("would you recommend this training?") is the closest thing to a
+  // single headline number a 23-question survey has.
+  const recommendStats = useMemo(() => {
+    let yes = 0;
+    let answered = 0;
+
+    for (const row of filtered) {
+      const answer = row.evaluations.find((item) => item.question.order === 22);
+      const option = answer?.selected_option?.option?.trim().toLowerCase();
+      if (!option) continue;
+      answered += 1;
+      if (option === "yes") yes += 1;
+    }
+
+    return { yes, answered };
+  }, [filtered]);
 
   const exportCsv = () => {
     const header = [
@@ -198,27 +178,32 @@ export default function AdminEvaluationsPage() {
       "File number",
       "Course",
       "Cohort",
-      "Rating",
-      "Feedback",
+      "Year",
       "Submitted",
+      ...questionColumns.map((column) => column.question),
     ];
     const escape = (value: string) => `"${value.replace(/"/g, '""')}"`;
-    const lines = [header.join(",")];
+    const lines = [header.map(escape).join(",")];
 
     for (const row of filtered) {
-      lines.push(
-        [
-          row.staffName,
-          row.fileNumber,
-          row.course,
-          row.cohort,
-          String(row.rating),
-          row.feedback,
-          row.submittedAt ? formatDateTime(row.submittedAt) : "",
-        ]
-          .map((value) => escape(String(value)))
-          .join(","),
+      const answerByQuestionId = new Map(
+        row.evaluations.map((answer) => [answer.question.id, answer]),
       );
+
+      const cells = [
+        row.staff_name,
+        row.file_number,
+        row.course_title,
+        row.cohort,
+        row.year != null ? String(row.year) : "",
+        row.submitted_at ? formatDateTime(row.submitted_at) : "",
+        ...questionColumns.map((column) => {
+          const answer = answerByQuestionId.get(column.id);
+          return answer ? formatEvaluationAnswer(answer) : "";
+        }),
+      ];
+
+      lines.push(cells.map((value) => escape(String(value))).join(","));
     }
 
     const blob = new Blob([lines.join("\n")], {
@@ -236,7 +221,7 @@ export default function AdminEvaluationsPage() {
     <div className="mx-auto max-w-7xl space-y-6">
       <PageHeader
         title="Course Evaluations"
-        subtitle="Feedback staff submit at the end of a course — ratings and comments, per training."
+        subtitle="Feedback staff submit at the end of a course — the full 23-question survey, per training."
         actions={
           rows.length > 0 ? (
             <button
@@ -250,16 +235,14 @@ export default function AdminEvaluationsPage() {
         }
       />
 
-      {/* What the evaluation collects — the format is fixed on the backend. */}
       <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
         <Info size={18} className="mt-0.5 shrink-0" />
         <p>
-          The course-end evaluation collects a{" "}
-          <span className="font-semibold">1–5 star rating</span> and an optional{" "}
-          <span className="font-semibold">comment</span>. Custom evaluation
-          questions are not supported by the backend yet — adding configurable
-          questions needs a new evaluation-questions model server-side. This page
-          shows every response staff have submitted.
+          Every response is the full 23-question survey — a 1–5 or Yes/No
+          scale, multiple-choice, and open-text questions, depending on the
+          question. Filter by course or training to narrow the list; each
+          filter change re-asks the backend rather than downloading
+          everything.
         </p>
       </div>
 
@@ -293,21 +276,29 @@ export default function AdminEvaluationsPage() {
               icon={MessageSquareText}
               hint={
                 filtered.length === rows.length
-                  ? "Total submitted"
-                  : `of ${rows.length} total`
+                  ? "Loaded for this filter"
+                  : `of ${rows.length} loaded`
               }
             />
             <StatCard
-              label="Average rating"
-              value={averageRating ? `${averageRating.toFixed(1)} / 5` : "—"}
-              icon={Star}
-              hint="Across the filtered responses"
+              label="Would recommend"
+              value={
+                recommendStats.answered
+                  ? `${Math.round((recommendStats.yes / recommendStats.answered) * 100)}%`
+                  : "—"
+              }
+              icon={ThumbsUp}
+              hint={
+                recommendStats.answered
+                  ? `${recommendStats.answered} answered "Would you recommend?"`
+                  : "No responses in this filter yet"
+              }
             />
             <StatCard
-              label="Courses evaluated"
-              value={courses.length}
+              label="Courses with feedback"
+              value={courseOptions.length}
               icon={Users}
-              hint="Distinct courses with feedback"
+              hint="Across the whole portal"
             />
           </div>
 
@@ -316,33 +307,36 @@ export default function AdminEvaluationsPage() {
             <SearchInput
               value={search}
               onChange={setSearch}
-              placeholder="Search staff, file number, course or comment…"
+              placeholder="Search staff, file number, course or answers…"
               className="w-full lg:max-w-sm"
             />
             <div className="flex flex-1 flex-wrap items-center gap-2">
               <select
                 value={courseFilter}
-                onChange={(event) => setCourseFilter(event.target.value)}
+                onChange={(event) => {
+                  setCourseFilter(event.target.value);
+                  setProgrammeFilter("all");
+                }}
                 aria-label="Filter by course"
                 className={`${field} w-auto`}
               >
                 <option value="all">All courses</option>
-                {courses.map((course) => (
-                  <option key={course} value={course}>
-                    {course}
+                {courseOptions.map((course) => (
+                  <option key={course.id} value={String(course.id)}>
+                    {course.title}
                   </option>
                 ))}
               </select>
               <select
-                value={ratingFilter}
-                onChange={(event) => setRatingFilter(event.target.value)}
-                aria-label="Filter by rating"
+                value={programmeFilter}
+                onChange={(event) => setProgrammeFilter(event.target.value)}
+                aria-label="Filter by training"
                 className={`${field} w-auto`}
               >
-                <option value="all">All ratings</option>
-                {[5, 4, 3, 2, 1].map((rating) => (
-                  <option key={rating} value={String(rating)}>
-                    {rating} star{rating === 1 ? "" : "s"}
+                <option value="all">All trainings</option>
+                {programmeOptions.map((programme) => (
+                  <option key={programme.id} value={String(programme.id)}>
+                    {programme.label}
                   </option>
                 ))}
               </select>
@@ -360,45 +354,53 @@ export default function AdminEvaluationsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto rounded-2xl border border-gray-100 bg-white shadow-sm">
-              <table className="w-full min-w-[860px] text-left text-sm">
+              <table className="w-full min-w-[820px] text-left text-sm">
                 <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Staff</th>
                     <th className="px-4 py-3 font-semibold">File No.</th>
                     <th className="px-4 py-3 font-semibold">Course</th>
                     <th className="px-4 py-3 font-semibold">Cohort / Year</th>
-                    <th className="px-4 py-3 font-semibold">Rating</th>
-                    <th className="px-4 py-3 font-semibold">Comment</th>
                     <th className="px-4 py-3 font-semibold">Submitted</th>
+                    <th className="px-4 py-3 font-semibold">Response</th>
+                    <th className="px-4 py-3 font-semibold text-right">
+                      &nbsp;
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filtered.map((row) => (
                     <tr key={row.id} className="align-top hover:bg-gray-50/60">
                       <td className="px-4 py-3 font-semibold text-gray-800">
-                        {row.staffName}
+                        {row.staff_name}
                       </td>
                       <td className="px-4 py-3 text-gray-600">
-                        {row.fileNumber}
+                        {row.file_number || "—"}
                       </td>
-                      <td className="px-4 py-3 text-gray-700">{row.course}</td>
-                      <td className="px-4 py-3 text-gray-500">{row.cohort}</td>
-                      <td className="px-4 py-3">
-                        <Stars rating={row.rating} />
+                      <td className="px-4 py-3 text-gray-700">
+                        {row.course_title}
                       </td>
-                      <td className="max-w-sm px-4 py-3 text-gray-600">
-                        {row.feedback ? (
-                          <span className="whitespace-pre-wrap">
-                            {row.feedback}
-                          </span>
-                        ) : (
-                          <span className="text-gray-300">No comment</span>
-                        )}
+                      <td className="px-4 py-3 text-gray-500">
+                        {row.cohort}
+                        {row.year ? ` ${row.year}` : ""}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-gray-500">
-                        {row.submittedAt
-                          ? formatDateTime(row.submittedAt)
-                          : "—"}
+                        {row.submitted_at ? formatDateTime(row.submitted_at) : "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-semibold text-gray-500">
+                          {row.evaluations.length} answer
+                          {row.evaluations.length === 1 ? "" : "s"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setDetailRow(row)}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 transition hover:bg-gray-50 hover:text-gray-900"
+                        >
+                          <Eye size={14} /> View
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -408,6 +410,40 @@ export default function AdminEvaluationsPage() {
           )}
         </>
       )}
+
+      <Modal
+        open={detailRow !== null}
+        onClose={() => setDetailRow(null)}
+        title={detailRow?.staff_name ?? "Evaluation"}
+        subtitle={
+          detailRow
+            ? `${detailRow.course_title} — ${detailRow.cohort}${
+                detailRow.year ? ` ${detailRow.year}` : ""
+              }${
+                detailRow.submitted_at
+                  ? ` · Submitted ${formatDateTime(detailRow.submitted_at)}`
+                  : ""
+              }`
+            : undefined
+        }
+      >
+        {detailRow ? (
+          <dl className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
+            {[...detailRow.evaluations]
+              .sort((first, second) => first.question.order - second.question.order)
+              .map((answer) => (
+                <div key={answer.id}>
+                  <dt className="text-xs text-gray-500">
+                    {answer.question.question}
+                  </dt>
+                  <dd className="text-sm font-medium text-gray-800">
+                    {formatEvaluationAnswer(answer)}
+                  </dd>
+                </div>
+              ))}
+          </dl>
+        ) : null}
+      </Modal>
     </div>
   );
 }

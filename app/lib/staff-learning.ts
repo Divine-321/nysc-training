@@ -22,7 +22,7 @@ import type {
   Batch,
   Month,
 } from "@/app/lib/training-types";
-import { cachedFetch } from "@/app/lib/data-cache";
+import { cachedFetch, LONG_TTL_MS } from "@/app/lib/data-cache";
 
 export { BATCH_OPTIONS, MONTH_OPTIONS } from "@/app/lib/training-types";
 export type {
@@ -80,12 +80,84 @@ export type DocumentProgress = {
   completed_at: string | null;
 };
 
+/**
+ * The 23-question course-end survey. Deployed shape (2026-09) per the
+ * backend's integration notes — docs/evaluation-questions-spec.md is the
+ * pre-ship draft that proposed this feature; this is what actually shipped,
+ * and it differs from that draft in every field name, so read this, not that,
+ * when touching evaluation code.
+ *
+ * Every visible question is required — there is no per-question flag for it,
+ * the bank simply omits anything not applicable (Q14, the live-session
+ * question, is left out server-side for a programme with no live session,
+ * as long as the request passes ?enrollment=).
+ */
+export type EvaluationQuestionType = "MULTIPLE_CHOICE" | "OPEN_TEXT" | "MIXED";
+
+export type EvaluationQuestionOption = {
+  id: number;
+  option: string;
+  order: number;
+};
+
+export type EvaluationQuestion = {
+  id: number;
+  question: string;
+  question_type: EvaluationQuestionType;
+  is_live_session: boolean;
+  order: number;
+  /** Empty for OPEN_TEXT. */
+  options: EvaluationQuestionOption[];
+};
+
+/**
+ * True exactly when this option (on a MIXED question) requires a
+ * companion `answer_text`. Not a backend flag — "Other" is a fixed
+ * convention: any other choice on a MIXED question must NOT send
+ * `answer_text`, or the backend rejects the submission.
+ */
+export function optionRequiresText(option: EvaluationQuestionOption) {
+  return option.option.trim().toLowerCase() === "other";
+}
+
+/** One answer as sent in a submission's `evaluations` array. */
+export type EvaluationAnswerInput = {
+  question_id: number;
+  /** MULTIPLE_CHOICE and MIXED. */
+  selected_option_id?: number;
+  /** OPEN_TEXT always; MIXED only when the chosen option is "Other". */
+  answer_text?: string;
+};
+
+/** One answered question, with the full question (options included) inlined. */
+export type EvaluationAnswer = {
+  id: number;
+  question: EvaluationQuestion;
+  selected_option: EvaluationQuestionOption | null;
+  answer_text: string | null;
+};
+
+/** A full submitted evaluation — one row of GET /api/training/evaluations/. */
 export type CourseEvaluation = {
   id: number;
   enrollment: number;
   staff_name: string;
-  rating: number;
-  feedback: string | null;
+  file_number: string;
+  course_title: string;
+  cohort: string;
+  year: number;
+  submitted_at: string;
+  evaluations: EvaluationAnswer[];
+};
+
+/**
+ * The thin shape nested on an enrollment (`enrollment.evaluation`) — just
+ * enough to know a submission exists, not the full review. Whether one
+ * exists at all is `evaluation_submitted` on the enrollment, not this being
+ * non-null; check that instead of this.
+ */
+export type EnrollmentEvaluation = {
+  id: number;
   submitted_at: string;
 };
 
@@ -118,7 +190,8 @@ export type CourseEnrollment = {
   document_progress?: DocumentProgress[];
   /** New-model completion records (restructure, live 2026-07-10). */
   activity_completions?: ActivityCompletion[];
-  evaluation: CourseEvaluation | null;
+  /** Thin — {id, submitted_at} or null. Check evaluation_submitted, not this, for "has this been submitted". */
+  evaluation: EnrollmentEvaluation | null;
   last_accessed: string;
   enrolled_at: string;
   completed_at: string | null;
@@ -757,6 +830,32 @@ export async function loadAssessments(courseId: number) {
 
     return assessment.course === courseId;
   });
+}
+
+/**
+ * The evaluation question bank for one enrollment, ordered for display.
+ * `?enrollment=` is required, not optional: the backend uses it to decide
+ * whether to include the live-session question (Q14) — a request without it
+ * always gets Q14 back, whether or not this programme actually had one.
+ */
+export async function loadEvaluationQuestions(
+  enrollmentId: number,
+): Promise<EvaluationQuestion[]> {
+  const response = await cachedFetch(
+    `/api/training/evaluation-questions?enrollment=${enrollmentId}`,
+    { ttlMs: LONG_TTL_MS },
+  );
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      extractErrorMessage(payload, "Could not load the evaluation questions."),
+    );
+  }
+
+  return readApiList<EvaluationQuestion>(payload).sort(
+    (first, second) => first.order - second.order,
+  );
 }
 
 export async function loadLiveSessionsForCourse(cohortCourseIds: number[]) {
