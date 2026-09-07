@@ -144,7 +144,7 @@ async function loadStaffDirectory(): Promise<Map<number, StaffDirectoryEntry>> {
     for (const user of payload?.data?.results ?? []) {
       directory.set(user.id, {
         name:
-          [user.first_name, user.last_name].filter(Boolean).join(" ") ||
+          [user.last_name, user.first_name].filter(Boolean).join(" ") ||
           user.email,
         fileNumber: user.file_number || "—",
       });

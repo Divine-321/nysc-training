@@ -196,7 +196,7 @@ export default function AdminLayout({
   };
 
   const displayName = user
-    ? `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || "Admin"
+    ? `${user.last_name ?? ""} ${user.first_name ?? ""}`.trim() || "Admin"
     : "Admin";
 
   const adminPhoto = resolveMediaUrl(user?.profile?.profile_picture_url);

@@ -217,7 +217,7 @@ export default function AuditTrailPage() {
 
                     <td className="p-4">
                       <p className="font-semibold">
-                        {[log.user.first_name, log.user.last_name]
+                        {[log.user.last_name, log.user.first_name]
                           .filter(Boolean)
                           .join(" ")}
                       </p>

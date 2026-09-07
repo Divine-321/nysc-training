@@ -330,7 +330,9 @@ export default function StaffLayout({
     (pathname.includes("/staff/cbt/") && pathname !== "/staff/cbt");
 
   const displayName = user
-    ? `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || "User"
+    ? [user.last_name, user.first_name, user.middle_name]
+        .filter(Boolean)
+        .join(" ") || "User"
     : "User";
 
   const firstName = user?.first_name || "User";

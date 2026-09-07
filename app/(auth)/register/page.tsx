@@ -125,7 +125,7 @@ export default function RegisterPage() {
           const lastName = payload?.data?.last_name ?? "";
 
           setFileNoValid(true);
-          setFileNoValidationMsg(`Found: ${firstName} ${lastName}`.trim());
+          setFileNoValidationMsg(`Found: ${lastName} ${firstName}`.trim());
           setFormData((current) => ({
             ...current,
             surname: lastName,

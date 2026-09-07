@@ -287,7 +287,7 @@ const [formData, setFormData] = useState(emptyProfileData);
                   Name
                 </p>
                 <p className="mt-1 font-semibold text-gray-800">
-                  {[staffData.otherNames, staffData.surname]
+                  {[staffData.surname, staffData.otherNames]
                     .filter(Boolean)
                     .join(" ") || "Not assigned"}
                 </p>

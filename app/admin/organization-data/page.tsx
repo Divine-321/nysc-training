@@ -43,7 +43,7 @@ function extractBlockingStaff(payload: unknown): BlockingStaffEntry[] | null {
 function blockingStaffLabel(entry: BlockingStaffEntry) {
   return (
     entry.name ||
-    [entry.first_name, entry.last_name].filter(Boolean).join(" ") ||
+    [entry.last_name, entry.first_name].filter(Boolean).join(" ") ||
     entry.file_number ||
     "Unknown staff"
   );
