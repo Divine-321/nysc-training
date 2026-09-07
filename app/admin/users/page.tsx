@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import {
   Search,
@@ -301,7 +301,18 @@ export default function AdminUsersPage() {
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
-  const [liveStaff, setLiveStaff] = useState<StaffUser[]>([]);
+  const [staffPageUsers, setStaffPageUsers] = useState<AuthUser[]>([]);
+  // Enrichment data (postings for rank/location/department, enrollments for
+  // cohort/course counts) — loaded once, independently of the staff table's
+  // own page/search/sort, and reused for whichever page is on screen. This
+  // used to be re-fetched on every keystroke and page turn alongside the
+  // staff page itself: /api/training/enrollments carries every enrollment
+  // in the whole portal, not just this page's ~20 staff, so every search or
+  // page change first waited on a full portal-wide download before showing
+  // anything. It only gets slower as the portal accumulates enrollments.
+  const [postings, setPostings] = useState<Posting[]>([]);
+  const [enrollments, setEnrollments] = useState<CourseEnrollment[]>([]);
+  const [enrichmentError, setEnrichmentError] = useState("");
   const [loadingStaff, setLoadingStaff] = useState(true);
   const [staffError, setStaffError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -362,7 +373,25 @@ export default function AdminUsersPage() {
   const pageSize = 20;
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
-  const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
+  // Keyed by id, holding the full record rather than just the id — so a
+  // person ticked under one search is still shown correctly (name, file
+  // number) once the search changes and their row is no longer loaded.
+  // Deliberately NOT cleared by page/search/sort changes: those are just
+  // changing what's in view, not invalidating who's selected. Only a real
+  // reason to distrust the selection — a selected person being deleted, or
+  // a bulk assignment succeeding — clears it (or narrows it) explicitly,
+  // at the point that happens.
+  const [selectedStaffMap, setSelectedStaffMap] = useState<
+    Map<string, StaffUser>
+  >(new Map());
+  const selectedStaffIds = useMemo(
+    () => Array.from(selectedStaffMap.keys()),
+    [selectedStaffMap],
+  );
+  const selectedStaffRecords = useMemo(
+    () => Array.from(selectedStaffMap.values()),
+    [selectedStaffMap],
+  );
   const [selectedCohort, setSelectedCohort] = useState("");
   const [cohorts, setCohorts] = useState<CohortOption[]>([]);
   // New-model (Training Programme) assignment targets. When the restructured
@@ -382,6 +411,116 @@ export default function AdminUsersPage() {
   const [bulkUploading, setBulkUploading] = useState(false);
   const [bulkResult, setBulkResult] = useState<BulkUploadData | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
+
+  // Combines whichever staff page is currently loaded with the separately
+  // (and far less often) loaded enrichment data. Recomputes only when one of
+  // those actually changes — not on every render — so paginating or sorting
+  // the already-loaded page costs nothing extra here.
+  const liveStaff = useMemo<StaffUser[]>(() => {
+    const postingByStaffId = new Map<number, Posting>();
+    const cohortNamesByStaffId = new Map<number, Set<string>>();
+    const courseCountByStaffId = new Map<number, number>();
+    const completedCountByStaffId = new Map<number, number>();
+
+    for (const posting of postings) {
+      const existingPosting = postingByStaffId.get(posting.staff.id);
+      if (posting.is_current || !existingPosting) {
+        postingByStaffId.set(posting.staff.id, posting);
+      }
+    }
+
+    const addCohortName = (staffId: number, name?: string | null) => {
+      if (!name) return;
+      const names = cohortNamesByStaffId.get(staffId) ?? new Set<string>();
+      names.add(name);
+      cohortNamesByStaffId.set(staffId, names);
+    };
+
+    // Training enrollments — the current way staff are assigned. Each
+    // enrollment tied to a programme contributes its cohort name and counts
+    // as one course (orphaned enrollments with no programme are ignored).
+    for (const enrollment of enrollments) {
+      const programmeId = enrollment.programme ?? enrollment.cohort_course ?? null;
+      if (programmeId == null) continue;
+
+      addCohortName(enrollment.staff, enrollment.cohort_name);
+      courseCountByStaffId.set(
+        enrollment.staff,
+        (courseCountByStaffId.get(enrollment.staff) ?? 0) + 1,
+      );
+
+      // Finished either by status or by reaching 100 — a programme can sit
+      // at 100% before the backend flips the status.
+      const finished =
+        enrollment.status === "COMPLETED" ||
+        Number(enrollment.completion_percentage ?? 0) >= 100;
+
+      if (finished) {
+        completedCountByStaffId.set(
+          enrollment.staff,
+          (completedCountByStaffId.get(enrollment.staff) ?? 0) + 1,
+        );
+      }
+    }
+
+    return staffPageUsers.map((user) => {
+      const posting = postingByStaffId.get(user.id);
+      const location = posting?.state?.name || "Not assigned";
+      const department = posting?.department?.name || "Not assigned";
+
+      return {
+        id: String(user.id),
+        photo: user.profile?.profile_picture_url || "/1-blank-profile.png",
+        fileNo: user.file_number || "Not assigned",
+        email: user.email,
+        surname: user.last_name || "",
+        otherNames: [user.first_name, user.middle_name]
+          .filter(Boolean)
+          .join(" "),
+        rank: posting?.rank?.title || "Not assigned",
+        gradeLevel: posting?.grade_level?.code || "Not assigned",
+        location,
+        department,
+        cohort:
+          Array.from(cohortNamesByStaffId.get(user.id) ?? []).join(", ") ||
+          "Not assigned",
+        coursesAttended: courseCountByStaffId.get(user.id) ?? 0,
+        coursesCompleted: completedCountByStaffId.get(user.id) ?? 0,
+        status:
+          posting?.status === "retired"
+            ? "Retired"
+            : user.is_active
+              ? "Active"
+              : "Inactive",
+        firstName: user.first_name || "",
+        middleName: user.middle_name || "",
+        lastName: user.last_name || "",
+        isActive: user.is_active,
+        phoneNumber: user.profile?.phone_number || "",
+        profilePictureUrl: user.profile?.profile_picture_url || "",
+        sex: user.profile?.sex || "",
+        dateOfBirth: user.profile?.date_of_birth || "",
+        employmentDate: user.profile?.employment_date || "",
+        hasPosting: Boolean(posting),
+        stateId: posting?.state?.id ? String(posting.state.id) : "",
+        departmentId: posting?.department?.id
+          ? String(posting.department.id)
+          : "",
+        gradeLevelId: posting?.grade_level?.id
+          ? String(posting.grade_level.id)
+          : "",
+        rankId: posting?.rank?.id ? String(posting.rank.id) : "",
+        postingReasonId: posting?.posting_reason?.id
+          ? String(posting.posting_reason.id)
+          : "",
+        postingStartDate: posting?.start_date || "",
+        postingEndDate: posting?.end_date || "",
+        postingStatus: posting?.status || "active",
+        postingRemarks: posting?.remarks || "",
+      };
+    });
+  }, [staffPageUsers, postings, enrollments]);
+
   const staffList = liveStaff;
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
@@ -444,155 +583,13 @@ export default function AdminUsersPage() {
       setLoadingStaff(true);
 
       try {
-        const [
-          staffResult,
-          postingsResponse,
-          enrollmentsResponse,
-        ] = await Promise.all([
-          fetchCurrentPage(),
-          cachedFetch("/api/organization/postings"),
-          // Staff are assigned to trainings via enrolments; the cohort name
-          // comes with the programme. The legacy cohort-staff endpoint used to
-          // be read alongside this one, but it was removed from the backend in
-          // the restructure and answered 404 on every admin page load.
-          cachedFetchAll("/api/training/enrollments"),
-        ]);
+        const staffResult = await fetchCurrentPage();
 
-        const [postingsPayload, enrollmentsPayload] = await Promise.all([
-          postingsResponse.json().catch(() => null),
-          enrollmentsResponse.json().catch(() => null),
-        ]);
-
-        const users = staffResult.users;
+        setStaffPageUsers(staffResult.users);
         setTotalStaff(staffResult.count);
         setHasNextPage(staffResult.hasNext);
         setHasPreviousPage(staffResult.hasPrevious);
-
-        const postings = postingsResponse.ok
-          ? readApiList<Posting>(postingsPayload)
-          : [];
-
-        const postingByStaffId = new Map<number, Posting>();
-        const cohortNamesByStaffId = new Map<number, Set<string>>();
-        const courseCountByStaffId = new Map<number, number>();
-        const completedCountByStaffId = new Map<number, number>();
-
-        for (const posting of postings) {
-          const existingPosting = postingByStaffId.get(posting.staff.id);
-
-          if (posting.is_current || !existingPosting) {
-            postingByStaffId.set(posting.staff.id, posting);
-          }
-        }
-
-        const addCohortName = (staffId: number, name?: string | null) => {
-          if (!name) return;
-          const names = cohortNamesByStaffId.get(staffId) ?? new Set<string>();
-          names.add(name);
-          cohortNamesByStaffId.set(staffId, names);
-        };
-
-        // Training enrollments — the current way staff are assigned. Each
-        // enrollment tied to a programme contributes its cohort name and counts
-        // as one course (orphaned enrollments with no programme are ignored).
-        if (enrollmentsResponse.ok) {
-          for (const enrollment of readApiList<CourseEnrollment>(
-            enrollmentsPayload,
-          )) {
-            const programmeId =
-              enrollment.programme ?? enrollment.cohort_course ?? null;
-            if (programmeId == null) continue;
-
-            addCohortName(enrollment.staff, enrollment.cohort_name);
-            courseCountByStaffId.set(
-              enrollment.staff,
-              (courseCountByStaffId.get(enrollment.staff) ?? 0) + 1,
-            );
-
-            // Finished either by status or by reaching 100 — a programme can
-            // sit at 100% before the backend flips the status.
-            const finished =
-              enrollment.status === "COMPLETED" ||
-              Number(enrollment.completion_percentage ?? 0) >= 100;
-
-            if (finished) {
-              completedCountByStaffId.set(
-                enrollment.staff,
-                (completedCountByStaffId.get(enrollment.staff) ?? 0) + 1,
-              );
-            }
-          }
-        }
-
-        setSelectedStaffIds([]);
-
-        setLiveStaff(
-          users.map((user) => {
-            const posting = postingByStaffId.get(user.id);
-
-            const location = posting?.state?.name || "Not assigned";
-            const department = posting?.department?.name || "Not assigned";
-
-            return {
-              id: String(user.id),
-              photo:
-                user.profile?.profile_picture_url || "/1-blank-profile.png",
-              fileNo: user.file_number || "Not assigned",
-              email: user.email,
-              surname: user.last_name || "",
-              otherNames: [user.first_name, user.middle_name]
-                .filter(Boolean)
-                .join(" "),
-              rank: posting?.rank?.title || "Not assigned",
-              gradeLevel: posting?.grade_level?.code || "Not assigned",
-              location,
-              department,
-              cohort:
-                Array.from(cohortNamesByStaffId.get(user.id) ?? []).join(
-                  ", ",
-                ) || "Not assigned",
-              coursesAttended: courseCountByStaffId.get(user.id) ?? 0,
-              coursesCompleted: completedCountByStaffId.get(user.id) ?? 0,
-              status:
-                posting?.status === "retired"
-                  ? "Retired"
-                  : user.is_active
-                    ? "Active"
-                    : "Inactive",
-              firstName: user.first_name || "",
-              middleName: user.middle_name || "",
-              lastName: user.last_name || "",
-              isActive: user.is_active,
-              phoneNumber: user.profile?.phone_number || "",
-              profilePictureUrl: user.profile?.profile_picture_url || "",
-              sex: user.profile?.sex || "",
-              dateOfBirth: user.profile?.date_of_birth || "",
-              employmentDate: user.profile?.employment_date || "",
-              hasPosting: Boolean(posting),
-              stateId: posting?.state?.id ? String(posting.state.id) : "",
-              departmentId: posting?.department?.id
-                ? String(posting.department.id)
-                : "",
-              gradeLevelId: posting?.grade_level?.id
-                ? String(posting.grade_level.id)
-                : "",
-              rankId: posting?.rank?.id ? String(posting.rank.id) : "",
-              postingReasonId: posting?.posting_reason?.id
-                ? String(posting.posting_reason.id)
-                : "",
-              postingStartDate: posting?.start_date || "",
-              postingEndDate: posting?.end_date || "",
-              postingStatus: posting?.status || "active",
-              postingRemarks: posting?.remarks || "",
-            };
-          }),
-        );
-
-        setStaffError(
-          postingsResponse.ok
-            ? ""
-            : "Staff loaded, but posting details could not be loaded.",
-        );
+        setStaffError("");
       } catch (error) {
         setStaffError(
           error instanceof Error ? error.message : "Could not load staff.",
@@ -603,7 +600,60 @@ export default function AdminUsersPage() {
     };
 
     void loadStaff();
+    // Deliberately NOT depending on postings/enrollments (loaded below) —
+    // this effect is only about which page of staff to show, so paginating,
+    // searching or sorting never waits on the portal-wide enrichment fetch.
   }, [page, staffReloadKey, debouncedSearch, staffSort]);
+
+  // Enrichment data — rank/location/department (postings) and cohort/course
+  // counts (enrollments) — loaded once and reused for every page, search and
+  // sort of the staff table above, rather than re-downloaded on each one.
+  // staffReloadKey still applies: an edit can change a posting or enrolment,
+  // so the same "something changed, refresh" signal covers both effects.
+  useEffect(() => {
+    const loadEnrichment = async () => {
+      try {
+        const [postingsResponse, enrollmentsResponse] = await Promise.all([
+          // All pages, not just the first — a plain cachedFetch here used to
+          // silently cap postings at one DRF page, so any staff member whose
+          // posting fell past it always showed "Not assigned" regardless of
+          // their real rank/location/department.
+          cachedFetchAll("/api/organization/postings"),
+          // Staff are assigned to trainings via enrolments; the cohort name
+          // comes with the programme. The legacy cohort-staff endpoint used to
+          // be read alongside this one, but it was removed from the backend in
+          // the restructure and answered 404 on every admin page load.
+          cachedFetchAll("/api/training/enrollments"),
+        ]);
+
+        setPostings(
+          postingsResponse.ok
+            ? readApiList<Posting>(
+                await postingsResponse.json().catch(() => null),
+              )
+            : [],
+        );
+        setEnrollments(
+          enrollmentsResponse.ok
+            ? readApiList<CourseEnrollment>(
+                await enrollmentsResponse.json().catch(() => null),
+              )
+            : [],
+        );
+        setEnrichmentError(
+          postingsResponse.ok && enrollmentsResponse.ok
+            ? ""
+            : "Staff loaded, but some posting or training details could not be loaded.",
+        );
+      } catch {
+        setEnrichmentError(
+          "Staff loaded, but some posting or training details could not be loaded.",
+        );
+      }
+    };
+
+    void loadEnrichment();
+  }, [staffReloadKey]);
 
   /**
    * States, departments, grade levels, ranks and posting reasons.
@@ -809,12 +859,22 @@ export default function AdminUsersPage() {
     pageSize,
   ]);
 
+  // "Select all" only ever means all of what's currently on screen — it
+  // adds them into whatever was already selected from earlier searches
+  // rather than replacing it, and un-checking only removes this page's
+  // rows, leaving any other search's selections untouched.
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.checked) {
-      setSelectedStaffIds(filteredStaff.map((staff) => staff.id));
-    } else {
-      setSelectedStaffIds([]);
-    }
+    setSelectedStaffMap((current) => {
+      const next = new Map(current);
+      for (const staff of filteredStaff) {
+        if (event.target.checked) {
+          next.set(staff.id, staff);
+        } else {
+          next.delete(staff.id);
+        }
+      }
+      return next;
+    });
   };
 
   // Unified dropdown options across both models.
@@ -895,7 +955,11 @@ export default function AdminUsersPage() {
         if (alreadyAssigned.length > 0) {
           const names = alreadyAssigned
             .map((staffId) => {
-              const staff = staffList.find((item) => item.id === staffId);
+              // From the selection map, not the current page — a selected
+              // person from an earlier search won't be in staffList once
+              // the search has moved on, and this warning would otherwise
+              // silently drop their name.
+              const staff = selectedStaffMap.get(staffId);
               return staff ? `${staff.surname} ${staff.otherNames}`.trim() : null;
             })
             .filter(Boolean)
@@ -987,9 +1051,18 @@ export default function AdminUsersPage() {
         } failed. ${failed[0].message}`,
       );
 
-      setSelectedStaffIds(failed.map((result) => result.staffId));
+      // Keep only the ones that failed selected, so a retry after fixing
+      // whatever went wrong doesn't require re-searching for everyone again.
+      setSelectedStaffMap((current) => {
+        const next = new Map<string, StaffUser>();
+        for (const result of failed) {
+          const staff = current.get(result.staffId);
+          if (staff) next.set(result.staffId, staff);
+        }
+        return next;
+      });
     } else {
-      setSelectedStaffIds([]);
+      setSelectedStaffMap(new Map());
       setSelectedCohort("");
       setShowAssignmentModal(false);
     }
@@ -1148,7 +1221,15 @@ export default function AdminUsersPage() {
         );
       }
 
-      setLiveStaff((current) => current.filter((item) => item.id !== staff.id));
+      setStaffPageUsers((current) =>
+        current.filter((user) => String(user.id) !== staff.id),
+      );
+      setSelectedStaffMap((current) => {
+        if (!current.has(staff.id)) return current;
+        const next = new Map(current);
+        next.delete(staff.id);
+        return next;
+      });
     } catch (deleteError) {
       setStaffError(
         deleteError instanceof Error
@@ -1358,7 +1439,7 @@ export default function AdminUsersPage() {
   ) => {
     const confirmed = await confirm(
       `Delete the staff record for ${
-        [record.first_name, record.last_name].filter(Boolean).join(" ") ||
+        [record.last_name, record.first_name].filter(Boolean).join(" ") ||
         record.file_number
       }? This staff member will no longer be able to register.`,
       { danger: true },
@@ -1624,6 +1705,12 @@ export default function AdminUsersPage() {
           </div>
         )}
 
+        {!staffError && enrichmentError && (
+          <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-700">
+            {enrichmentError}
+          </div>
+        )}
+
         {assignmentNotice && (
           <div className="rounded-xl bg-green-50 p-4 text-sm text-green-700">
             {assignmentNotice}
@@ -1653,7 +1740,9 @@ export default function AdminUsersPage() {
                     className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
                     checked={
                       filteredStaff.length > 0 &&
-                      selectedStaffIds.length === filteredStaff.length
+                      filteredStaff.every((staff) =>
+                        selectedStaffMap.has(staff.id),
+                      )
                     }
                     onChange={handleSelectAll}
                   />
@@ -1681,16 +1770,18 @@ export default function AdminUsersPage() {
                     <input
                       type="checkbox"
                       className="w-4 h-4 accent-[#1a6b3c] border-gray-300 rounded cursor-pointer"
-                      checked={selectedStaffIds.includes(staff.id)}
+                      checked={selectedStaffMap.has(staff.id)}
                       onChange={(e) => {
                         e.stopPropagation();
-                        if (e.target.checked) {
-                          setSelectedStaffIds([...selectedStaffIds, staff.id]);
-                        } else {
-                          setSelectedStaffIds(
-                            selectedStaffIds.filter((id) => id !== staff.id),
-                          );
-                        }
+                        setSelectedStaffMap((current) => {
+                          const next = new Map(current);
+                          if (e.target.checked) {
+                            next.set(staff.id, staff);
+                          } else {
+                            next.delete(staff.id);
+                          }
+                          return next;
+                        });
                       }}
                     />
                   </td>
@@ -2032,7 +2123,7 @@ export default function AdminUsersPage() {
                           {record.file_number}
                         </td>
                         <td className="px-5 py-3 text-gray-700">
-                          {[record.first_name, record.middle_name, record.last_name]
+                          {[record.last_name, record.first_name, record.middle_name]
                             .filter(Boolean)
                             .join(" ") || "Not registered"}
                         </td>
@@ -2166,6 +2257,15 @@ export default function AdminUsersPage() {
                 cannot push the close button off screen. */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               <div className="grid grid-cols-2 gap-y-6 gap-x-4">
+                <div className="col-span-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
+                    Email
+                  </p>
+                  <p className="font-semibold text-gray-800 flex items-center gap-1.5">
+                    <Mail size={14} className="text-[#1a6b3c] shrink-0" />{" "}
+                    <span className="truncate">{selectedStaff.email}</span>
+                  </p>
+                </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1">
                     Rank
@@ -3156,24 +3256,41 @@ export default function AdminUsersPage() {
                       Selected Staff ({selectedStaffIds.length})
                     </label>
                     <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto p-2 bg-gray-50 space-y-1">
-                      {staffList
-                        .filter((s) => selectedStaffIds.includes(s.id))
-                        .map((staff) => (
-                          <div
-                            key={staff.id}
-                            className="flex items-center justify-between py-2 px-3 border border-gray-100 bg-white rounded-md shadow-sm"
-                          >
-                            <span className="text-sm font-semibold text-gray-800">
-                              {staff.surname}{" "}
-                              <span className="font-normal text-gray-600">
-                                {staff.otherNames}
-                              </span>
+                      {/* From the selection map, not staffList — this holds
+                          everyone selected across every search, not just
+                          whoever is on the currently loaded page. */}
+                      {selectedStaffRecords.map((staff) => (
+                        <div
+                          key={staff.id}
+                          className="flex items-center justify-between gap-2 py-2 px-3 border border-gray-100 bg-white rounded-md shadow-sm"
+                        >
+                          <span className="min-w-0 text-sm font-semibold text-gray-800">
+                            {staff.surname}{" "}
+                            <span className="font-normal text-gray-600">
+                              {staff.otherNames}
                             </span>
+                          </span>
+                          <span className="flex shrink-0 items-center gap-2">
                             <span className="text-xs text-gray-500 font-medium">
                               {staff.fileNo}
                             </span>
-                          </div>
-                        ))}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSelectedStaffMap((current) => {
+                                  const next = new Map(current);
+                                  next.delete(staff.id);
+                                  return next;
+                                })
+                              }
+                              aria-label={`Remove ${staff.surname} from selection`}
+                              className="rounded-full p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
+                            >
+                              <X size={13} />
+                            </button>
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
 
