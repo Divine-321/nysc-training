@@ -5,7 +5,6 @@ import {
   type EvaluationAnswer,
   type EvaluationAnswerInput,
   type EvaluationQuestion,
-  type EvaluationQuestionOption,
 } from "@/app/lib/staff-learning";
 
 /**
@@ -21,12 +20,6 @@ export type EvaluationAnswerState = Record<
   number,
   { selected_option_id?: number; answer_text?: string }
 >;
-
-// A vertical checklist reads better once there are more than a handful of
-// options (Q17's six resources, Q18's seven challenges); a horizontal row
-// suits everything shorter (a Likert scale's five, yes/no's two, and so on).
-// Purely a layout choice — nothing about the data says which is which.
-const ROW_LAYOUT_MAX_OPTIONS = 5;
 
 function sortedOptions(question: EvaluationQuestion) {
   return [...question.options].sort((first, second) => first.order - second.order);
@@ -52,22 +45,32 @@ function needsOtherText(
   return selected ? optionRequiresText(selected) : false;
 }
 
+/** Whether one question has everything it needs — the single source both the progress styling and the submit gate read. */
+function isAnswered(
+  question: EvaluationQuestion,
+  answer: EvaluationAnswerState[number] | undefined,
+): boolean {
+  if (question.question_type === "OPEN_TEXT") {
+    return Boolean(answer?.answer_text?.trim());
+  }
+
+  if (!answer?.selected_option_id) return false;
+
+  // A MIXED question isn't finished until the "Other" text is in, if that's
+  // the option chosen.
+  return (
+    !needsOtherText(question, answer) || Boolean(answer?.answer_text?.trim())
+  );
+}
+
 /** Questions still missing an answer — every question the bank returns is required. */
 export function missingRequiredQuestions(
   questions: EvaluationQuestion[],
   answers: EvaluationAnswerState,
 ): EvaluationQuestion[] {
-  return questions.filter((question) => {
-    const answer = answers[question.id];
-
-    if (question.question_type === "OPEN_TEXT") {
-      return !answer?.answer_text?.trim();
-    }
-
-    if (!answer?.selected_option_id) return true;
-
-    return needsOtherText(question, answer) && !answer?.answer_text?.trim();
-  });
+  return questions.filter(
+    (question) => !isAnswered(question, answers[question.id]),
+  );
 }
 
 /** Answers shaped for the `evaluations` array in POST /api/training/evaluations. */
@@ -124,52 +127,6 @@ export function formatEvaluationAnswer(answer: EvaluationAnswer): string {
   return showsText && answer_text?.trim() ? `${label}: ${answer_text.trim()}` : label;
 }
 
-function OptionRow({
-  option,
-  selected,
-  onSelect,
-  asRow,
-}: {
-  option: EvaluationQuestionOption;
-  selected: boolean;
-  onSelect: () => void;
-  asRow: boolean;
-}) {
-  if (asRow) {
-    return (
-      <button
-        type="button"
-        onClick={onSelect}
-        className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${
-          selected
-            ? "border-nysc-green bg-green-50 text-nysc-green"
-            : "border-gray-200 text-gray-500 hover:border-gray-300"
-        }`}
-      >
-        {option.option}
-      </button>
-    );
-  }
-
-  return (
-    <label
-      className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3.5 py-2 text-sm transition ${
-        selected
-          ? "border-nysc-green bg-green-50 text-nysc-green"
-          : "border-gray-200 text-gray-600 hover:border-gray-300"
-      }`}
-    >
-      <input
-        type="radio"
-        checked={selected}
-        onChange={onSelect}
-        className="accent-nysc-green"
-      />
-      {option.option}
-    </label>
-  );
-}
-
 export default function CourseEvaluationForm({
   questions,
   answers,
@@ -192,17 +149,23 @@ export default function CourseEvaluationForm({
   };
 
   return (
-    <div className="space-y-7 text-center">
-      {questions.map((question) => {
+    <div className="space-y-6 text-left">
+      {questions.map((question, index) => {
         const answer = answers[question.id];
-        const options = sortedOptions(question);
-        const asRow = options.length > 0 && options.length <= ROW_LAYOUT_MAX_OPTIONS;
 
         return (
-          <fieldset key={question.id} disabled={disabled} className="space-y-2">
-            <legend className="mx-auto block max-w-xl text-sm font-medium text-gray-700">
-              {question.order}. {question.question}
-              <span className="text-red-500"> *</span>
+          <fieldset key={question.id} disabled={disabled}>
+            {/* Numbered by position, not by the question's own `order`: the
+                bank omits the live-session question entirely for a course
+                without one, and a list that jumps 13 → 15 reads like
+                something is missing. Whoever is filling this in just needs
+                a list that counts up. */}
+            <legend className="block w-full text-sm leading-relaxed text-gray-700">
+              <span className="mr-1.5 font-semibold text-gray-400">
+                {index + 1}.
+              </span>
+              {question.question}
+              <span className="ml-0.5 text-red-500">*</span>
             </legend>
 
             {question.question_type === "OPEN_TEXT" ? (
@@ -213,26 +176,31 @@ export default function CourseEvaluationForm({
                 }
                 rows={3}
                 placeholder="Your answer"
-                className="mx-auto block w-full max-w-xl rounded-lg border border-gray-200 px-3.5 py-2 text-left text-sm outline-none focus:border-nysc-green focus:ring-2 focus:ring-nysc-green/15"
+                className="mt-2.5 block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-nysc-green focus:ring-2 focus:ring-nysc-green/15"
               />
             ) : (
-              <div
-                className={
-                  asRow
-                    ? "flex flex-wrap justify-center gap-2"
-                    : "mx-auto max-w-sm space-y-1.5 text-left"
-                }
-              >
-                {options.map((option) => (
-                  <OptionRow
+              // One row of plain radios, wrapping when the labels are long.
+              // The generous column gap is what keeps a wrapped row readable
+              // — without it, options on the same line run together.
+              <div className="mt-2.5 flex flex-wrap gap-x-7 gap-y-2.5">
+                {sortedOptions(question).map((option) => (
+                  <label
                     key={option.id}
-                    option={option}
-                    asRow={asRow}
-                    selected={answer?.selected_option_id === option.id}
-                    onSelect={() =>
-                      setAnswer(question.id, { selected_option_id: option.id })
-                    }
-                  />
+                    className="flex cursor-pointer items-center gap-2 text-sm text-gray-600 transition hover:text-gray-900"
+                  >
+                    <input
+                      type="radio"
+                      name={`evaluation-question-${question.id}`}
+                      checked={answer?.selected_option_id === option.id}
+                      onChange={() =>
+                        setAnswer(question.id, {
+                          selected_option_id: option.id,
+                        })
+                      }
+                      className="h-4 w-4 shrink-0 accent-nysc-green"
+                    />
+                    {option.option}
+                  </label>
                 ))}
               </div>
             )}
@@ -245,7 +213,7 @@ export default function CourseEvaluationForm({
                   setAnswer(question.id, { answer_text: event.target.value })
                 }
                 placeholder="Please specify"
-                className="mx-auto block w-full max-w-sm rounded-lg border border-gray-200 px-3.5 py-2 text-sm outline-none focus:border-nysc-green focus:ring-2 focus:ring-nysc-green/15"
+                className="mt-2.5 block w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-nysc-green focus:ring-2 focus:ring-nysc-green/15"
               />
             ) : null}
           </fieldset>

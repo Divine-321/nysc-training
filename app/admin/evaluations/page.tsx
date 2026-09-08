@@ -140,12 +140,16 @@ export default function AdminEvaluationsPage() {
         }
       }
     }
-    // Numbered and sorted by the question's own order, not its database id —
-    // the two aren't guaranteed to match, and the number needs to agree with
-    // what staff actually saw on the form (and the admin detail view above).
+    // Sorted by the question's own order (not its database id — the two
+    // aren't guaranteed to match), then numbered by position so the columns
+    // count up the way the form did, with no gap where a question that
+    // doesn't apply to every course would otherwise leave one.
     return Array.from(byId, ([id, { order, question }]) => ({ id, order, question }))
       .sort((first, second) => first.order - second.order)
-      .map(({ id, order, question }) => ({ id, question: `${order}. ${question}` }));
+      .map(({ id, question }, index) => ({
+        id,
+        question: `${index + 1}. ${question}`,
+      }));
   }, [rows]);
 
   const filtered = useMemo(() => {
@@ -476,10 +480,14 @@ export default function AdminEvaluationsPage() {
           <dl className="max-h-[60vh] space-y-3 overflow-y-auto pr-1">
             {[...detailRow.evaluations]
               .sort((first, second) => first.question.order - second.question.order)
-              .map((answer) => (
+              .map((answer, index) => (
                 <div key={answer.id}>
+                  {/* Numbered by position, matching the form staff filled in
+                      — the live-session question is absent for a course
+                      without one, so the question's own `order` would leave
+                      a gap here that never appeared on their screen. */}
                   <dt className="text-xs text-gray-500">
-                    {answer.question.order}. {answer.question.question}
+                    {index + 1}. {answer.question.question}
                   </dt>
                   <dd className="text-sm font-medium text-gray-800">
                     {formatEvaluationAnswer(answer)}
