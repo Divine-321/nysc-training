@@ -129,17 +129,23 @@ export default function AdminEvaluationsPage() {
   // full question) rather than a separate /evaluation-questions/ fetch, so
   // CSV columns never drift out of sync with what staff were actually asked.
   const questionColumns = useMemo(() => {
-    const byId = new Map<number, string>();
+    const byId = new Map<number, { order: number; question: string }>();
     for (const row of rows) {
       for (const answer of row.evaluations) {
         if (!byId.has(answer.question.id)) {
-          byId.set(answer.question.id, answer.question.question);
+          byId.set(answer.question.id, {
+            order: answer.question.order,
+            question: answer.question.question,
+          });
         }
       }
     }
-    return Array.from(byId, ([id, question]) => ({ id, question })).sort(
-      (first, second) => first.id - second.id,
-    );
+    // Numbered and sorted by the question's own order, not its database id —
+    // the two aren't guaranteed to match, and the number needs to agree with
+    // what staff actually saw on the form (and the admin detail view above).
+    return Array.from(byId, ([id, { order, question }]) => ({ id, order, question }))
+      .sort((first, second) => first.order - second.order)
+      .map(({ id, order, question }) => ({ id, question: `${order}. ${question}` }));
   }, [rows]);
 
   const filtered = useMemo(() => {
@@ -473,7 +479,7 @@ export default function AdminEvaluationsPage() {
               .map((answer) => (
                 <div key={answer.id}>
                   <dt className="text-xs text-gray-500">
-                    {answer.question.question}
+                    {answer.question.order}. {answer.question.question}
                   </dt>
                   <dd className="text-sm font-medium text-gray-800">
                     {formatEvaluationAnswer(answer)}

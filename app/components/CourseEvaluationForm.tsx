@@ -201,7 +201,7 @@ export default function CourseEvaluationForm({
         return (
           <fieldset key={question.id} disabled={disabled} className="space-y-2">
             <legend className="mx-auto block max-w-xl text-sm font-medium text-gray-700">
-              {question.question}
+              {question.order}. {question.question}
               <span className="text-red-500"> *</span>
             </legend>
 
