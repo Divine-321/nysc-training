@@ -9,11 +9,13 @@ import {
   CalendarX,
   Lock,
   PlayCircle,
+  RotateCcw,
   Target,
   X,
 } from "lucide-react";
 import {
   isCourseClosed,
+  isCourseCompleted,
   loadStaffCourses,
   toPercentage,
   type StaffCourse,
@@ -200,6 +202,7 @@ export default function StaffDashboard() {
                 );
 
                 const isClosed = isCourseClosed(item);
+                const isCompleted = isCourseCompleted(item);
 
                 return (
                   <div
@@ -231,7 +234,12 @@ export default function StaffDashboard() {
                         </button>
                       )}
 
-                      {/* A closed course still opens — the detail page explains
+                      {/* The label has to match what is actually waiting behind
+                          it: "Continue" on a course at 0% invites someone to pick
+                          up work they never began, and on a finished one it
+                          promises work that is already done.
+
+                          A closed course still opens — the detail page explains
                           when it closed and that any certificate is kept — but it
                           must not say "Continue", which promises work that can no
                           longer be done or certified. */}
@@ -248,9 +256,14 @@ export default function StaffDashboard() {
                             <>
                               <CalendarX size={16} /> Training closed
                             </>
+                          ) : isCompleted ? (
+                            <>
+                              <RotateCcw size={16} /> Review
+                            </>
                           ) : (
                             <>
-                              <PlayCircle size={16} /> Continue
+                              <PlayCircle size={16} />
+                              {progress > 0 ? "Continue" : "Start"}
                             </>
                           )}
                         </Link>

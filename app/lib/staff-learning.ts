@@ -264,6 +264,22 @@ export function programmeWindow(
 }
 
 /**
+ * True once a course is finished: either the backend marked the enrollment
+ * COMPLETED, or progress reached 100% before it got round to doing so.
+ *
+ * Screens use this to decide what a course offers — reviewing finished work
+ * rather than continuing unfinished work.
+ */
+export function isCourseCompleted(item: {
+  enrollment: Pick<CourseEnrollment, "status" | "completion_percentage">;
+}) {
+  return (
+    item.enrollment.status === "COMPLETED" ||
+    toPercentage(item.enrollment.completion_percentage) >= 100
+  );
+}
+
+/**
  * True when a course can no longer be worked on: its programme's end date has
  * passed and it was not finished in time.
  *
@@ -278,11 +294,9 @@ export function isCourseClosed(item: {
   enrollment: Pick<CourseEnrollment, "status" | "completion_percentage">;
   programme: Programme | null;
 }) {
-  const finished =
-    item.enrollment.status === "COMPLETED" ||
-    toPercentage(item.enrollment.completion_percentage) >= 100;
-
-  return !finished && programmeWindow(item.programme).state === "after";
+  return (
+    !isCourseCompleted(item) && programmeWindow(item.programme).state === "after"
+  );
 }
 
 /** Human label for a programme's cohort across both backend models. */

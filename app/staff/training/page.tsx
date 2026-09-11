@@ -26,18 +26,10 @@ import { Skeleton } from "@/app/components/ui";
 import {
   loadStaffCourses,
   isCourseClosed,
+  isCourseCompleted,
   toPercentage,
   type StaffCourse,
 } from "@/app/lib/staff-learning";
-
-// A course counts as completed once its progress hits 100%, even if the
-// backend enrollment status has not been updated yet.
-function isCourseCompleted(item: StaffCourse) {
-  return (
-    item.enrollment.status === "COMPLETED" ||
-    toPercentage(item.enrollment.completion_percentage) >= 100
-  );
-}
 
 function statusLabel(item: StaffCourse) {
   if (isCourseCompleted(item)) return "Completed";
