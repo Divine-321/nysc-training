@@ -48,6 +48,13 @@ export default function CameraCaptureModal({
   const camera = useCamera();
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
 
+  // Retryable states only — "starting" is already in progress, and "idle"
+  // means the first attempt hasn't run yet.
+  const cameraFailed =
+    camera.status === "denied" ||
+    camera.status === "unavailable" ||
+    camera.status === "ended";
+
   useEffect(() => {
     void camera.start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,6 +119,20 @@ export default function CameraCaptureModal({
         )}
 
         <div className="mt-5 flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+          {!capturedImage && cameraFailed && (
+            // Capture stays disabled while the camera is down, so without
+            // this there is no way to act on the advice in the error above
+            // short of closing the whole dialog.
+            <button
+              type="button"
+              onClick={() => void camera.start()}
+              disabled={busy}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
+            >
+              <RefreshCcw size={16} /> Try camera again
+            </button>
+          )}
+
           {!capturedImage ? (
             <button
               type="button"

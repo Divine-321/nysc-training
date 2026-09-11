@@ -23,6 +23,46 @@ type UseCameraOptions = {
 const MAX_CAPTURE_WIDTH = 640;
 const CAPTURE_QUALITY = 0.7;
 
+/**
+ * Why getUserMedia refused, in terms the person can act on.
+ *
+ * Everything that wasn't a permission denial used to read "No usable camera
+ * was found on this device" — including a camera that is present and working
+ * but already held by something else, which is the common case on Windows:
+ * the proctoring monitor keeps the camera open for a whole assessment, so a
+ * second tab of this app (or Teams, Zoom, the camera app) blocks it. Telling
+ * someone their camera doesn't exist when it is on and in use sends them
+ * looking for the wrong problem.
+ */
+function describeCameraFailure(error: unknown): string {
+  const name = error instanceof DOMException ? error.name : "";
+
+  switch (name) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return "Camera permission was denied. Please allow camera access and try again.";
+
+    case "NotFoundError":
+    case "DevicesNotFoundError":
+      return "No camera was found on this device. Connect one and try again.";
+
+    // TrackStartError is Chrome's older name for the same condition.
+    case "NotReadableError":
+    case "TrackStartError":
+      return "Your camera is already in use by another app or browser tab. Close the other one, then try again.";
+
+    case "OverconstrainedError":
+    case "ConstraintNotSatisfiedError":
+      return "This camera does not support the required settings. Try a different camera if you have one.";
+
+    case "AbortError":
+      return "The camera could not be started. Try again, or restart your browser if it keeps happening.";
+
+    default:
+      return "The camera could not be started. Check that it is connected, not in use by another app, and allowed in your browser settings.";
+  }
+}
+
 export function useCamera(options: UseCameraOptions = {}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -97,11 +137,7 @@ export function useCamera(options: UseCameraOptions = {}) {
           startError.name === "SecurityError");
 
       setStatus(isDenied ? "denied" : "unavailable");
-      setError(
-        isDenied
-          ? "Camera permission was denied. Please allow camera access and try again."
-          : "No usable camera was found on this device.",
-      );
+      setError(describeCameraFailure(startError));
       return false;
     }
   }, []);

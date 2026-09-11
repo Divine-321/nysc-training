@@ -39,6 +39,13 @@ export default function IdentityVerificationModal({
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [failureMessage, setFailureMessage] = useState("");
 
+  // Retryable states only — "starting" is already in progress, and "idle"
+  // means the first attempt hasn't run yet.
+  const cameraFailed =
+    camera.status === "denied" ||
+    camera.status === "unavailable" ||
+    camera.status === "ended";
+
   useEffect(() => {
     void camera.start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,6 +156,20 @@ export default function IdentityVerificationModal({
           >
             Cancel
           </button>
+
+          {step === "camera" && cameraFailed && (
+            // Without this the advice above ("close the other tab, then try
+            // again") has nothing to act on: Capture stays disabled while the
+            // camera is down, so Cancel was the only way out and the whole
+            // verification had to be restarted.
+            <button
+              type="button"
+              onClick={() => void camera.start()}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50"
+            >
+              <RefreshCcw size={16} /> Try camera again
+            </button>
+          )}
 
           {step === "camera" && (
             <button
