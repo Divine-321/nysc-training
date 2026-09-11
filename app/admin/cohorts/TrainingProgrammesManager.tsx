@@ -186,6 +186,16 @@ export default function TrainingProgrammesManager() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
+  // When set, the form above the table is correcting this existing training
+  // (PATCH) rather than creating a new one (POST). One form for both, so the
+  // fields and their validation can't drift apart.
+  const [editingProgrammeId, setEditingProgrammeId] = useState<number | null>(
+    null,
+  );
+  // The form sits above a table that can run several screens long, so opening
+  // it from a row has to bring it into view.
+  const formRef = useRef<HTMLFormElement>(null);
+
   // Live-session management for one programme (modal).
   const [sessionsFor, setSessionsFor] = useState<Programme | null>(null);
   const [sessionForm, setSessionForm] = useState(emptySessionForm);
@@ -309,9 +319,12 @@ export default function TrainingProgrammesManager() {
   }, [programmes]);
 
   // True when a training for this course + cohort month + year already exists.
+  // The training being edited is skipped, or saving it unchanged would report
+  // itself as its own duplicate.
   const findDuplicateTraining = (list: Programme[]) =>
     list.find(
       (programme) =>
+        programme.id !== editingProgrammeId &&
         Number(programme.course) === Number(selectedCourseId) &&
         programmeBatchLabel(programme).toLowerCase() ===
           form.cohort.toLowerCase() &&
@@ -411,6 +424,130 @@ export default function TrainingProgrammesManager() {
 
     await loadData();
     setSaving(false);
+  };
+
+  const isEditing = editingProgrammeId !== null;
+  const editingProgramme =
+    programmes.find((programme) => programme.id === editingProgrammeId) ?? null;
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingProgrammeId(null);
+    setForm(emptyForm);
+    setSelectedCourseId("");
+    setError("");
+  };
+
+  // Loads an existing training into the form above the table.
+  const startEditProgramme = (programme: Programme) => {
+    const cohort = programmeBatchLabel(programme);
+
+    setEditingProgrammeId(programme.id);
+    setSelectedCourseId(programme.course ?? "");
+    setForm({
+      // Older trainings carry a BATCH A/B/C cohort, which is no longer one of
+      // the choices. Leaving it blank makes the admin pick a month rather than
+      // the form quietly showing January.
+      cohort: COHORT_MONTHS.includes(cohort) ? cohort : "",
+      year: String(programme.year ?? new Date().getFullYear()),
+      start_date: programme.start_date ?? "",
+      end_date: programme.end_date ?? "",
+    });
+    setShowForm(true);
+    setError("");
+    setNotice("");
+
+    // Let the form render before scrolling to it — on first open it does not
+    // exist yet at the moment of the click.
+    window.requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  };
+
+  /**
+   * Saves a correction to an existing training: its cohort, year and dates.
+   *
+   * The course is deliberately not sent. A training is "this course, delivered
+   * to this cohort", and every enrolment, progress record and certificate
+   * hangs off it — repointing it at another course would move staff onto
+   * material they never started, against progress counted from the old one.
+   * Picking the wrong course is fixed by deleting the training and creating
+   * the right one, which at least says plainly what is happening.
+   */
+  const handleUpdate = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (editingProgrammeId === null) return;
+
+    const courseTitle =
+      courses.find((course) => course.id === Number(selectedCourseId))?.title ??
+      "this course";
+
+    if (findDuplicateTraining(programmes)) {
+      setError(
+        `"${courseTitle}" already has a training for ${form.cohort} ${form.year}. Each course is delivered once per cohort in a year — pick a different month or year.`,
+      );
+      setNotice("");
+      return;
+    }
+
+    if (form.start_date && form.end_date && form.end_date < form.start_date) {
+      setError("The end date cannot fall before the start date.");
+      setNotice("");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(
+        `/api/training/programmes/${editingProgrammeId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cohort: form.cohort,
+            year: Number(form.year),
+            start_date: form.start_date,
+            end_date: form.end_date,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        const raw = extractErrorMessage(
+          payload,
+          "This training could not be updated.",
+        );
+
+        throw new Error(
+          response.status === 405
+            ? "This backend does not allow a training to be edited yet. Please ask the backend team to enable PATCH on the programmes endpoint."
+            : // Same cohort mismatch the create form warns about: the deployed
+              // backend may still only accept BATCH A/B/C.
+              /valid choice/i.test(raw)
+              ? `The backend rejected "${form.cohort}" as a cohort value. Please report this to the backend team.`
+              : raw,
+        );
+      }
+
+      setNotice(
+        `Training updated — "${courseTitle}" now runs for ${form.cohort} ${form.year}.`,
+      );
+      closeForm();
+      await loadData();
+    } catch (updateError) {
+      setError(
+        updateError instanceof Error
+          ? updateError.message
+          : "Could not reach the server. Please try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (programme: Programme) => {
@@ -973,10 +1110,17 @@ export default function TrainingProgrammesManager() {
 
         <button
           onClick={() => {
-            setShowForm((current) => !current);
-            setForm(emptyForm);
-            setSelectedCourseId("");
-            setError("");
+            // Always lands on a blank create form: pressing this while the
+            // form is editing a row should not save over that row.
+            if (showForm) {
+              closeForm();
+            } else {
+              setEditingProgrammeId(null);
+              setForm(emptyForm);
+              setSelectedCourseId("");
+              setShowForm(true);
+              setError("");
+            }
             setNotice("");
           }}
           className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#145530]"
@@ -1000,11 +1144,12 @@ export default function TrainingProgrammesManager() {
 
       {showForm && (
         <form
-          onSubmit={handleCreate}
+          ref={formRef}
+          onSubmit={isEditing ? handleUpdate : handleCreate}
           className="grid gap-4 rounded-2xl bg-white p-6 shadow-sm md:grid-cols-2"
         >
           <h3 className="flex items-center gap-2 text-lg font-bold text-[#1a6b3c] md:col-span-2">
-            <Layers size={20} /> Create Training
+            <Layers size={20} /> {isEditing ? "Edit Training" : "Create Training"}
           </h3>
 
           <div className="md:col-span-2">
@@ -1012,10 +1157,20 @@ export default function TrainingProgrammesManager() {
               Course
             </label>
             <p className="mb-2 text-xs text-gray-500">
-              Pick the course to deliver for this cohort. The course already
-              contains its modules and activities.
+              {isEditing
+                ? "The course cannot be changed — staff enrolments, progress and certificates are tied to it. To deliver a different course, delete this training and create the right one."
+                : "Pick the course to deliver for this cohort. The course already contains its modules and activities."}
             </p>
-            {courses.length === 0 ? (
+            {isEditing ? (
+              <p className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm font-semibold text-gray-600">
+                <BookOpen size={15} className="shrink-0 text-[#1a6b3c]" />
+                {courses.find(
+                  (course) => course.id === Number(selectedCourseId),
+                )?.title ??
+                  editingProgramme?.course_details?.title ??
+                  "No course is attached to this training"}
+              </p>
+            ) : courses.length === 0 ? (
               <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
                 No courses exist yet — create them under Courses first.
               </p>
@@ -1112,12 +1267,33 @@ export default function TrainingProgrammesManager() {
             />
           </div>
 
-          <button
-            disabled={saving || !selectedCourseId}
-            className="rounded-lg bg-[#1a6b3c] px-6 py-3 font-semibold text-white transition hover:bg-[#145530] disabled:opacity-60 md:col-span-2"
-          >
-            {saving ? "Creating..." : "Create Training"}
-          </button>
+          <div className="flex flex-wrap gap-3 md:col-span-2">
+            <button
+              // An edit never sends the course, so a training whose course was
+              // deleted out from under it can still have its dates corrected.
+              disabled={saving || (!isEditing && !selectedCourseId)}
+              className="flex-1 rounded-lg bg-[#1a6b3c] px-6 py-3 font-semibold text-white transition hover:bg-[#145530] disabled:opacity-60"
+            >
+              {isEditing
+                ? saving
+                  ? "Saving..."
+                  : "Save changes"
+                : saving
+                  ? "Creating..."
+                  : "Create Training"}
+            </button>
+
+            {isEditing && (
+              <button
+                type="button"
+                onClick={closeForm}
+                disabled={saving}
+                className="rounded-lg border border-gray-200 px-6 py-3 font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            )}
+          </div>
         </form>
       )}
 
@@ -1228,6 +1404,21 @@ export default function TrainingProgrammesManager() {
                               className="text-[#1a6b3c]"
                             >
                               <Users size={17} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => startEditProgramme(programme)}
+                              title="Edit this training's cohort, year and dates"
+                              aria-label={`Edit ${
+                                programme.course_details?.title ?? "training"
+                              }`}
+                              className={
+                                editingProgrammeId === programme.id
+                                  ? "text-[#1a6b3c]"
+                                  : "text-gray-500 hover:text-[#1a6b3c]"
+                              }
+                            >
+                              <Pencil size={17} />
                             </button>
                             <button
                               onClick={() => handleDelete(programme)}

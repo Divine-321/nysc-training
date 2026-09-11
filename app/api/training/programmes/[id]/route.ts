@@ -15,6 +15,18 @@ export async function GET(request: Request, { params }: Params) {
   });
 }
 
+// Correcting a training's cohort, year or dates. Partial on purpose: the
+// course a training delivers is never sent, so an edit cannot re-point the
+// enrolments and progress that already hang off it.
+export async function PATCH(request: Request, { params }: Params) {
+  const { id } = await params;
+
+  return proxyApi("PATCH", {
+    path: `/api/training/programmes/${id}/`,
+    request,
+  });
+}
+
 export async function DELETE(_request: Request, { params }: Params) {
   const { id } = await params;
 
