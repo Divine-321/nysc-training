@@ -5,9 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import AuthGuard from "@/app/components/AuthGuard";
-import { resolveMediaUrl, type AuthUser } from "@/app/lib/portal-api";
+import {
+  clearSession,
+  resolveMediaUrl,
+  type AuthUser,
+} from "@/app/lib/portal-api";
 
 import {
+  AlertCircle,
   LayoutDashboard,
   Users,
   UserPlus,
@@ -123,6 +128,8 @@ export default function AdminLayout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState("");
   const profileRef = useRef<HTMLDivElement>(null);
 
   const [previousPathname, setPreviousPathname] = useState(pathname);
@@ -185,14 +192,39 @@ export default function AdminLayout({
   }, [isInviteAcceptancePage]);
 
   const handleSignOut = async () => {
+    if (signingOut) return;
+
     setIsProfileOpen(false);
+    setSignOutError("");
+    setSigningOut(true);
 
-    await fetch("/api/accounts/auth/logout", {
-      method: "POST",
-    });
+    try {
+      const response = await fetch("/api/accounts/auth/logout", {
+        method: "POST",
+      });
 
-    setUser(null);
-    router.replace("/login");
+      // Only treat this as signed out if the request actually succeeded.
+      // It used to redirect regardless, so a failure left the session alive
+      // while the login page — finding that session still valid — bounced
+      // straight back to the dashboard. On a shared machine that reads as
+      // "I signed out" when nothing of the sort happened.
+      if (!response.ok) {
+        throw new Error(String(response.status));
+      }
+
+      // Empties the cached GET responses along with the stored session, so
+      // the next person to sign in on this browser cannot be handed
+      // anything of this one's from memory.
+      clearSession();
+      setUser(null);
+      router.replace("/login");
+    } catch {
+      setSignOutError(
+        "Could not sign you out. Check your connection and try again.",
+      );
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   const displayName = user
@@ -213,6 +245,29 @@ export default function AdminLayout({
   return (
     <AuthGuard allowedRoles={ADMIN_ROLES}>
       <div className="min-h-screen flex flex-col">
+        {/* Sign-out failures have to be visible: the alternative is looking
+            signed out while the session is still live. Sits above the header
+            (z-50) so it is readable wherever it happens. */}
+        {signOutError && (
+          <div
+            role="alert"
+            className="fixed right-4 top-20 z-50 flex w-80 items-start gap-3 rounded-xl border-l-4 border-red-500 bg-white p-4 shadow-2xl print:hidden"
+          >
+            <AlertCircle size={18} className="mt-0.5 shrink-0 text-red-500" />
+            <p className="flex-1 text-sm font-medium text-gray-700">
+              {signOutError}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSignOutError("")}
+              aria-label="Dismiss"
+              className="rounded p-1 text-gray-400 transition hover:text-gray-600"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         <header className="h-16 bg-white flex items-center justify-between px-4 sm:px-8 fixed top-0 left-0 lg:left-64 right-0 z-40 border-b border-gray-100 print:hidden">
           <div className="flex items-center gap-3 min-w-0">
             <button
@@ -271,9 +326,10 @@ export default function AdminLayout({
 
                   <button
                     onClick={handleSignOut}
-                    className="block w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition"
+                    disabled={signingOut}
+                    className="block w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 transition disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Sign out
+                    {signingOut ? "Signing out…" : "Sign out"}
                   </button>
                 </div>
               )}
@@ -356,10 +412,11 @@ export default function AdminLayout({
 
             <button
               onClick={handleSignOut}
-              className="flex shrink-0 items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-red-200 hover:bg-white/10 hover:text-red-100 w-full mt-4 transition"
+              disabled={signingOut}
+              className="flex shrink-0 items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-red-200 hover:bg-white/10 hover:text-red-100 w-full mt-4 transition disabled:cursor-not-allowed disabled:opacity-60"
             >
               <LogOut size={18} />
-              Sign out
+              {signingOut ? "Signing out…" : "Sign out"}
             </button>
           </aside>
 
