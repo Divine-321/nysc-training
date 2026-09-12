@@ -192,7 +192,7 @@ function friendlyCreateError(
     return `A ${form.cohort} ${form.year} training for "${courseTitle}" already exists. Each course can only be delivered once per cohort in a year — open the existing training instead, or pick a different month or year.`;
   }
   if (/valid choice/i.test(rawMessage)) {
-    return `The backend rejected "${form.cohort}" as a cohort value. Please report this to the backend team.`;
+    return `"${form.cohort}" was not accepted as a cohort. Please report this.`;
   }
   return `Could not create this training: ${rawMessage}`;
 }
@@ -463,7 +463,7 @@ export default function TrainingProgrammesManager() {
         setError(
           confirmedDuplicate
             ? duplicateMessage
-            : "The server could not create this training (HTTP 500). This is a backend error — please share it with the backend team.",
+            : "This training could not be created. Please try again, and report it if it keeps happening.",
         );
       } else if (!response.ok) {
         setError(
@@ -591,11 +591,11 @@ export default function TrainingProgrammesManager() {
 
         throw new Error(
           response.status === 405
-            ? "This backend does not allow a training to be edited yet. Please ask the backend team to enable PATCH on the programmes endpoint."
-            : // Same cohort mismatch the create form warns about: the deployed
-              // backend may still only accept BATCH A/B/C.
+            ? "Editing a training is not available yet. Please report this."
+            : // Same cohort mismatch the create form warns about: an older
+              // deployment may still only accept BATCH A/B/C.
               /valid choice/i.test(raw)
-              ? `The backend rejected "${form.cohort}" as a cohort value. Please report this to the backend team.`
+              ? `"${form.cohort}" was not accepted as a cohort. Please report this.`
               : raw,
         );
       }
@@ -1107,11 +1107,11 @@ export default function TrainingProgrammesManager() {
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) {
-        // A 500 returns Django's HTML error page (no JSON), so give a
-        // clearer hint than the generic proxy message.
+        // A 500 returns Django's HTML error page (no JSON), so the generic
+        // proxy message would say nothing useful here.
         if (response.status >= 500) {
           throw new Error(
-            "The server could not save this session (HTTP 500). This is a backend error — please share it with the backend team.",
+            "This session could not be saved. Please try again, and report it if it keeps happening.",
           );
         }
 

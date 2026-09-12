@@ -196,7 +196,7 @@ const [formData, setFormData] = useState(emptyProfileData);
 
       if (!profilePictureUrl) {
         throw new Error(
-          "The upload was accepted, but the backend did not save a profile picture URL.",
+          "Your photo could not be saved. Please try taking it again.",
         );
       }
 
@@ -353,7 +353,7 @@ const [formData, setFormData] = useState(emptyProfileData);
                 <p className="font-bold text-gray-800 truncate">{staffData.email}</p>
                 {isEditing && (
                   <p className="mt-1 text-xs text-gray-500">
-                    Use the email change flow in settings when enabled.
+                    Your email address cannot be changed here.
                   </p>
                 )}
               </div>

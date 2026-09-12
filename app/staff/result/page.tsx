@@ -156,8 +156,7 @@ export default function ResultPage() {
           Assessment Results
         </h2>
         <p className="text-sm text-gray-500">
-          Every attempt is graded and stored by the backend. Your official
-          result for an assessment is your best attempt.
+          Your official result for an assessment is your best attempt.
         </p>
       </div>
 
@@ -186,17 +185,15 @@ export default function ResultPage() {
           ) : filteredRows.length === 0 ? (
             <div className="p-8 text-center">
               <Award className="mx-auto mb-3 text-gray-300" size={42} />
+              {/* One line, no explanation of how any of it works. Whether an
+                  attempt history endpoint has finished rolling out is our
+                  problem, not something to put in front of someone looking for
+                  their score. */}
               <p className="font-semibold text-gray-700">
                 No assessment results yet.
               </p>
               <p className="mt-1 text-sm text-gray-500">
-                Results appear here after you submit an assessment. Your score
-                is shown immediately after each submission.
-              </p>
-              <p className="mt-3 text-xs text-gray-400">
-                Attempt history is served by the backend attempts API, which is
-                still being rolled out — past attempts will appear here once it
-                is live.
+                Your results appear here once you complete an assessment.
               </p>
             </div>
           ) : (

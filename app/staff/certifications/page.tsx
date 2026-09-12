@@ -206,7 +206,7 @@ export default function CertificationsPage() {
           extractErrorMessage(
             payload,
             response.status >= 500
-              ? "The certificate service is currently returning a server error."
+              ? "Your certificates could not be loaded just now. Please try again shortly."
               : "Could not load certificates.",
           )
         );

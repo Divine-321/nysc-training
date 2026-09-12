@@ -14,10 +14,7 @@ import {
   reportBrowserEvent,
   sendProctoringFrame,
 } from "@/app/lib/proctoring";
-import type {
-  ProctoringEventType,
-  ProctoringFlagState,
-} from "@/app/lib/training-types";
+import type { ProctoringEventType } from "@/app/lib/training-types";
 
 type ProctoringMonitorProps = {
   sessionId: number;
@@ -105,26 +102,9 @@ export default function ProctoringMonitor({
   const [side, setSide] = useState<"left" | "right">(
     () => savedPreferences().side,
   );
-  // The backend's own tally, refreshed by every frame and browser event it
-  // answers. Kept rather than counted here because flags are raised
-  // server-side — Rekognition decides what a frame shows, so the only honest
-  // number is the one that comes back.
-  const [flagState, setFlagState] = useState<ProctoringFlagState>({
-    totalFlags: null,
-    status: null,
-  });
   const warningTimerRef = useRef<number | null>(null);
   const wasFullscreenRef = useRef(false);
   const lastEventFrameAtRef = useRef(0);
-
-  // A null field means the reply didn't carry one, which is "unchanged", not
-  // zero — otherwise a thin response would show someone's flags disappearing.
-  const applyFlagState = (next: ProctoringFlagState) => {
-    setFlagState((current) => ({
-      totalFlags: next.totalFlags ?? current.totalFlags,
-      status: next.status ?? current.status,
-    }));
-  };
 
   useEffect(() => {
     try {
@@ -158,7 +138,7 @@ export default function ProctoringMonitor({
   const reportEvent = (
     eventType: "CAMERA_DISABLED" | "FULLSCREEN_EXIT" | "TAB_SWITCH" | "WINDOW_BLUR",
   ) => {
-    void reportBrowserEvent(sessionId, eventType).then(applyFlagState);
+    void reportBrowserEvent(sessionId, eventType);
     showWarning(eventType);
 
     const now = Date.now();
@@ -168,9 +148,8 @@ export default function ProctoringMonitor({
     if (!frame) return;
 
     lastEventFrameAtRef.current = now;
-    void sendProctoringFrame(sessionId, frame).then((result) => {
-      result.eventsDetected.forEach(showWarning);
-      applyFlagState(result);
+    void sendProctoringFrame(sessionId, frame).then(({ eventsDetected }) => {
+      eventsDetected.forEach(showWarning);
     });
   };
 
@@ -183,9 +162,8 @@ export default function ProctoringMonitor({
 
       if (!frame) return;
 
-      const result = await sendProctoringFrame(sessionId, frame);
-      result.eventsDetected.forEach(showWarning);
-      applyFlagState(result);
+      const { eventsDetected } = await sendProctoringFrame(sessionId, frame);
+      eventsDetected.forEach(showWarning);
     }, frameIntervalMs);
 
     return () => window.clearInterval(timer);
@@ -233,9 +211,6 @@ export default function ProctoringMonitor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  const flagCount = flagState.totalFlags ?? 0;
-  const invalidated = flagState.status === "INVALIDATED";
-
   return (
     <div
       className={`pointer-events-none fixed bottom-4 z-40 flex flex-col gap-2 ${
@@ -270,35 +245,13 @@ export default function ProctoringMonitor({
             there when the preview is hidden — someone who collapsed the widget
             is exactly the person who should not lose sight of it. */}
         <div className="flex items-center gap-1.5 px-2 py-1.5">
-          {flagCount > 0 || invalidated ? (
-            <AlertTriangle
-              size={15}
-              strokeWidth={2.5}
-              className={`shrink-0 ${
-                invalidated ? "text-red-600" : "text-amber-600"
-              }`}
-            />
-          ) : (
-            <ShieldCheck
-              size={15}
-              strokeWidth={2.5}
-              className="shrink-0 text-[#1a6b3c]"
-            />
-          )}
-          <span
-            className={`flex-1 truncate text-[11px] font-bold ${
-              invalidated
-                ? "text-red-700"
-                : flagCount > 0
-                  ? "text-amber-700"
-                  : "text-gray-600"
-            }`}
-          >
-            {invalidated
-              ? "Attempt invalidated"
-              : flagCount > 0
-                ? `${flagCount} issue${flagCount === 1 ? "" : "s"} recorded`
-                : "Proctoring active"}
+          <ShieldCheck
+            size={15}
+            strokeWidth={2.5}
+            className="shrink-0 text-[#1a6b3c]"
+          />
+          <span className="flex-1 truncate text-[11px] font-bold text-gray-600">
+            Proctoring active
           </span>
 
           <button
@@ -334,14 +287,8 @@ export default function ProctoringMonitor({
         </div>
 
         {!collapsed && (
-          <p
-            className={`px-2.5 pb-2 text-[10px] font-medium leading-tight ${
-              flagCount > 0 ? "text-amber-700" : "text-gray-400"
-            }`}
-          >
-            {flagCount > 0
-              ? "Recorded issues are reviewed and can invalidate this attempt."
-              : "Stay visible on camera · use Hide/Move if it covers anything"}
+          <p className="px-2.5 pb-2 text-[10px] font-medium leading-tight text-gray-400">
+            Stay visible on camera · use Hide/Move if it covers anything
           </p>
         )}
       </div>

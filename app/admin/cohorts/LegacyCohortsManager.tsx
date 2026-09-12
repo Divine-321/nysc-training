@@ -195,7 +195,7 @@ export default function LegacyCohortsManager() {
         if (refreshedCohorts && !cohortStillExists) {
           setError("");
           setNotice(
-            "Cohort was deleted. The backend returned an incorrect error status after deleting it."
+            "Cohort deleted."
           );
           return;
         }

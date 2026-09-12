@@ -156,7 +156,7 @@ export default function AdminProfilePage() {
 
       if (!profilePictureUrl) {
         throw new Error(
-          "The upload was accepted, but the backend did not save a profile picture URL.",
+          "Your photo could not be saved. Please try taking it again.",
         );
       }
 

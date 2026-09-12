@@ -5,9 +5,7 @@ import {
 } from "@/app/lib/portal-api";
 import type {
   ProctoringEventType,
-  ProctoringFlagState,
   ProctoringFrameResult,
-  ProctoringSessionStatus,
   ProctoringSession,
   ProctoringSessionSummary,
   ProctoringStartResult,
@@ -34,34 +32,6 @@ function pickNumber(...values: unknown[]): number | null {
     }
   }
   return null;
-}
-
-const SESSION_STATUSES: ProctoringSessionStatus[] = [
-  "ACTIVE",
-  "CLEAN",
-  "FLAGGED",
-  "INVALIDATED",
-];
-
-/**
- * Pulls the session's running flag tally out of a monitoring response.
- *
- * Both the frame and browser-event endpoints answer with the session summary,
- * so every report doubles as a fresh count. Anything missing or unrecognised
- * comes back null so the caller keeps the last figure it had, rather than
- * showing a flag count dropping back to zero because one reply was thin.
- */
-function readFlagState(payload: unknown): ProctoringFlagState {
-  const data = asRecord(readApiItem(payload));
-  const session = asRecord(data.session ?? data.proctoring_session);
-  const status = data.status ?? session.status;
-
-  return {
-    totalFlags: pickNumber(data.total_flags, session.total_flags),
-    status: SESSION_STATUSES.includes(status as ProctoringSessionStatus)
-      ? (status as ProctoringSessionStatus)
-      : null,
-  };
 }
 
 async function postJson(path: string, body?: unknown) {
@@ -154,42 +124,31 @@ export async function sendProctoringFrame(
       : [];
 
     return {
-      ...readFlagState(payload),
       eventsDetected,
       message: response.ok
         ? ""
         : extractErrorMessage(payload, "Could not upload monitoring frame."),
     };
   } catch {
-    return {
-      totalFlags: null,
-      status: null,
-      eventsDetected: [],
-      message: "Could not upload monitoring frame.",
-    };
+    return { eventsDetected: [], message: "Could not upload monitoring frame." };
   }
 }
 
 /**
  * Reports a browser-detected event (tab switch, window blur, fullscreen exit,
- * camera disabled) and returns the session's updated flag tally.
- *
- * Never throws: a failed telemetry call must not interrupt the exam. A failure
- * returns nulls, which the caller reads as "count unchanged".
+ * camera disabled). Fire-and-forget: failures are swallowed.
  */
 export async function reportBrowserEvent(
   sessionId: number,
   eventType: BrowserProctoringEventType,
-): Promise<ProctoringFlagState> {
+): Promise<void> {
   try {
-    const { payload } = await postJson(
+    await postJson(
       `/api/training/proctoring/sessions/${sessionId}/browser-event`,
       { event_type: eventType },
     );
-
-    return readFlagState(payload);
   } catch {
-    return { totalFlags: null, status: null };
+    // Never interrupt the exam over a failed telemetry call.
   }
 }
 

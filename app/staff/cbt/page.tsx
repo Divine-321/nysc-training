@@ -239,10 +239,6 @@ export default function CBTPage() {
         )}
       </div>
 
-      <p className="text-xs text-gray-500">
-        Completed exams and scores come directly from your graded attempts on the
-        server.
-      </p>
     </div>
   );
 }

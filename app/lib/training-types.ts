@@ -257,22 +257,8 @@ export type ProctoringStartResult = {
   message: string;
 };
 
-/**
- * The running tally the backend returns with every monitoring report, frames
- * and browser events alike.
- *
- * It is the only authoritative count there is — flags are raised server-side
- * (Rekognition decides what a frame shows) so the exam screen cannot work out
- * its own total. Either field is null when the response did not carry it,
- * which means "unchanged", not "zero".
- */
-export type ProctoringFlagState = {
-  totalFlags: number | null;
-  status: ProctoringSessionStatus | null;
-};
-
 /** Response of a frame upload: event types raised by that frame (if any). */
-export type ProctoringFrameResult = ProctoringFlagState & {
+export type ProctoringFrameResult = {
   eventsDetected: ProctoringEventType[];
   message: string;
 };

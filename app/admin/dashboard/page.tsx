@@ -114,7 +114,7 @@ export default function AdminDashboardPage() {
         // error we've already handled. The detail still shows in the network
         // tab and the server (proxy) logs.
         setError(
-          "Couldn't load the latest figures — the server didn't respond in time. This is usually a temporary backend/connection issue. Refresh to try again.",
+          "Couldn't load the latest figures. Please refresh to try again.",
         );
       } finally {
         setLoading(false);
