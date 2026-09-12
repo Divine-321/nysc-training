@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  BookOpen,
   Download,
-  ExternalLink,
   FileText,
   LayoutGrid,
   List,
   Search,
 } from "lucide-react";
+import PdfReaderModal from "@/app/components/PdfReaderModal";
 import {
   extractErrorMessage,
   readApiList,
@@ -35,6 +36,9 @@ export default function LibraryPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // The book being read in the portal. Opening one in a new tab works on a
+  // desktop and not on a phone, where the browser has no PDF reader of its own.
+  const [reading, setReading] = useState<NYSCBook | null>(null);
 
   const loadBooks = useCallback(async () => {
     try {
@@ -196,10 +200,9 @@ export default function LibraryPage() {
               key={book.id}
               className="flex items-center gap-4 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition hover:border-gray-200 hover:shadow-md"
             >
-              <a
-                href={book.file_url}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                type="button"
+                onClick={() => setReading(book)}
                 className="block h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-green-100 bg-[#f0f7f3]"
                 title={`Open ${book.title}`}
               >
@@ -216,17 +219,16 @@ export default function LibraryPage() {
                     <FileText size={22} strokeWidth={1.5} />
                   </span>
                 )}
-              </a>
+              </button>
 
               <div className="min-w-0 flex-1">
-                <a
-                  href={book.file_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="truncate font-semibold text-gray-900 transition hover:text-[#1a6b3c]"
+                <button
+                  type="button"
+                  onClick={() => setReading(book)}
+                  className="block max-w-full truncate text-left font-semibold text-gray-900 transition hover:text-[#1a6b3c]"
                 >
                   {book.title}
-                </a>
+                </button>
                 <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
                   <span className="line-clamp-1">
                     {book.description || "Official NYSC resource document."}
@@ -246,15 +248,14 @@ export default function LibraryPage() {
                 >
                   <Download size={18} />
                 </a>
-                <a
-                  href={book.file_url}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => setReading(book)}
                   className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
                 >
-                  <ExternalLink size={16} />
+                  <BookOpen size={16} />
                   Read
-                </a>
+                </button>
               </div>
             </div>
           ))}
@@ -315,15 +316,14 @@ export default function LibraryPage() {
                   >
                     <Download size={18} />
                   </a>
-                  <a
-                    href={book.file_url}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => setReading(book)}
                     className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
                   >
-                    <ExternalLink size={16} />
+                    <BookOpen size={16} />
                     Read
-                  </a>
+                  </button>
                 </div>
               </div>
             </div>
@@ -338,6 +338,15 @@ export default function LibraryPage() {
           onPageChange={setPage}
         />
       ) : null}
+
+      {reading && (
+        <PdfReaderModal
+          url={reading.file_url}
+          title={reading.title}
+          subtitle={reading.description ?? undefined}
+          onClose={() => setReading(null)}
+        />
+      )}
     </div>
   );
 }

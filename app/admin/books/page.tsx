@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import {
+  BookOpen,
   Edit3,
   ExternalLink,
   FileText,
@@ -19,6 +20,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import PdfReaderModal from "@/app/components/PdfReaderModal";
 import {
   extractErrorMessage,
   readApiList,
@@ -59,6 +61,10 @@ export default function AdminBooksPage() {
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
+  // Read here rather than in a new tab, so an admin checking a book sees
+  // exactly what staff will see — including on a phone, where the browser has
+  // no PDF reader of its own.
+  const [reading, setReading] = useState<NYSCBook | null>(null);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -604,15 +610,14 @@ export default function AdminBooksPage() {
                     </p>
 
                     <div className="mt-4 flex items-center gap-1.5 border-t border-gray-100 pt-3">
-                      <a
-                        href={book.file_url}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => setReading(book)}
                         className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-[#1a6b3c] hover:text-[#1a6b3c]"
                       >
-                        <ExternalLink size={13} />
+                        <BookOpen size={13} />
                         Read
-                      </a>
+                      </button>
                       <button
                         type="button"
                         aria-label={`Edit ${book.title}`}
@@ -691,15 +696,14 @@ export default function AdminBooksPage() {
                       {formatDate(book.uploaded_at)}
                     </td>
                     <td className="relative px-6 py-4 text-right">
-                      <a
-                        href={book.file_url}
-                        target="_blank"
-                        rel="noreferrer"
+                      <button
+                        type="button"
+                        onClick={() => setReading(book)}
                         className="mr-2 inline-flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:border-[#1a6b3c] hover:text-[#1a6b3c]"
                       >
-                        <ExternalLink size={14} />
+                        <BookOpen size={14} />
                         Read
-                      </a>
+                      </button>
 
                       <button
                         onClick={() =>
@@ -755,6 +759,15 @@ export default function AdminBooksPage() {
           onPageChange={setPage}
         />
       ) : null}
+
+      {reading && (
+        <PdfReaderModal
+          url={reading.file_url}
+          title={reading.title}
+          subtitle={reading.description ?? undefined}
+          onClose={() => setReading(null)}
+        />
+      )}
 
       {dialog}
     </div>
