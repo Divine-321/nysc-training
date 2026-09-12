@@ -1634,23 +1634,23 @@ function CoursePlayer() {
                         // Everything else can be ticked off whenever the
                         // learner says so. Nothing blocks moving on either
                         // way — only marking it done.
-                        const watchedEnough =
+                        const playedEnough =
                           !isMedia || playedFraction >= MEDIA_COMPLETE_FRACTION;
 
                         return (
                           <button
                             type="button"
                             onClick={() => void markComplete(currentItem.doc)}
-                            disabled={isDone || !watchedEnough}
+                            disabled={isDone || !playedEnough}
                             title={
-                              watchedEnough
+                              playedEnough
                                 ? undefined
                                 : `Play at least ${Math.round(MEDIA_COMPLETE_FRACTION * 100)}% of this ${kind === "AUDIO" ? "recording" : "video"} to mark it complete.`
                             }
                             className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                               isDone
                                 ? "bg-green-100 text-green-700"
-                                : watchedEnough
+                                : playedEnough
                                   ? "border border-[#1a6b3c] text-[#1a6b3c] hover:bg-green-50"
                                   : "cursor-not-allowed border border-gray-200 text-gray-400"
                             }`}
@@ -1658,9 +1658,12 @@ function CoursePlayer() {
                             <CheckCircle2 size={14} />
                             {isDone
                               ? "Completed"
-                              : watchedEnough
+                              : playedEnough
                                 ? "Mark as complete"
-                                : `Watched ${Math.round(playedFraction * 100)}%`}
+                                : // "Played" covers both: a recording is
+                                  // listened to, not watched, and the same
+                                  // button serves video and audio alike.
+                                  `Played ${Math.round(playedFraction * 100)}%`}
                           </button>
                         );
                       })()}
