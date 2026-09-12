@@ -123,6 +123,35 @@ function createUploadForm(
 }
 
 /**
+ * A delivery URL that downloads rather than opens, saved under a readable name.
+ *
+ * The `download` attribute on a link only works same-origin, and these files
+ * are served from the file store, so clicking Download opened the document
+ * instead of saving it. Asking the store for the file as an attachment is what
+ * actually settles it — the response says "save this", so every browser does.
+ *
+ * The name is ours to choose here too, which is the one place we can get past
+ * files being stored under generated ids: a book saves as its title instead of
+ * as blunhtzk14ernhyqzefj.pdf. The extension is added by the store, from the
+ * file itself.
+ *
+ * A URL that is not shaped like a delivery URL is handed back untouched, so a
+ * file served from anywhere else still behaves exactly as it did.
+ */
+export function attachmentUrl(url: string, filename: string): string {
+  if (!url.includes("/upload/")) return url;
+
+  const safeName = filename
+    .replace(/[^a-z0-9]+/gi, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+
+  if (!safeName) return url;
+
+  return url.replace("/upload/", `/upload/fl_attachment:${safeName}/`);
+}
+
+/**
  * Which Cloudinary endpoint to upload to, decided from the file itself.
  *
  * The endpoint lives in the URL rather than the signed parameters, so it is

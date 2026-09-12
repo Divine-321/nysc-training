@@ -10,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import PdfReaderModal from "@/app/components/PdfReaderModal";
+import { attachmentUrl } from "@/app/lib/cloudinary-upload";
 import {
   extractErrorMessage,
   readApiList,
@@ -241,10 +242,9 @@ export default function LibraryPage() {
 
               <div className="flex shrink-0 items-center gap-2">
                 <a
-                  href={book.file_url}
-                  download
+                  href={attachmentUrl(book.file_url, book.title)}
                   className="rounded-lg p-2 text-gray-400 transition hover:bg-[#f0f7f3] hover:text-[#1a6b3c]"
-                  title="Download PDF"
+                  title={`Download ${book.title}`}
                 >
                   <Download size={18} />
                 </a>
@@ -309,10 +309,9 @@ export default function LibraryPage() {
 
                 <div className="flex items-center gap-2">
                   <a
-                    href={book.file_url}
-                    download
+                    href={attachmentUrl(book.file_url, book.title)}
                     className="rounded-lg p-2 text-gray-400 transition hover:bg-[#f0f7f3] hover:text-[#1a6b3c]"
-                    title="Download PDF"
+                    title={`Download ${book.title}`}
                   >
                     <Download size={18} />
                   </a>
