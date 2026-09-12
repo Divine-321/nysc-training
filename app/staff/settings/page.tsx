@@ -1,8 +1,19 @@
 "use client";
 
-import { Bell, Lock } from "lucide-react";
+import { Bell, Lock, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { extractErrorMessage } from "@/app/lib/portal-api";
+import {
+  SUPPORT_CONTACTS,
+  SUPPORT_MESSAGE,
+  whatsappLink,
+} from "@/app/lib/support-contacts";
+
+// The first help line, the same one the sidebar lists first. Taken from the
+// shared list rather than written out here, so a number that changes changes
+// in one place. Undefined when no numbers are configured, which hides the
+// panel entirely — the same rule the rest of the portal follows.
+const supportLine = SUPPORT_CONTACTS[0];
 
 export default function SettingsPage() {
   const [emailNotifs, setEmailNotifs] = useState(true);
@@ -196,37 +207,31 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Sidebar info */}
+        {/* Sidebar info. The language picker that used to sit above this is
+            gone: the portal is only in English, and offering Hausa, Yoruba or
+            Igbo promised something no page could deliver. */}
         <div className="space-y-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h3 className="font-bold text-gray-800 mb-4">Preferences</h3>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-1">
-                  Language
-                </label>
-                <select className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#1a6b3c]">
-                  <option>English (UK)</option>
-                  <option>English (US)</option>
-                  <option>Hausa</option>
-                  <option>Yoruba</option>
-                  <option>Igbo</option>
-                </select>
-              </div>
+          {supportLine && (
+            <div className="bg-[#f0f7f3] rounded-2xl shadow-sm border border-green-100 p-6">
+              <h3 className="font-bold text-[#1a6b3c] mb-2">Need Support?</h3>
+              <p className="text-sm text-green-800 mb-4">
+                If you are experiencing issues with your account, please contact
+                the ICT support desk.
+              </p>
+              {/* Straight into the chat with the first help line, rather than a
+                  button that did nothing. wa.me opens the app where it is
+                  installed and the web client otherwise. */}
+              <a
+                href={whatsappLink(supportLine.phone, SUPPORT_MESSAGE)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex w-full items-center justify-center gap-2 bg-[#1a6b3c] text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-[#145530] transition shadow-sm"
+              >
+                <MessageCircle size={16} />
+                Contact ICT
+              </a>
             </div>
-          </div>
-
-          <div className="bg-[#f0f7f3] rounded-2xl shadow-sm border border-green-100 p-6">
-            <h3 className="font-bold text-[#1a6b3c] mb-2">Need Support?</h3>
-            <p className="text-sm text-green-800 mb-4">
-              If you are experiencing issues with your account, please contact
-              the ICT support desk.
-            </p>
-            <button className="w-full bg-[#1a6b3c] text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-[#145530] transition shadow-sm">
-              Contact ICT
-            </button>
-          </div>
+          )}
         </div>
       </div>
     </div>
