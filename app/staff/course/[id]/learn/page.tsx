@@ -123,6 +123,23 @@ const OFFICE_URL_PATTERN = /\.(pptx?|ppsx?|potx?|docx?|xlsx?)(\?|#|$)/i;
  */
 const MEDIA_COMPLETE_FRACTION = 0.9;
 
+/**
+ * How long a material with no measurable progress — a PDF, a slide deck, a
+ * written lesson, an image — must be open before it can be ticked off.
+ *
+ * Video and audio can be measured, so they are. Everything else offers the
+ * player no signal at all: an embedded PDF's scroll position is inside a
+ * cross-origin frame and simply cannot be read. Time open is the only thing
+ * left to go on. It is a speed bump rather than proof — someone can open a
+ * page and walk away — but it stops a whole module being ticked off in the
+ * time it takes to click down the sidebar.
+ *
+ * Measured from timestamps rather than by counting ticks: browsers throttle
+ * background timers to about one tick a minute, which would leave the
+ * countdown visibly stuck for anyone who switched tabs and back.
+ */
+const MIN_SECONDS_ON_MATERIAL = 45;
+
 function documentUrl(doc: ModuleActivity) {
   return doc.content_url ?? doc.file_url ?? "";
 }
@@ -171,6 +188,22 @@ function documentKind(doc: ModuleActivity): DocumentKind {
       return AUDIO_URL_PATTERN.test(url) ? "AUDIO" : "OTHER";
     }
   }
+}
+
+/**
+ * True for material whose completion is gated on time spent with it open.
+ *
+ * Excludes video and audio, which are gated on playback instead, and external
+ * resources, which open in another tab — timing a page the learner is not
+ * looking at would measure nothing.
+ */
+function isTimedMaterial(kind: DocumentKind) {
+  return (
+    kind === "PDF" ||
+    kind === "TEXT" ||
+    kind === "IMAGE" ||
+    kind === "OFFICE"
+  );
 }
 
 function documentIcon(doc: ModuleActivity) {
@@ -250,10 +283,13 @@ function describeMissingCompletion(sessions: LiveSession[]) {
 function DocumentContent({
   doc,
   onPlayedFraction,
+  onFinished,
 }: {
   doc: ModuleActivity;
   /** How much of a video or audio file has been played, 0-1. */
   onPlayedFraction?: (fraction: number) => void;
+  /** Playback reached the end of a video or audio file. */
+  onFinished?: () => void;
 }) {
   // Fires several times a second while playing, so only the rounded value is
   // reported — React discards an update that does not change the state.
@@ -265,6 +301,14 @@ function DocumentContent({
     onPlayedFraction?.(
       Math.round((media.currentTime / media.duration) * 100) / 100,
     );
+  };
+
+  // Completion hangs off "ended" rather than the fraction reaching 1: time
+  // updates stop firing a little short of the duration often enough that
+  // watching the number would miss real finishes.
+  const handleEnded = () => {
+    onPlayedFraction?.(1);
+    onFinished?.();
   };
 
   const kind = documentKind(doc);
@@ -300,7 +344,7 @@ function DocumentContent({
         controls
         src={url}
         onTimeUpdate={handleTimeUpdate}
-        onEnded={() => onPlayedFraction?.(1)}
+        onEnded={handleEnded}
         className="aspect-video w-full rounded-xl bg-black shadow-sm"
       />
     );
@@ -336,7 +380,7 @@ function DocumentContent({
           controls
           src={url}
           onTimeUpdate={handleTimeUpdate}
-          onEnded={() => onPlayedFraction?.(1)}
+          onEnded={handleEnded}
           className="w-full"
         >
           Your browser does not support this audio file.
@@ -418,6 +462,11 @@ function CoursePlayer() {
   // Playback of the item on screen, 0-1. Reset on navigation: it
   // describes what is currently open, not a per-item record.
   const [playedFraction, setPlayedFraction] = useState(0);
+  // Seconds the current material has been open, tagged with the item it was
+  // counted for. Tagging is what resets it: a reading elsewhere in the course
+  // simply does not match, so it reads as zero without an effect having to
+  // clear it on every navigation.
+  const [dwell, setDwell] = useState({ key: "", seconds: 0 });
   const [currentKey, setCurrentKey] = useState<string | null>(null);
   const [moduleSwitcherOpen, setModuleSwitcherOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -592,6 +641,38 @@ function CoursePlayer() {
         (section) => section.moduleId === currentItem.moduleId,
       ) ?? null)
     : (sections[0] ?? null);
+
+  // Gating facts about whatever is on screen, needed both by the dwell timer
+  // below and by the complete button far down in the markup.
+  const currentDocKind =
+    currentItem?.kind === "doc" ? documentKind(currentItem.doc) : null;
+  const currentDocDone =
+    currentItem?.kind === "doc" && completedIds.has(currentItem.doc.id);
+  const timingThisItem =
+    currentDocKind !== null && isTimedMaterial(currentDocKind) && !currentDocDone;
+
+  const secondsOnItem = dwell.key === effectiveKey ? dwell.seconds : 0;
+  const secondsLeftOnItem = Math.max(
+    0,
+    MIN_SECONDS_ON_MATERIAL - secondsOnItem,
+  );
+
+  // Only ticks while something is actually waiting on it — the player is a
+  // heavy page and a permanent one-second re-render would cost far more than
+  // the feature is worth.
+  useEffect(() => {
+    if (!timingThisItem || !effectiveKey) return;
+
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setDwell({
+        key: effectiveKey,
+        seconds: Math.round((Date.now() - startedAt) / 1000),
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [timingThisItem, effectiveKey]);
 
   const allDocs = useMemo(
     () => items.filter((item): item is DocItem => item.kind === "doc"),
@@ -1618,26 +1699,32 @@ function CoursePlayer() {
                         const isDone = completedIds.has(currentItem.doc.id);
                         const kind = documentKind(currentItem.doc);
                         const isMedia = kind === "VIDEO" || kind === "AUDIO";
-                        // Video and audio can be measured, so they are: a
-                        // recording is not finished until it has been played.
-                        // Nothing blocks moving on — only marking it done.
-                        const watchedEnough =
-                          !isMedia || playedFraction >= MEDIA_COMPLETE_FRACTION;
+                        const isTimed = isTimedMaterial(kind);
+
+                        // Video and audio are measured by playback; anything
+                        // that cannot be measured is gated on time open
+                        // instead. Neither blocks moving on — only marking it
+                        // done.
+                        const ready = isMedia
+                          ? playedFraction >= MEDIA_COMPLETE_FRACTION
+                          : !isTimed || secondsLeftOnItem === 0;
 
                         return (
                           <button
                             type="button"
                             onClick={() => void markComplete(currentItem.doc)}
-                            disabled={isDone || !watchedEnough}
+                            disabled={isDone || !ready}
                             title={
-                              watchedEnough
+                              ready
                                 ? undefined
-                                : `Play at least ${Math.round(MEDIA_COMPLETE_FRACTION * 100)}% of this ${kind === "AUDIO" ? "recording" : "video"} to mark it complete.`
+                                : isMedia
+                                  ? `Play at least ${Math.round(MEDIA_COMPLETE_FRACTION * 100)}% of this ${kind === "AUDIO" ? "recording" : "video"} to mark it complete.`
+                                  : `Spend at least ${MIN_SECONDS_ON_MATERIAL} seconds with this material to mark it complete.`
                             }
                             className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                               isDone
                                 ? "bg-green-100 text-green-700"
-                                : watchedEnough
+                                : ready
                                   ? "border border-[#1a6b3c] text-[#1a6b3c] hover:bg-green-50"
                                   : "cursor-not-allowed border border-gray-200 text-gray-400"
                             }`}
@@ -1645,9 +1732,11 @@ function CoursePlayer() {
                             <CheckCircle2 size={14} />
                             {isDone
                               ? "Completed"
-                              : watchedEnough
+                              : ready
                                 ? "Mark as complete"
-                                : `Watched ${Math.round(playedFraction * 100)}%`}
+                                : isMedia
+                                  ? `Watched ${Math.round(playedFraction * 100)}%`
+                                  : `Available in ${secondsLeftOnItem}s`}
                           </button>
                         );
                       })()}
@@ -1656,6 +1745,11 @@ function CoursePlayer() {
                     <DocumentContent
                       doc={currentItem.doc}
                       onPlayedFraction={setPlayedFraction}
+                      // Playing a recording to the end is the clearest
+                      // statement there is that it was worked through, so it
+                      // ticks itself off rather than asking for a click that
+                      // could only say the same thing again.
+                      onFinished={() => void markComplete(currentItem.doc)}
                     />
                   </>
                 ))}
