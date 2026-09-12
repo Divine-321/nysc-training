@@ -16,7 +16,7 @@ import {
   Video,
 } from "lucide-react";
 import { extractErrorMessage, readApiCount, readApiItem, readApiList } from "@/app/lib/portal-api";
-import { formatDate, formatTime } from "@/app/lib/format";
+import { formatDate, formatTime, isSameLocalDay } from "@/app/lib/format";
 import {
   normalizeLiveSession,
   type LiveSession,
@@ -38,6 +38,8 @@ type DashboardAnalytics = {
 // + modules directly).
 type UpcomingSession = {
   id: number;
+  /** The training it belongs to — where the card links to. */
+  programmeId: number | null;
   title: string;
   moduleTitle: string | null;
   trainerName: string;
@@ -49,6 +51,26 @@ type UpcomingSession = {
 };
 
 const ACTIVE_SESSION_STATUSES = new Set(["SCHEDULED", "ONGOING"]);
+
+const SESSION_CARD_CLASS =
+  "group flex flex-col rounded-2xl border border-gray-100 p-5 text-left transition duration-200 hover:-translate-y-0.5 hover:border-gray-200 hover:shadow-md";
+
+/** One session card, a link when there is somewhere to go and plain when not. */
+function CardShell({
+  href,
+  children,
+}: {
+  href: string | null;
+  children: React.ReactNode;
+}) {
+  return href ? (
+    <Link href={href} className={SESSION_CARD_CLASS}>
+      {children}
+    </Link>
+  ) : (
+    <div className={SESSION_CARD_CLASS}>{children}</div>
+  );
+}
 
 export default function AdminDashboardPage() {
   const [analytics, setAnalytics] =
@@ -146,6 +168,7 @@ export default function AdminDashboardPage() {
 
             return {
               id: session.id,
+              programmeId: session.programme ?? null,
               title: session.title,
               moduleTitle: session.module_title || null,
               trainerName,
@@ -303,9 +326,17 @@ export default function AdminDashboardPage() {
         ) : upcomingSessions.length ? (
           <div className="grid gap-4 p-6 sm:grid-cols-2">
             {upcomingSessions.map((session) => (
-              <div
+              // Links to the training that owns the session, which opens its
+              // live-session list with this one picked out. A session with no
+              // training behind it has nowhere to go, so it stays a plain card
+              // rather than a link that lands on nothing.
+              <CardShell
                 key={session.id}
-                className="group flex flex-col rounded-2xl border border-gray-100 p-5 transition duration-200 hover:-translate-y-0.5 hover:border-gray-200 hover:shadow-md"
+                href={
+                  session.programmeId
+                    ? `/admin/cohorts?programme=${session.programmeId}&session=${session.id}`
+                    : null
+                }
               >
                 <div className="flex items-start justify-between gap-3">
                   <h4 className="min-w-0 text-base font-bold leading-snug text-gray-900">
@@ -342,17 +373,24 @@ export default function AdminDashboardPage() {
                     <Calendar size={13} className="text-gray-400" />
                     {formatDate(session.startTime)}
                   </span>
+                  {/* A session that ends on another day gets that day spelled
+                      out. Two bare clock times beside a single date read as one
+                      afternoon, which is how a month-long session passed for a
+                      one-minute slot last month. */}
                   <span className="flex items-center gap-1.5">
                     <Clock size={13} className="text-gray-400" />
-                    {formatTime(session.startTime)} –{" "}
-                    {formatTime(session.endTime)}
+                    {isSameLocalDay(session.startTime, session.endTime)
+                      ? `${formatTime(session.startTime)} – ${formatTime(session.endTime)}`
+                      : `${formatTime(session.startTime)} → ${formatDate(
+                          session.endTime,
+                        )} ${formatTime(session.endTime)}`}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Layers size={13} className="text-gray-400" />
                     {session.cohortName}
                   </span>
                 </div>
-              </div>
+              </CardShell>
             ))}
           </div>
         ) : (

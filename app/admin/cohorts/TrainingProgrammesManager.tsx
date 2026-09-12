@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   BookOpen,
@@ -88,6 +88,20 @@ const emptySessionForm = {
   end_time: "",
 };
 
+// Past this a live session is more likely a mis-picked date than a real
+// schedule. It only raises a question — nothing is blocked.
+const LONG_SESSION_MS = 12 * 60 * 60 * 1000;
+
+/** A rough "3 days" or "5 hours", for warning someone about what they typed. */
+function describeDuration(milliseconds: number) {
+  const hours = Math.round(milliseconds / (60 * 60 * 1000));
+
+  if (hours < 48) return `${hours} hours`;
+
+  const days = Math.round(hours / 24);
+  return days < 60 ? `${days} days` : `about ${Math.round(days / 30)} months`;
+}
+
 // Converts an ISO timestamp to the `YYYY-MM-DDTHH:mm` shape a datetime-local
 // input expects, in the admin's local timezone. Used to pre-fill the edit form.
 function toDateTimeLocalValue(iso?: string): string {
@@ -98,6 +112,18 @@ function toDateTimeLocalValue(iso?: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
     date.getDate(),
   )}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** The session form's fields, filled from a session that already exists. */
+function sessionFormFrom(session: LiveSession): typeof emptySessionForm {
+  return {
+    module: session.module == null ? "general" : String(session.module),
+    title: session.title ?? "",
+    description: session.description ?? "",
+    meeting_url: session.meeting_url ?? "",
+    start_time: toDateTimeLocalValue(session.start_time),
+    end_time: toDateTimeLocalValue(session.end_time),
+  };
 }
 
 // Attendance rows are parsed tolerantly — the endpoint is new and its
@@ -173,6 +199,10 @@ function friendlyCreateError(
 
 export default function TrainingProgrammesManager() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // A link from the dashboard is followed once. Reopening the modal on every
+  // reload would trap the admin in it.
+  const deepLinkHandledRef = useRef(false);
   const { confirm, dialog } = useConfirm();
   const [programmes, setProgrammes] = useState<Programme[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -262,16 +292,52 @@ export default function TrainingProgrammesManager() {
         );
       }
 
-      setProgrammes(readApiList<Programme>(programmePayload));
+      const loadedProgrammes = readApiList<Programme>(programmePayload);
+      const loadedSessions = sessionResponse.ok
+        ? // normalizeLiveSession mirrors the new `programme` FK onto the
+          // legacy cohort_course so the per-programme filters keep working.
+          readApiList<LiveSession>(sessionPayload).map(normalizeLiveSession)
+        : [];
+
+      setProgrammes(loadedProgrammes);
       if (courseResponse.ok) setCourses(readApiList<Course>(coursePayload));
-      if (sessionResponse.ok) {
-        // normalizeLiveSession mirrors the new `programme` FK onto the
-        // legacy cohort_course so the per-programme filters keep working.
-        setAllSessions(
-          readApiList<LiveSession>(sessionPayload).map(normalizeLiveSession),
+      if (sessionResponse.ok) setAllSessions(loadedSessions);
+      setError("");
+
+      /*
+       * Arriving from a link that names a training, and optionally a session.
+       *
+       * The dashboard lists upcoming live sessions but has nowhere of its own
+       * to send anyone — sessions are managed inside their training. A link
+       * carries both ids; this opens that training's session list and loads the
+       * named session, which also highlights its row.
+       *
+       * Done here rather than in an effect of its own because the ids mean
+       * nothing until these lists exist. It happens once: after that the admin
+       * is in charge of the modal, and a stale URL must not reopen it every
+       * time the list reloads.
+       */
+      const linkedProgrammeId = Number(searchParams.get("programme"));
+      const linkedProgramme = linkedProgrammeId
+        ? loadedProgrammes.find((item) => item.id === linkedProgrammeId)
+        : undefined;
+
+      if (linkedProgramme && !deepLinkHandledRef.current) {
+        deepLinkHandledRef.current = true;
+
+        setSessionsFor(linkedProgramme);
+        setSessionError("");
+
+        const linkedSessionId = Number(searchParams.get("session"));
+        const linkedSession = linkedSessionId
+          ? loadedSessions.find((item) => item.id === linkedSessionId)
+          : undefined;
+
+        setEditingSessionId(linkedSession?.id ?? null);
+        setSessionForm(
+          linkedSession ? sessionFormFrom(linkedSession) : emptySessionForm,
         );
       }
-      setError("");
     } catch (loadError) {
       setError(
         loadError instanceof Error
@@ -281,7 +347,7 @@ export default function TrainingProgrammesManager() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -595,6 +661,17 @@ export default function TrainingProgrammesManager() {
   const programmeSessions = sessionsFor
     ? allSessions.filter((session) => session.cohort_course === sessionsFor.id)
     : [];
+
+  // How long the session being scheduled would run, for the warning below the
+  // date fields. Anything past this is more likely a mis-picked date than a
+  // genuinely long session.
+  const sessionDurationMs =
+    sessionForm.start_time && sessionForm.end_time
+      ? new Date(sessionForm.end_time).getTime() -
+        new Date(sessionForm.start_time).getTime()
+      : 0;
+  const sessionRunsLong = sessionDurationMs > LONG_SESSION_MS;
+  const sessionDurationLabel = describeDuration(sessionDurationMs);
 
   // The delivered course's modules — each one should get its own live
   // session inside this training.
@@ -953,14 +1030,7 @@ export default function TrainingProgrammesManager() {
   const startEditSession = (session: LiveSession) => {
     setEditingSessionId(session.id);
     setSessionError("");
-    setSessionForm({
-      module: session.module == null ? "general" : String(session.module),
-      title: session.title ?? "",
-      description: session.description ?? "",
-      meeting_url: session.meeting_url ?? "",
-      start_time: toDateTimeLocalValue(session.start_time),
-      end_time: toDateTimeLocalValue(session.end_time),
-    });
+    setSessionForm(sessionFormFrom(session));
   };
 
   const cancelEditSession = () => {
@@ -1750,6 +1820,23 @@ export default function TrainingProgrammesManager() {
                 }
                 className="rounded-lg border px-4 py-2.5 text-sm"
               />
+
+              {/* Picking the wrong month in a date field is easy and silent:
+                  one session was saved running from 25 August to 25 September
+                  and sat on the dashboard as upcoming for weeks. This does not
+                  block saving — some sessions really do run long — it just asks
+                  the question before the mistake is stored. */}
+              {sessionRunsLong && (
+                <p className="flex items-start gap-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-800 md:col-span-2">
+                  <CalendarPlus size={14} className="mt-0.5 shrink-0" />
+                  <span>
+                    This session lasts {sessionDurationLabel}. Check the end
+                    date is right — if it should finish the same day, the month
+                    or day may have been picked by mistake.
+                  </span>
+                </p>
+              )}
+
               <textarea
                 value={sessionForm.description}
                 onChange={(event) =>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { readApiList } from "@/app/lib/portal-api";
 import type { Programme } from "@/app/lib/staff-learning";
 import LegacyCohortsManager from "./LegacyCohortsManager";
@@ -72,7 +72,21 @@ export default function CohortsPage() {
   }
 
   if (model === "programmes") {
-    return <TrainingProgrammesManager />;
+    // Suspense because the manager reads the query string, which is how the
+    // dashboard links to a particular training and live session.
+    return (
+      <Suspense
+        fallback={
+          <div className="mx-auto max-w-7xl">
+            <div className="rounded-2xl bg-white p-6 text-sm text-gray-500 shadow-sm">
+              Loading...
+            </div>
+          </div>
+        }
+      >
+        <TrainingProgrammesManager />
+      </Suspense>
+    );
   }
 
   return (
