@@ -1,8 +1,20 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { ExternalLink, FileText } from "lucide-react";
 import RichTextViewer from "@/app/components/RichTextViewer";
 import type { Activity } from "@/app/lib/training-types";
+
+// Same viewer the learner sees, so a preview shows what will actually be
+// delivered. Browser-only: pdf.js needs canvas and worker APIs.
+const PdfViewer = dynamic(() => import("@/app/components/PdfViewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[75vh] items-center justify-center rounded-xl border border-gray-200 bg-gray-100 text-sm text-gray-500">
+      Loading document...
+    </div>
+  ),
+});
 
 type ActivityViewerProps = {
   activity: Pick<Activity, "title" | "content_type" | "content_url" | "text_content">;
@@ -24,13 +36,17 @@ export default function ActivityViewer({ activity }: ActivityViewerProps) {
   }
 
   if (activity.content_type === "PDF") {
-    return (
-      <iframe
-        src={activity.content_url ?? undefined}
+    return activity.content_url ? (
+      <PdfViewer
+        url={activity.content_url}
         title={activity.title}
-        className="w-full rounded-xl border border-gray-200"
-        style={{ height: "75vh" }}
+        className="h-[75vh]"
       />
+    ) : (
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-500">
+        <FileText size={24} className="mx-auto mb-2 text-gray-400" />
+        This activity has no file yet.
+      </div>
     );
   }
 

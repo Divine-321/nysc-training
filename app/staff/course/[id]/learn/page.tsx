@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
@@ -122,6 +123,17 @@ const OFFICE_URL_PATTERN = /\.(pptx?|ppsx?|potx?|docx?|xlsx?)(\?|#|$)/i;
  * seconds lost to buffering should not leave someone unable to finish.
  */
 const MEDIA_COMPLETE_FRACTION = 0.9;
+
+// Drawn in the browser only. pdf.js reaches for canvas and worker APIs as it
+// loads, neither of which exists while this page is rendered on the server.
+const PdfViewer = dynamic(() => import("@/app/components/PdfViewer"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-[70vh] items-center justify-center rounded-xl border border-gray-200 bg-gray-100 text-sm text-gray-500">
+      Loading document...
+    </div>
+  ),
+});
 
 function documentUrl(doc: ModuleActivity) {
   return doc.content_url ?? doc.file_url ?? "";
@@ -318,13 +330,7 @@ function DocumentContent({
   }
 
   if (kind === "PDF") {
-    return (
-      <iframe
-        src={url}
-        title={doc.title}
-        className="h-[70vh] w-full rounded-xl border border-gray-200 bg-white shadow-sm"
-      />
-    );
+    return <PdfViewer url={url} title={doc.title} />;
   }
 
   if (kind === "IMAGE") {
