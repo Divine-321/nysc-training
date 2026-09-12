@@ -1787,12 +1787,19 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-center gap-3">
+                      {/* The size has to be set in CSS, not only as width and
+                          height attributes: the base stylesheet gives every
+                          image height:auto, which overrode the attribute and
+                          let each photo keep its own shape. A portrait came out
+                          a tall oval, a landscape a short wide one, and no two
+                          rows matched. Fixing both sides and cropping to fill
+                          makes every one the same circle. */}
                       <Image
                         src={staff.photo}
                         alt={staff.surname}
                         width={36}
                         height={36}
-                        className="rounded-full bg-gray-100 object-cover"
+                        className="h-9 w-9 shrink-0 rounded-full bg-gray-100 object-cover"
                       />
                       <div>
                         <p className="font-semibold text-gray-800 uppercase tracking-tight">
@@ -2231,7 +2238,7 @@ export default function AdminUsersPage() {
                   alt={selectedStaff.surname}
                   width={48}
                   height={48}
-                  className="rounded-full shadow-sm border border-gray-200"
+                  className="h-12 w-12 shrink-0 rounded-full border border-gray-200 bg-gray-100 object-cover shadow-sm"
                 />
                 <div>
                   <h3 className="font-bold text-lg text-gray-800 leading-tight uppercase">
