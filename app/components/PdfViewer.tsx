@@ -49,6 +49,11 @@ const MAX_PIXEL_RATIO = 2;
 // before it is scrolled to.
 const RENDER_MARGIN = "100% 0px";
 
+// Pages drawn without waiting to be told they are on screen, because they
+// always are. Also the floor if a browser's observer never reports: something
+// is always readable rather than a column of empty rectangles.
+const EAGER_PAGES = 2;
+
 type PdfViewerProps = {
   url: string;
   title: string;
@@ -70,11 +75,18 @@ function PdfPage({
 }) {
   const holderRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [visible, setVisible] = useState(false);
+  // The opening pages start drawing without waiting to be told they are on
+  // screen, because they always are. Samsung Internet left every page blank at
+  // the right size — frames, page numbers, no drawing — which is what it looks
+  // like when the observer never reports. Whatever the browser does with it,
+  // the first pages now appear.
+  const [visible, setVisible] = useState(pageNumber <= EAGER_PAGES);
   // Page one's shape is a good guess for the rest, and is corrected the moment
   // this page is actually drawn. Without a guess every page would start flat
   // and the scrollbar would lurch as they filled in.
   const [ratio, setRatio] = useState(1.414);
+  const [failed, setFailed] = useState(false);
+  const hasIntersectedRef = useRef(false);
 
   useEffect(() => {
     const holder = holderRef.current;
@@ -83,14 +95,27 @@ function PdfPage({
     // Measured against the scrolling box, not the window. With the window as
     // root the box's own clipping still hides pages, so the margin would buy
     // nothing and every page would appear blank until scrolled onto.
+    //
+    // Releasing a page that scrolled away matters — a phone cannot hold a
+    // whole document in canvases — but a browser whose observer never reports
+    // a page as on screen must not be allowed to blank one that plainly is.
+    // So the release only starts once this browser has reported an
+    // intersection at least once, proving it works here.
     const observer = new IntersectionObserver(
-      ([entry]) => setVisible(entry.isIntersecting),
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          hasIntersectedRef.current = true;
+          setVisible(true);
+        } else if (hasIntersectedRef.current && pageNumber > EAGER_PAGES) {
+          setVisible(false);
+        }
+      },
       { root: scrollRoot, rootMargin: RENDER_MARGIN },
     );
 
     observer.observe(holder);
     return () => observer.disconnect();
-  }, [scrollRoot]);
+  }, [scrollRoot, pageNumber]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -130,10 +155,18 @@ function PdfPage({
         });
 
         await task.promise;
-      } catch {
-        // A cancelled render throws, and so does a page that will not parse.
-        // Neither is worth interrupting the rest of the document for — the
-        // page stays blank and everything around it still reads.
+        if (!cancelled) setFailed(false);
+      } catch (renderError) {
+        // Cancelling is routine — scrolling away or a resize does it — and
+        // must not be reported. Anything else is a page that genuinely would
+        // not draw, and saying so beats the silent blank rectangle that hid
+        // this from us in the first place.
+        const cancelledRender =
+          cancelled ||
+          (renderError instanceof Error &&
+            renderError.name === "RenderingCancelledException");
+
+        if (!cancelledRender) setFailed(true);
       }
     })();
 
@@ -141,9 +174,9 @@ function PdfPage({
       cancelled = true;
       task?.cancel();
 
-      // Hand the memory back. A drawn page that has scrolled far away is
-      // redrawn when it returns, which is cheap; keeping every page alive is
-      // what runs a phone out of memory.
+      // Hand the memory back. A drawn page that scrolled far away is redrawn
+      // when it returns, which is cheap; keeping every page alive is what runs
+      // a phone out of memory.
       canvas.width = 0;
       canvas.height = 0;
     };
@@ -161,6 +194,17 @@ function PdfPage({
         aria-label={`Page ${pageNumber}`}
         className="block h-full w-full"
       />
+
+      {/* A page that would not draw says so. Silence here is what made a whole
+          document of empty rectangles look like a portal fault rather than
+          something to open in a new tab. */}
+      {failed && (
+        <p className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs font-medium text-gray-500">
+          This page could not be displayed. Use the link below the document to
+          open it instead.
+        </p>
+      )}
+
       {/* The browser's own PDF reader numbered the pages; drawing them
           ourselves means doing that ourselves too. */}
       <span className="pointer-events-none absolute bottom-1.5 right-1.5 rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-semibold text-white">
