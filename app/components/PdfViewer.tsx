@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertTriangle, ExternalLink, Loader2 } from "lucide-react";
+import { AlertTriangle, Download, ExternalLink, Loader2 } from "lucide-react";
+import { attachmentUrl } from "@/app/lib/cloudinary-upload";
 import type {
   PDFDocumentLoadingTask,
   PDFDocumentProxy,
@@ -311,14 +312,26 @@ export default function PdfViewer({
         <span>
           {doc ? `${doc.numPages} page${doc.numPages === 1 ? "" : "s"}` : title}
         </span>
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 font-semibold text-[#1a6b3c] hover:underline"
-        >
-          <ExternalLink size={13} /> Open in a new tab
-        </a>
+        <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {/* Saves under the document's own title rather than the id it is
+              stored under. Course materials had no way to be kept at all
+              before this — they could be read here or opened in a tab, and
+              nothing else. */}
+          <a
+            href={attachmentUrl(url, title)}
+            className="inline-flex items-center gap-1.5 font-semibold text-[#1a6b3c] hover:underline"
+          >
+            <Download size={13} /> Download
+          </a>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 font-semibold text-[#1a6b3c] hover:underline"
+          >
+            <ExternalLink size={13} /> Open in a new tab
+          </a>
+        </span>
       </p>
     </div>
   );

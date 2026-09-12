@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Award,
   Download,
-  ExternalLink,
   Info,
   PlayCircle,
   Printer,
@@ -32,6 +31,7 @@ import RequirementChecklist, {
 import CertificateDocument from "@/app/components/CertificateDocument";
 import { formatDate as formatDateMedium } from "@/app/lib/format";
 import { cachedFetchAll } from "@/app/lib/data-cache";
+import { attachmentUrl } from "@/app/lib/cloudinary-upload";
 
 type Certificate = {
   id: number;
@@ -369,7 +369,17 @@ export default function CertificationsPage() {
 
   const handleDownload = () => {
     if (selectedCert?.pdf_url) {
-      window.open(selectedCert.pdf_url, "_blank", "noopener,noreferrer");
+      // Saved rather than opened, and under a name that says what it is: a
+      // certificate someone keeps for years should not sit in their downloads
+      // folder as the id it happens to be stored under.
+      window.open(
+        attachmentUrl(
+          selectedCert.pdf_url,
+          `Certificate ${selectedCert.course_title}`,
+        ),
+        "_blank",
+        "noopener,noreferrer",
+      );
       return;
     }
 
@@ -525,12 +535,8 @@ export default function CertificationsPage() {
                     onClick={handleDownload}
                     className="flex items-center gap-2 rounded-lg bg-[#1a6b3c] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#145530]"
                   >
-                    {selectedCert.pdf_url ? (
-                      <ExternalLink size={16} />
-                    ) : (
-                      <Download size={16} />
-                    )}
-                    {selectedCert.pdf_url ? "Open PDF" : "Download PDF"}
+                    <Download size={16} />
+                    Download PDF
                   </button>
                 </div>
               </div>
