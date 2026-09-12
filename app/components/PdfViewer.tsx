@@ -64,11 +64,14 @@ type PdfViewerProps = {
 
 function PdfPage({
   doc,
+  url,
   pageNumber,
   width,
   scrollRoot,
 }: {
   doc: PDFDocumentProxy;
+  /** The original file, offered right here when a page will not draw. */
+  url: string;
   pageNumber: number;
   width: number;
   /** The scrolling box the pages sit in — what "near the screen" is measured against. */
@@ -167,7 +170,13 @@ function PdfPage({
           (renderError instanceof Error &&
             renderError.name === "RenderingCancelledException");
 
-        if (!cancelledRender) setFailed(true);
+        if (!cancelledRender) {
+          setFailed(true);
+          // Nothing a learner should see, but the only trace of why a browser
+          // refused to draw. Without it the message on screen is all anyone
+          // has to go on when this needs chasing.
+          console.warn(`PDF page ${pageNumber} failed to render`, renderError);
+        }
       }
     })();
 
@@ -196,14 +205,26 @@ function PdfPage({
         className="block h-full w-full"
       />
 
-      {/* A page that would not draw says so. Silence here is what made a whole
-          document of empty rectangles look like a portal fault rather than
-          something to open in a new tab. */}
+      {/* A page that would not draw says so, and offers the way out right
+          there. Pointing at a link further down the page was no use on a
+          phone, where that link is off the bottom of the screen. */}
       {failed && (
-        <p className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs font-medium text-gray-500">
-          This page could not be displayed. Use the link below the document to
-          open it instead.
-        </p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-5 text-center">
+          <p className="text-xs font-medium text-gray-500">
+            This browser cannot display the document.
+          </p>
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#1a6b3c] px-4 py-2 text-xs font-bold text-[#1a6b3c] transition hover:bg-green-50"
+          >
+            <ExternalLink size={14} /> Open the document
+          </a>
+          <p className="text-[11px] leading-snug text-gray-400">
+            It opens here in the page on Chrome.
+          </p>
+        </div>
       )}
 
       {/* The browser's own PDF reader numbered the pages; drawing them
@@ -299,6 +320,7 @@ export default function PdfViewer({
               <PdfPage
                 key={index + 1}
                 doc={doc}
+                url={url}
                 pageNumber={index + 1}
                 width={pageWidth}
                 scrollRoot={scrollEl}
