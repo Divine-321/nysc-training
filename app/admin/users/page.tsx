@@ -1731,7 +1731,10 @@ export default function AdminUsersPage() {
 
         {/* Table */}
         <div className="overflow-x-auto border-t border-gray-100">
-          <table className="w-full text-center text-sm whitespace-nowrap">
+          {/* Left, like the unregistered-staff table directly below it. Centred
+              columns of names, ranks and locations give the eye no edge to run
+              down, and the two tables disagreeing made it worse. */}
+          <table className="w-full text-left text-sm whitespace-nowrap">
             <thead className="bg-gray-50 text-gray-500">
               <tr className="divide-x divide-gray-200 border-b border-gray-200">
                 <th className="px-6 py-4 font-medium w-12">
@@ -1786,7 +1789,7 @@ export default function AdminUsersPage() {
                     />
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex items-center justify-center gap-3">
+                    <div className="flex items-center gap-3">
                       {/* The size has to be set in CSS, not only as width and
                           height attributes: the base stylesheet gives every
                           image height:auto, which overrode the attribute and
