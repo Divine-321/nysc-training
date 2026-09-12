@@ -52,9 +52,9 @@ const BATCH_CHIP_STYLES: Record<string, string> = {
   "BATCH C": "bg-amber-100 text-amber-700",
 };
 
-// Cohorts are now months (stakeholder change, 2026-07-11). NOTE: the
-// deployed backend still validates cohort as BATCH A/B/C — creating with a
-// month fails until its CohortEnum is updated; the error is surfaced clearly.
+// Cohorts are months (stakeholder change, 2026-07-11). These twelve are also
+// the backend's CohortEnum on both test and production, so they must stay in
+// step with it — anything else is rejected as an invalid choice.
 const COHORT_MONTHS = [
   "January",
   "February",
