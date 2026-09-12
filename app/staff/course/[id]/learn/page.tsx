@@ -114,6 +114,10 @@ type ModuleSection = {
 };
 
 const AUDIO_URL_PATTERN = /\.(mp3|wav|m4a|aac|ogg|oga|opus)(\?|#|$)/i;
+// Older activities predate content_type and doc_type being set reliably, so a
+// PDF uploaded back then arrives with neither and would otherwise be treated as
+// an unknown file to open elsewhere. The address still says what it is.
+const PDF_URL_PATTERN = /\.pdf(\?|#|$)/i;
 // Office documents we can render inline via the Microsoft Office viewer.
 const OFFICE_URL_PATTERN = /\.(pptx?|ppsx?|potx?|docx?|xlsx?)(\?|#|$)/i;
 
@@ -180,6 +184,7 @@ function documentKind(doc: ModuleActivity): DocumentKind {
       const url = documentUrl(doc);
       if (doc.text_content && !url) return "TEXT";
       if (OFFICE_URL_PATTERN.test(url)) return "OFFICE";
+      if (PDF_URL_PATTERN.test(url)) return "PDF";
       return AUDIO_URL_PATTERN.test(url) ? "AUDIO" : "OTHER";
     }
   }
