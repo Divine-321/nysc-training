@@ -147,14 +147,46 @@ function resourceTypeFor(file: Blob, type: CloudinaryUploadType) {
   return "auto";
 }
 
+/**
+ * Why the file store refused an upload, in terms the admin can act on.
+ *
+ * Its own wording is written for whoever set the account up, not for the
+ * person holding the file: a slide deck comes back as "Raw file format pptx
+ * not allowed", which names a setting the admin has never seen and suggests
+ * nothing to do about it. Both of these are account limits rather than
+ * anything wrong with the file, so each says what the limit is and what still
+ * works.
+ */
+function describeUploadFailure(rawMessage: string): string {
+  const refusedFormat = /format (\w+) not allowed/i.exec(rawMessage);
+
+  if (refusedFormat) {
+    return `${refusedFormat[1].toUpperCase()} files cannot be uploaded yet. Save the file as a PDF and upload that instead, or ask for this file type to be enabled.`;
+  }
+
+  // "File size too large. Got 21000000. Maximum is 10485760."
+  const tooLarge = /too large.*?got (\d+).*?maximum is (\d+)/i.exec(rawMessage);
+
+  if (tooLarge) {
+    const asMb = (bytes: string) => Math.round(Number(bytes) / 1_000_000);
+    return `This file is ${asMb(tooLarge[1])} MB, and the limit is ${asMb(
+      tooLarge[2],
+    )} MB. Please upload a smaller version.`;
+  }
+
+  return rawMessage;
+}
+
 async function readCloudinaryResponse(response: Response) {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-  throw new Error(
-    extractErrorMessage(payload, "Cloudinary could not upload this file."),
-  );
-}
+    throw new Error(
+      describeUploadFailure(
+        extractErrorMessage(payload, "This file could not be uploaded."),
+      ),
+    );
+  }
 
   return payload as CloudinaryUploadResult;
 }
